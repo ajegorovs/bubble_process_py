@@ -1851,28 +1851,6 @@ for globalCounter in range(globalCounter):
     #==============================================================================================
     #======================== DRAWING STUFF  END ==================================================
     #==============================================================================================
-    
-
-crossCheckBubbles = 0    
-if crossCheckBubbles == 1:
-    u,v = 1,2   
-    masks1 = shareData[u]["masks"]
-    masks2 = shareData[v]["masks"]
-    gs1 = shareData[u]["grayscale"]
-    gs2 = shareData[v]["grayscale"]
-    # centroids1 = shareData[u]["centroids"]
-    # centroids2 = shareData[v]["centroids"]
-    recPars1 = shareData[u]["recBountdParams"]
-    recPars2 = shareData[v]["recBountdParams"]
-    
-    # checkMoments(err,gs1,gs2,masks1,masks2,recPars1,recPars2)
-    
-    m1,m2 = masks1[2],masks2[0]
-    # cv2.imshow('m1',m1)
-    # cv2.imshow('m2',m2)
-
-    matchTemplateBub(err,m1,graphics=1)
-    
 # for A,(b,c) in enumerate(zip(range(1,3,1),range(4,6,1))):
 #     print(f'A {A}, b {b}, c {c}')
 

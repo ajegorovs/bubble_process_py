@@ -4,7 +4,7 @@ Created on Tue May 24 17:17:57 2022
 
 @author: User
 """
-import glob, pickle, numpy as np, cv2
+import glob, pickle, numpy as np, cv2, os, itertools
 from matplotlib import pyplot as plt
 
 def init(folder,imageNumber): # initialize some globals, so i dont have to pass them
@@ -70,8 +70,10 @@ def initImport(mode, workBigArray,recalcMean,readSingleFromArray,pickleNewDataLo
         if pickleSingleCaseSave     == 1:
             with open('./picklesImages/img'+str(imgNum).zfill(4)+'.pickle', 'wb') as handle:
                 pickle.dump(X_data[imgNum], handle) 
-                
-        if recalcMean ==1 :
+        
+        meanFileExists = os.path.exists('./mean.pickle')        
+        if recalcMean == 1 or not meanFileExists:
+            if meanFileExists: print('mean.pickle not found, recalculating')
             print("mean image, begin...")
             mean = np.mean(X_data, axis=0)
             cv2.blur(mean, (3,3),cv2.BORDER_REFLECT)
@@ -185,7 +187,7 @@ def cntParentChildHierarchy(image, mode, minArea, minAreaChild, CPareaRatio):
     parentSizeSel = [i for i in whereParents0 if cv2.contourArea(contours[i]) > minArea]
     # parentsCNTRS = [contours[i] for i in parentSizeSel]
     pIDsAreaFiltered = []
-    cIDsAreaFiltered = {}
+    cIDsAreaFiltered = {} # really keeps p-c with similar aspect ratios, not area
         
     if mode >0:
         # find children of good parents. seach sub-contours with right parent ID
@@ -230,24 +232,96 @@ def getCentroidPos(inp, offset, mode, mask,value=0):
     mp = cv2.moments(shape)#;print("moms ",mp)]
     return tuple([int(mp['m10']/mp['m00'] + offset[0]), int(mp['m01']/mp['m00'] + offset[1])])
 
-def getCentroidPosContours(bodyCntrs,holesCntrs=[]):
+def getCentroidPosContours(bodyCntrs,holesCntrs=[],hullArea = 0):
     areas1 = [cv2.contourArea(cntr) for cntr in bodyCntrs]
     areas0 = [cv2.contourArea(cntr) for cntr in holesCntrs]
     moms1 = [cv2.moments(cntr) for cntr in bodyCntrs]
     moms0 = [cv2.moments(cntr) for cntr in holesCntrs]
     centroids1 = [np.uint32([m['m10']/m['m00'], m['m01']/m['m00']]) for m in moms1]
     centroids0 = [np.uint32([m['m10']/m['m00'], m['m01']/m['m00']]) for m in moms0]
+    totalArea = np.sum(areas1) - np.sum(areas0)   
+    endCentroid = sum([w*a for w,a in zip(areas1,centroids1)]) - sum([w*a for w,a in zip(areas0,centroids0)])      
+    endCentroid /= totalArea
+    returnArea = cv2.contourArea(cv2.convexHull(np.vstack(bodyCntrs))) if hullArea == 1 else totalArea
+    return  tuple(map(int,np.ceil(endCentroid))), int(returnArea)
+
+def getContourHullArea(bodyCntrs):
+    return int(cv2.contourArea(cv2.convexHull(np.vstack(bodyCntrs))))
+
+def getCentroidPosCentroidsAndAreas(centroids1,areas1,centroids0=[],areas0=[]):
+    centroids1 =  np.float32(centroids1)
+    areas1 =  np.float32(areas1)
     totalMass = np.sum(areas1) - np.sum(areas0)   
     endCentroid = sum([w*a for w,a in zip(areas1,centroids1)]) - sum([w*a for w,a in zip(areas0,centroids0)])      
     endCentroid /= totalMass
-    # print(endCentroid)
     return  tuple(map(int,np.ceil(endCentroid)))
 
+def centroidSumPermutations(IDsOfInterest, centroidDict, areaDict, refCentroid,distCheck):
+    permutations = sum([list(itertools.combinations(IDsOfInterest, r)) for r in range(1,len(IDsOfInterest)+1)],[])
+    cntrds2 =  np.array([getCentroidPosCentroidsAndAreas([centroidDict[k] for k in vec],[areaDict[m] for m in vec]) for vec in permutations])
+    print(f'permutations,{permutations}')
+    print(f'refC: {refCentroid}, cntrds2: {list(map(list,cntrds2))}')
+    index, dist = closest_point(refCentroid, cntrds2)
+    sol = np.sqrt(dist[index])
+    #print(f'result min: {permutations[index]}',['{:.1f}'.format(np.sqrt(a)) for a in dist])
+    output = [permutations[index], sol] if sol < distCheck else []
+    return output
+
+def centroidAreaSumPermutations(bodyCntrs, IDsOfInterest, centroidDict, areaDict, refCentroid, distCheck, refArea=10, relAreaCheck = 10000000, debug = 0):
+    permutations = sum([list(itertools.combinations(IDsOfInterest, r)) for r in range(1,len(IDsOfInterest)+1)],[])
+    cntrds2 =  np.array([getCentroidPosCentroidsAndAreas([centroidDict[k] for k in vec],[areaDict[m] for m in vec]) for vec in permutations])
+    hullAreas = np.array([cv2.contourArea(cv2.convexHull(np.vstack([bodyCntrs[k] for k in vec]))) for vec in permutations])
+    print(f'permutations,{permutations}') if debug == 1 else 0
+    print(f'refC: {refCentroid}, cntrds2: {list(map(list,cntrds2))}') if debug == 1 else 0
+    distances = np.linalg.norm(cntrds2-refCentroid,axis=1)
+    distPassIndices = np.where(distances<distCheck)[0]
+    relAreas = np.abs(refArea-hullAreas)/refArea 
+    relAreasPassIndices = np.where(relAreas<relAreaCheck)[0]
+    passBothIndices = np.intersect1d(distPassIndices, relAreasPassIndices)
+    if len(passBothIndices)>0:
+        if len(passBothIndices) == 1:
+            return list(permutations[passBothIndices[0]]), relAreas[passBothIndices[0]], distances[passBothIndices[0]]
+        distArgSort = np.argsort(distances[passBothIndices])
+        relAreasArgSort = np.argsort(relAreas[passBothIndices])
+        remainingPermutations = np.array(permutations, dtype=object)[passBothIndices]
+        remainingDistances = np.array(distances)[passBothIndices]
+        remainingRelAreas = np.array(relAreas)[passBothIndices]
+        A = distArgSort;print(f'A: {A}') if debug == 1 else 0
+        print(f'A (deltas): {np.array(A)-min(A)}') if debug == 1 else 0
+        B = relAreasArgSort
+        print(f'B: {B}') if debug == 1 else 0 
+        print(f'B (deltas): {np.array(B)-min(B)}') if debug == 1 else 0
+        deltaA = max(A) - min(A)
+        deltaB = max(B) - min(B)
+        weightedA = (np.array(A)-min(A))/deltaA;print(f'weightedA: {[np.round(a, 2) for a in weightedA]}') if debug == 1 else 0
+        weightedB = (np.array(B)-min(B))/deltaB;print(f'weightedB: {[np.round(a, 2) for a in weightedB]}') if debug == 1 else 0
+        sortedA = np.argsort(np.argsort(A));print(f'sortedA (position): {[np.round(a, 2) for a in sortedA]}') if debug == 1 else 0
+        sortedB = np.argsort(np.argsort(B));print(f'sortedB (position): {[np.round(a, 2) for a in sortedB]}') if debug == 1 else 0
+        rescaledArgSortA = np.matmul(np.diag(weightedA),sortedA);print(f'rescaledArgSortA (position): {[np.round(a, 2) for a in rescaledArgSortA]}') if debug == 1 else 0
+        rescaledArgSortB = np.matmul(np.diag(weightedB),sortedB);print(f'rescaledArgSortB (position): {[np.round(a, 2) for a in rescaledArgSortB]}') if debug == 1 else 0
+        res = [np.mean([a,b]) for a,b in zip(rescaledArgSortA,rescaledArgSortB)];print(f'mean rescaled positions :\n{[np.round(a, 2) for a in res]}') if debug == 1 else 0
+        resIndex = np.argmin(res);print(f'resIndex: {resIndex}') if debug == 1 else 0
+        return list(remainingPermutations[resIndex]), remainingDistances[resIndex], remainingRelAreas[resIndex]
+    else: 
+        return [],-1,-1
+
+
+def centroidSumPermutationsMOD(oldNewRelationArray, centroidDict, areaDict, refCentroidsDict,distCheck):
+    u, c = np.unique(oldNewRelationArray[:,0], return_counts=True)
+    dup = u[c > 1]
+    print(f'duplicates detected: {dup}')
+    output = {}
+    for i,d in enumerate(dup):
+        dupPos = np.where(oldNewRelationArray[:,0] == d)[0]
+        nums = [oldNewRelationArray[k,1] for k in dupPos]
+        out = centroidSumPermutations(nums, centroidDict, areaDict, refCentroidsDict[d],distCheck)
+        output[d] = out
+    return output
 
 from skimage.metrics import structural_similarity
 # global gg
 gg = 0;
-def compareMoments(big,shape1,shape2,coords1,coords2):
+def compareMoments(big,shape1,shape2,coords1,coords2, debug):
     global gg
     (x,y,w,h) = coords1
     diag1 = np.sqrt(w**2+h**2)
@@ -273,34 +347,34 @@ def compareMoments(big,shape1,shape2,coords1,coords2):
     # df = np.diff(cntds,axis=0);print('df',df)
     dist = np.linalg.norm(np.diff(cntds,axis=0))
     charDist = 0.5*(diag1+diag2)  # <<<<< change if it fails
-    print(f'dist: {dist:.1f}; charDist: {charDist:.1f}')
     # area1, area2 = moms1['m00'] , moms2['m00']
     area1, area2 = areas
     if area1 > area2: areaChangePrec = 1- area2/area1
     else: areaChangePrec = 1- area1/area2
-    print(f'areaChangePrec: {areaChangePrec:.2f}')
-
+    if debug:
+        print(f'dist: {dist:.1f}; charDist: {charDist:.1f}; areaChangePrec: {areaChangePrec:.2f}')
+    
     if dist< charDist and areaChangePrec< 0.3: 
     # if 1 == 1: 
-        useKeys = ('m20','m11','m02','m30',
-                   'm21','m12','m03','mu20')#,'mu11','mu02','mu30'
-        moms1a = [moms1[x] for x in useKeys]
-        moms2a = [moms2[x] for x in useKeys]
-        ratio = [a/b for a,b in zip(moms1a,moms2a)]
-        a =     np.abs(1-np.array(ratio))
-        weights = [3, 6, 3, 3, 3, 3, 3, 1]
-        w_avg = np.average(a, weights = weights)
-        std_dev = np.sum(weights * (a - w_avg)**2)/np.sum(weights)#;print(std_dev)
-        zero_based = np.abs(a - w_avg)#;print(zero_based)
-        max_deviations = 2
-        outliers = a[zero_based > max_deviations * std_dev]#;print('outliers',outliers)
-        outlierNames = [ i for i,c in enumerate(zero_based) if c >  max_deviations * std_dev]
-        outlierNames = [useKeys[i] for i in outlierNames]#;print('outlierNames',outlierNames)
+        #useKeys = ('m20','m11','m02','m30',
+        #           'm21','m12','m03','mu20')#,'mu11','mu02','mu30'
+        #moms1a = [moms1[x] for x in useKeys]
+        #moms2a = [moms2[x] for x in useKeys]
+        #ratio = [a/b for a,b in zip(moms1a,moms2a)]
+        #a =     np.abs(1-np.array(ratio))
+        #weights = [3, 6, 3, 3, 3, 3, 3, 1]
+        #w_avg = np.average(a, weights = weights)
+        #std_dev = np.sum(weights * (a - w_avg)**2)/np.sum(weights)#;print(std_dev)
+        #zero_based = np.abs(a - w_avg)#;print(zero_based)
+        #max_deviations = 2
+        #outliers = a[zero_based > max_deviations * std_dev]#;print('outliers',outliers)
+        #outlierNames = [ i for i,c in enumerate(zero_based) if c >  max_deviations * std_dev]
+        #outlierNames = [useKeys[i] for i in outlierNames]#;print('outlierNames',outlierNames)
         
-        stree = f'mean = {w_avg:.3f}; '+f'stdev = {std_dev:.3f}; '+" ".join([f'{a}= {b:1.3f};' for a,b in zip(outlierNames,outliers)])
+        #stree = f'mean = {w_avg:.3f}; '+f'stdev = {std_dev:.3f}; '+" ".join([f'{a}= {b:1.3f};' for a,b in zip(outlierNames,outliers)])
     
-        print(stree)
-        print(" ".join([f'{a}= {b:1.3f};' for a,b in zip(useKeys,ratio)]))
+        #print(stree)
+        #print(" ".join([f'{a}= {b:1.3f};' for a,b in zip(useKeys,ratio)]))
         # if w_avg>= 0.2:
             # cv2.imshow(f'{gg}_1 mean: {w_avg:.3f}, std_dev: {std_dev:.3f}',maskedFull1)
             # cv2.imshow(f'{gg}_2 mean: {w_avg:.3f}, std_dev: {std_dev:.3f}',maskedFull2)
@@ -447,3 +521,80 @@ def distStatPrediction(trajectory, startAmp0 = 20, expAmp = 20, halfLife = 1, nu
         axes.set_ylabel('displacement magnitude, px')
         showDistDecay = False
     return distCheck
+
+def detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbStoreAreas,fbStoreCentroids_old,fbStoreCentroids,fbStoreCulprits,globalCounter):
+    allCombs = list(itertools.product(fbStoreRectParams_old, fbStoreRectParams))#;print(f'allCombs,{allCombs}')
+    intersectingCombs = []
+    for (keyOld,keyNew) in allCombs:
+        x1,y1,w1,h1 = fbStoreRectParams[keyNew]
+        rotatedRectangle_new = ((x1+w1/2, y1+h1/2), (w1, h1), 0)
+        x2,y2,w2,h2 = fbStoreRectParams_old[keyOld]
+        rotatedRectangle_old = ((x2+w2/2, y2+h2/2), (w2, h2), 0)
+        interType,_ = cv2.rotatedRectangleIntersection(rotatedRectangle_new, rotatedRectangle_old)
+        if interType > 0:
+            intersectingCombs.append([keyOld,keyNew])
+    #print(f'intersectingCombs,{intersectingCombs}')
+    intersectingCombs_stage2 = []
+    for (keyOld,keyNew) in intersectingCombs:
+        areaOld, areaNew = fbStoreAreas_old[keyOld], fbStoreAreas[keyNew]
+        relativeAreaChange = abs(areaOld-areaNew)/areaOld
+        centroidOld,centroidNew = fbStoreCentroids_old[keyOld], fbStoreCentroids[keyNew]
+        dist = np.linalg.norm(np.diff([centroidOld,centroidNew],axis=0),axis=1)[0]
+        if  relativeAreaChange < 0.15 and dist < 5:#
+              intersectingCombs_stage2.append([keyOld,keyNew,relativeAreaChange,dist])
+    #print(f'intersectingCombs_stage2,{intersectingCombs_stage2}')
+    if len(fbStoreCulprits.copy()) == 0 and len(intersectingCombs_stage2) > 0 :
+        for keyOld, keyNew, *_ in intersectingCombs_stage2:
+            fbStoreCulprits[tuple(fbStoreCentroids_old[keyOld])] = {globalCounter-1:[keyOld,fbStoreAreas_old[keyOld]]}
+            fbStoreCulprits[tuple(fbStoreCentroids_old[keyOld])][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
+    if len(intersectingCombs_stage2) > 0 and len(fbStoreCulprits)>0:
+        for keyOld, keyNew, *_ in intersectingCombs_stage2:
+            searchCentroid = fbStoreCentroids_old[keyOld]
+            dists = {centroid:np.linalg.norm(np.diff([centroid,searchCentroid],axis=0),axis=1)[0] for centroid in fbStoreCulprits}
+            minKey = min(dists, key=dists.get) #min dist centroid
+            if dists[minKey] < 5:
+                fbStoreCulprits[minKey][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
+            else:
+                fbStoreCulprits[tuple(searchCentroid)] = {globalCounter-1:[keyOld,fbStoreAreas_old[keyOld]]}
+                fbStoreCulprits[tuple(searchCentroid)][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
+    
+    storedCentroids = []
+    storedCentroidsInfo = []
+    if len(fbStoreCulprits) > 0:
+        for keyNew, centroid in fbStoreCentroids.items():
+            culpritCentroids = np.array(list(fbStoreCulprits.keys()))
+            dists = np.linalg.norm(culpritCentroids - centroid,axis = 1)
+            minDistArg = np.argmin(dists)
+            minDist = dists[minDistArg]
+            minCentroid = tuple(culpritCentroids[minDistArg])
+            data = fbStoreCulprits[minCentroid]
+            areas = [area for [_, area] in data.values()]
+            meanArea = np.mean(areas)
+            relativeAreaChange = abs(fbStoreAreas[keyNew]-meanArea)/fbStoreAreas[keyNew]
+            if relativeAreaChange < 0.15 and minDist < 5:
+                storedCentroids.append(keyNew)
+                storedCentroidsInfo.append([keyNew,relativeAreaChange,minDist,len(data)])
+
+    return storedCentroids, storedCentroidsInfo
+
+def getMasksParams(contours,IDs,err,orig):
+    contourSubset = [contours[k] for k in IDs]
+    contourStack = np.vstack(contourSubset)   
+    x,y,w,h = cv2.boundingRect(contourStack)#;print([x,y,w,h])
+    baseSubMask,baseSubImage = err.copy()[y:y+h, x:x+w], orig.copy()[y:y+h, x:x+w]
+                    
+    subSubMask = np.zeros((h,w),np.uint8)
+    [cv2.drawContours( subSubMask, contours, ID, 255, -1, offset = (-x,-y)) for ID in IDs]
+    baseSubMask[subSubMask == 0] = 0
+                    
+    baseSubImage[subSubMask == 0] = 0
+                    
+    tempC = getCentroidPosContours(contourSubset)[0]
+    return baseSubMask, baseSubImage, [x,y,w,h] , tempC
+
+# listFormat(dataList = [3, 18, 10.63014581273465, 0.0763888888888889],
+#            formatList = ["{:.0f}", "{:0.0f}", "{:.2f}","{:0.2f}"], outType = float)
+def listFormat(dataList, formatList, outType):
+    # if outType = float, then map ints to ints, not float. intFloat = int->int/float->float else float->str
+    intFloat = lambda x: int(x) if x.isdigit() else outType(x) if outType != str else lambda x: x
+    return [intFloat(frmt.format(nbr)) for nbr,frmt in zip(dataList, formatList)]

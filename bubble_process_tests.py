@@ -4,7 +4,7 @@ Created on Wed Apr 13 13:30:19 2022
 
 @author: User
 """
-print("\014")
+#print("\014") #clear spyder console, if you use it
 import cv2
 # from cv2.ximgproc import anisotropicDiffusion
 # from cv2.ximgproc import getDisparityVis
@@ -18,7 +18,7 @@ import os#, multiprocessing
 from matplotlib import pyplot as plt
 # from skimage.morphology import disk
 from skimage.morphology import medial_axis, skeletonize
-from itertools import combinations
+from itertools import combinations, permutations
 # from skimage.metrics import structural_similarity
 import alphashape
 from descartes import PolygonPatch
@@ -47,7 +47,9 @@ from imageFunctions import (resizeImage,convertGray2RGB,convertRGB2Gray,
 from imageFunctionsP2 import (initImport, init, bubbleTypeCheck,
                               drawContoursGeneral, boundingRect2Contour, cntParentChildHierarchy,
                               maskByValue, getCentroidPos,getCentroidPosContours, compareMoments,
-                              checkMoments,closes_point_contours, distStatPrediction)
+                              checkMoments,closes_point_contours, distStatPrediction,detectStuckBubs
+                              ,getMasksParams,getCentroidPosCentroidsAndAreas,centroidSumPermutationsMOD,
+                              getContourHullArea, centroidAreaSumPermutations, listFormat)
 def resizeImage(img,frac):
     width = int(img.shape[1] * frac)
     height = int(img.shape[0] * frac)
@@ -88,24 +90,24 @@ def partialBubble(image, graphics = 0, m=1):
     di = 15
     for i in range(5,maxIter*di,di):
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (i,i))
-        a = cv2.morphologyEx(tempImg0, cv2.MORPH_CLOSE, kernel, iterations = 1)
-        tempCntr, _ = cv2.findContours(a,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
-        a = cv2.drawContours(a.copy(), tempCntr, -1, 255, -1)
-        typeCheck, _, _ = bubbleTypeCheck(image = a, index = str(m)+" "+str(i),erode = 4,close = 1,areaRemainingThreshold = 0.75, graphics = 0)
-        # cv2.imshow("adsad",a)
+        A = cv2.morphologyEx(tempImg0, cv2.MORPH_CLOSE, kernel, iterations = 1)
+        tempCntr, _ = cv2.findContours(A,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+        A = cv2.drawContours(A.copy(), tempCntr, -1, 255, -1)
+        typeCheck, _, _ = bubbleTypeCheck(image = A, index = str(m)+" "+str(i),erode = 4,close = 1,areaRemainingThreshold = 0.75, graphics = 0)
+        # cv2.imshow("adsad",A)
         
-        temp2 = cv2.addWeighted(a, 0.5, tempImg0, 1 - 0.5,0)
+        temp2 = cv2.addWeighted(A, 0.5, tempImg0, 1 - 0.5,0)
         temp2 = cv2.putText(temp2.copy(), str(typeCheck), (dlt+10,dlt+10), font, 0.4, 204, 1, cv2.LINE_AA)
         temp.append(temp2)
         if typeCheck >= 0.7: break
-    tempCntr, _ = cv2.findContours(a[dlt:-dlt,dlt:-dlt],cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+    tempCntr, _ = cv2.findContours(A[dlt:-dlt,dlt:-dlt],cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
     # if graphics == 1:
     #     tempRGB = cv2.drawContours(imageRGB.copy(), tempCntr, -1, (255,0,255), 1)
     # else: tempRGB = None
-    return a, dlt
+    return A, dlt
     # imgMrphCls = [img[dlt:-dlt,dlt:-dlt] for img in temp]
     # output[y:y+h,x:x+w] = imgMrphCls[len(imgMrphCls)-1]
-    # reportList[4][y:y+h,x:x+w] = a[dlt:-dlt,dlt:-dlt]
+    # reportList[4][y:y+h,x:x+w] = A[dlt:-dlt,dlt:-dlt]
 
 def hullGeneral(image):
     cntrHull, _ = cv2.findContours(image,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
@@ -208,7 +210,7 @@ def maskProcSegments(img, mask, lowThreshold, graphics, exportGraphics, drawBG, 
         nReports = 4
         reportList = np.zeros((nReports,mask.shape[0],mask.shape[1]),dtype=np.uint8)
         # reportListRGB = np.zeros((nReports,mask.shape[0],mask.shape[1],3),dtype=np.uint8)
-        reportListRGB = [imgRGB for a in range(nReports)]
+        reportListRGB = [imgRGB for A in range(nReports)]
         # cv2.imshow('aa',reportListRGB2[0])
         
             
@@ -248,7 +250,7 @@ def maskProcSegments(img, mask, lowThreshold, graphics, exportGraphics, drawBG, 
             # x0, y0, w0, h0 = x, y, w, h
             x, y, w, h = getPaddedSegmentCoords(mask, x, y, w, h, dilate)
         if graphics == 1 or exportGraphics == 1: tempRGB = imgRGB[y:y+h,x:x+w]
-        # on full size black blank draw a single controur and dilate it    
+        # on full size black blank draw A single controur and dilate it    
         maskSelection = cv2.drawContours(maskSelection.copy(), [c], -1, 255, -1)
         
         # maskSelection = cv2.dilate(maskSelection.copy(),np.ones((dilate,dilate),np.uint8),iterations = 1)
@@ -346,7 +348,7 @@ def maskProcSegments(img, mask, lowThreshold, graphics, exportGraphics, drawBG, 
                 print(box)
 
 
-            # [cv2.drawContours(zz, [np.intp(cv2.boxPoints(a))], 0, 124) for a in minRect]
+            # [cv2.drawContours(zz, [np.intp(cv2.boxPoints(A))], 0, 124) for A in minRect]
             # [cv2.polylines(zz, c, True, 125, 1) for c in minRect]
 
             hulls.append(zz)
@@ -455,7 +457,7 @@ def maskProcSegments(img, mask, lowThreshold, graphics, exportGraphics, drawBG, 
             ls = np.uint8(ls*255)
             # sometimes chain returns inverted image + some defects in the corners. sol-ns: 
             # 1) extract biggest contour
-            # 2) (our) check mean border color, most likely w/o a bubble
+            # 2) (our) check mean border color, most likely w/o A bubble
             maskLs = np.zeros(th.shape,dtype=np.uint8)
             maskLs[10:h-10,10:w-10]=1
             ma = np.ma.array(ls, mask=maskLs)
@@ -518,7 +520,7 @@ def maskProcSegments(img, mask, lowThreshold, graphics, exportGraphics, drawBG, 
     if graphics == 1 or exportGraphics == 1:
         reportNames = [f'{thresh0}+ => 255 and hull', f' >{lowThreshold}+ => 255 threshold, closing by r{kerSize}','local threshold','new']
 
-        reportSet = [cv2.putText(c, reportNames[a], (30,30), font, 0.8, (0,255,255), 2, cv2.LINE_AA) for a,c in enumerate(reportListRGB)]
+        reportSet = [cv2.putText(c, reportNames[A], (30,30), font, 0.8, (0,255,255), 2, cv2.LINE_AA) for A,c in enumerate(reportListRGB)]
         
         c = [resizeToMaxHW(img,1200,900) for img in reportSet] 
         def on_trackbar2(var):
@@ -561,11 +563,11 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart = 60#46
-dataNum = 3
+dataStart = 58#46
+dataNum = 6
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
-recalcMean          = 0
+recalcMean          = 0  
 readSingleFromArray = 1
 
 # this loads images from image list
@@ -581,6 +583,33 @@ pickleSingleCaseSave= 1
 drawFileName        = 1
 # workSingleCase      = 0
 
+
+globalCounter = 0
+
+# debug section numbers: 11- RB IDs, 12- RB recovery, 21- Else IDs, 22- else recovery, 31- merge
+# debug on specific steps- empty list, do all steps, or time steps in list
+debugSections = [11,21,12,22]
+debugSteps = [1]
+def debugOnly(section):
+    global globalCounter, debugSections, debugSteps
+    if debugSections[0] == -1 or debugSteps[0] == 0:
+        return False
+    if (section in debugSections or len(debugSections) == 0) and (globalCounter in debugSteps or len(debugSteps) ==0 ):
+        return True
+    else:
+        return False
+
+#  21- distance lines, 22- colored neighbors, 23 - match template & overlap contours, 31 - merge stuff
+debugSectionsGFX = [12, 21, 22, 23, 31]
+debugStepsGFX = [-1]
+def debugOnlyGFX(section):
+    global globalCounter, debugSections, debugSteps
+    if debugSectionsGFX[0] == -1 or debugStepsGFX[0] == 0:
+        return False
+    if (section in debugSectionsGFX or len(debugSectionsGFX) == 0) and (globalCounter in debugStepsGFX or len(debugStepsGFX) ==0 ):
+        return True
+    else:
+        return False
 imgNum = 46
 
 imageMainFolder = r'D:/Alex/Darbs.exe/Python_general/bubble_process/imageMainFolder/'
@@ -588,7 +617,6 @@ init(imageMainFolder,imgNum)
 
 X_data, mean, imageLinks = initImport(mode,workBigArray,recalcMean,readSingleFromArray,pickleNewDataLoad,pickleNewDataSave,pickleSingleCaseSave)
 
-globalCounter = 0
 
 typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge = np.int8(0),np.int8(1),np.int8(2),np.int8(3), np.int8(4), np.int8(5), np.int8(6)
 centroidsByID2,recParamsByID, areasByID, masksByID,imagesByID,cntrIDsByIDs,bubTypesByID = {},{},{},{},{},{},{}
@@ -599,10 +627,10 @@ distanceBubMasks_old, distanceBubImages_old, distanceBubRectParams_old,  distanc
 distanceOldNewIDs_old = {}
 distanceBubMasks, distanceBubImages, distanceBubRectParams,  distanceBubCentroids = {},{},{},{}
 distanceOldNewIDs = {}
-contoursAll, frozenBubs, frozenBubsTimes, bubTypesLocal, bubTypesLocal_old, bubTypesLocal = {}, {}, {}, {}, {}, {}
-fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old = {}, {}, {}, {}
+contoursAll, contours_old, frozenBubs, frozenBubsTimes, bubTypesLocal, bubTypesLocal_old, bubTypesLocal = {}, {}, {}, {}, {}, {} ,[]
+fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits = {}, {}, {}, {}, {}
 def mainer(index):
-    global shareData, globalCounter, contoursAll, frozenBubs, frozenBubsTimes, fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old
+    global shareData, globalCounter, contoursAll, contours_old, frozenBubs, frozenBubsTimes, fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits, contours_old
     global ringBubMasks_old, ringBubImages_old, ringBubRectParams_old, ringBubCentroids_old, ringCntrIDs, ringOldNewIDs_old
     global distanceBubMasks_old, distanceBubImages_old, distanceBubRectParams_old,  distanceBubCentroids_old, distanceOldNewIDs_old
     global distanceBubMasks, distanceBubImages, distanceBubRectParams,  distanceBubCentroids, distanceOldNewIDs
@@ -654,59 +682,70 @@ def mainer(index):
     recoveredMaskElse, recoveredImgElse, recoverRectParamsElse,recoverCentroidsElse, recoverOldNewIDsElse = {} , {} , {} , {} ,{}
     bubTypesLocal, bubTypesLocal, bubTypesLocal_old = {}, {}, {}
     ringBubMasks, ringBubImages, ringBubRectParam, ringBubCentoids, ringOldNewIDs = {}, {}, {}, {}, {} # temp placeholders, redefined in the end
-    recoveredMaskRB, recoveredImgRB, recoverRectParamsRB,recoveredCentroidsRB, recoverOldNewIDsRB = {} , {} , {} , {} , {} # moved a copy for sake of globalCounter > 0
+    recoveredMaskRB, recoveredImgRB, recoverRectParamsRB,recoveredCentroidsRB, recoverOldNewIDsRB = {} , {} , {} , {} , {} # moved A copy for sake of globalCounter > 0
     
     try:
         (contours4, whereParentOriginal,
-         whereParentAreaFiltered,whereChildrenAreaFiltered) = cntParentChildHierarchy(err,1, 1200,100,0.1);print(f'whereChildrenAreaFiltered {whereChildrenAreaFiltered}')
+         whereParentAreaFiltered,whereChildrenAreaFiltered) = cntParentChildHierarchy(err,1, 1200,100,0.1) # whereParentOriginal all non-child contours
         contoursAll[globalCounter] = contours4
-        
+        print(f'whereChildrenAreaFiltered {whereChildrenAreaFiltered}')
         global contoursFilter_RectParams,contoursFilter_RectParams_dropIDs
         contoursFilter_RectParams_dropIDs,fbStoreCentroids = [], {}
         contoursFilter_RectParams = {ID: cv2.boundingRect(contours4[ID]) for ID in whereParentOriginal} # maybe mod if for all contours
+        # Bubbles boundingRect: x+w < 80 pix <-> filter out bubbles at left image edge
         contoursFilter_RectParams_dropIDs = [ID for ID,params in contoursFilter_RectParams.items() if sum(params[0:3:2])<80]
-        
+        # Additional size filter
         minArea = 160 # used in distance bub filtering
-        fbStoreAreas = {key: cv2.contourArea(contours4[key]) for key in contoursFilter_RectParams if key not in contoursFilter_RectParams_dropIDs }
+        fbStoreAreas = {key: cv2.contourArea(contours4[key]) for key in contoursFilter_RectParams if key not in contoursFilter_RectParams_dropIDs } # dropped since never used
         contoursFilter_RectParams_dropIDs = contoursFilter_RectParams_dropIDs + [key for key, area in fbStoreAreas.items() if area < minArea]
         
         fbStoreAreas = {key: area for key, area in fbStoreAreas.items() if area > minArea}
         fbStoreRectParams = {key: val for key, val in contoursFilter_RectParams.items() if key in fbStoreAreas}
-        fbStoreCentroids = {key: getCentroidPosContours(bodyCntrs = [contours4[key]]) for key in fbStoreRectParams}
-        
-        for (cntPi,cntP) in enumerate(contours4[whereParentAreaFiltered]): #subset contours
-                temp = list()
-                tempPID = whereParentAreaFiltered[cntPi]#;print(tempPID);print(whereParentAreaFiltered)
-                cpr = getCentroidPos(inp = cntP, offset = (0,0), mode=0, mask=[])
-                cpr = getCentroidPosContours(bodyCntrs = [cntP],holesCntrs=[])
-                if tempPID in whereChildrenAreaFiltered:
-                    ringBubCentoids[tempPID] = cpr 
-                    # save outer ring bubble mask to temp storage for next iteration
-                    x,y,w,h = cv2.boundingRect(cntP)
-                    baseSubMask,baseSubImage = err.copy()[y:y+h, x:x+w], orig.copy()[y:y+h, x:x+w]
-                    # could have filled children 0 value on top of 255 parent. but code structure currently bad.
-                    subSubMask = cv2.drawContours(
-                                            np.zeros((h,w),np.uint8),   [cntP], -1, 255, -1,offset = (-x,-y)
-                                            )
-                    baseSubMask[subSubMask == 0] = 0
+        fbStoreCentroids = {key: getCentroidPosContours(bodyCntrs = [contours4[key]])[0] for key in fbStoreRectParams}
+        frozenIDs = []
+        if globalCounter >= 1:
+            frozenIDs,frozenIDsInfo = detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbStoreAreas,fbStoreCentroids_old,fbStoreCentroids,fbStoreCulprits,globalCounter)
+            frozenIDs = []
+            if  1 == 1:
+                strRavel = ["ID: ", ", rArea: ",", minDist: ",", hist: "]
+                formats = ["{:0.0f}", "{:.2f}", "{:.2f}","{:0.0f}"]
+                frozenIDsInfo = [[frmt.format(nbr) for nbr,frmt in zip(elem, formats)] for elem in frozenIDsInfo] if len(frozenIDsInfo)> 0 else []
+                peps = ["".join(np.ravel([strRavel,k], order='F')) for k in frozenIDsInfo] if len(frozenIDsInfo)> 0 else []
+                peps = "\n".join(peps) if len(frozenIDsInfo)> 0 else []
+                print(f'frozenIDsInfo:\n{peps}')
+
+         # 1.1 ------------- GRAB RING BUBBLES RB ----------------------
+        #for (cntPi,cntP) in enumerate(contours4[whereParentAreaFiltered]): #subset contours
+        for (newID,cntP) in zip(whereParentAreaFiltered,contours4[whereParentAreaFiltered]):
+            #temp = list()
+            #newID = whereParentAreaFiltered[cntPi]#;print(newID);print(whereParentAreaFiltered)
+            #cpr = getCentroidPos(inp = cntP, offset = (0,0), mode=0, mask=[])
+            cpr,_ = getCentroidPosContours(bodyCntrs = [cntP],holesCntrs=[])
+            if newID in whereChildrenAreaFiltered:
+                ringBubCentoids[newID] = cpr 
+                # save outer ring bubble mask to temp storage for next iteration
+                x,y,w,h = cv2.boundingRect(cntP)
+                baseSubMask,baseSubImage = err.copy()[y:y+h, x:x+w], orig.copy()[y:y+h, x:x+w]
+                # could have filled children 0 value on top of 255 parent. but code structure currently bad.
+                subSubMask = cv2.drawContours( np.zeros((h,w),np.uint8),   [cntP], -1, 255, -1,offset = (-x,-y))
+                baseSubMask[subSubMask == 0] = 0
+                baseSubImage[subSubMask == 0] = 0
                     
-                    baseSubImage[subSubMask == 0] = 0
-                    
-                    ringBubMasks[tempPID]       = baseSubMask
-                    ringBubImages[tempPID]      = baseSubImage
-                    ringBubRectParam[tempPID]   = [x,y,w,h]
-                    ringOldNewIDs[tempPID]      = [tempPID]
+                ringBubMasks[newID]       = baseSubMask
+                ringBubImages[newID]      = baseSubImage
+                ringBubRectParam[newID]   = [x,y,w,h]
+                ringOldNewIDs[newID]      = [newID]
                     
                 
-                # for cSel in whereChildrenAreaFiltered[tempPID]:
+                # for cSel in whereChildrenAreaFiltered[newID]:
                 #     ccr = getCentroidPos(inp = contours4[cSel], offset = (0,0), mode=0, mask=[])
                 #     temp.append([cpr,ccr])
     
                 # childParentCentroids.append(temp)
                
         # parentChildNorms = [
-        #                     [np.linalg.norm(np.array(p1) - np.array(p2)) for (p1,p2) in a]
-        #                     for a in childParentCentroids
+        #                     [np.linalg.norm(np.array(p1) - np.array(p2)) for (p1,p2) in A]
+        #                     for A in childParentCentroids
         #                     ]
         
      
@@ -716,38 +755,51 @@ def mainer(index):
         tempDistListTest = list()
         RBOldNewDist = np.empty((0,2), np.uint16)
         if globalCounter >= 1: # << uses centroids as it goes, any changes due to back-tracking are not accounted.
-            for cPi, cPrev in ringBubCentroids_old.items(): 
-                cntrds = np.array(list(centroidsByID2[cPi].values()))
+            for oldID, oldCentroid in ringBubCentroids_old.items(): 
+                cntrds = np.array(list(centroidsByID2[oldID].values()))
                 distCheck = distStatPrediction(trajectory = cntrds, startAmp0 = 30, expAmp = 10, halfLife = 2, numsigmas = 2, plot=0,extraStr = 'RB: ')
-                for cCi, cCurr in list(ringBubCentoids.items()):
-                    dist = np.linalg.norm(np.array(cPrev) - np.array(cCurr)).astype(np.uint32)
-                    tempDistListTest.append(tuple([cPi,cCi,dist,np.uint16(distCheck)]))
-                    if dist <= distCheck: RBOldNewDist = np.append(RBOldNewDist,[[cPi,cCi]],axis=0)
+                for newID, newCentroid in list(ringBubCentoids.items()):
+                    dist = np.linalg.norm(np.array(oldCentroid) - np.array(newCentroid)).astype(np.uint32)
+                    tempDistListTest.append(tuple([oldID,newID,dist,np.uint16(distCheck)]))
+                    oldArea = sum([fbStoreAreas_old[subOldID] for subOldID in ringOldNewIDs_old[oldID]])
+                    newArea = fbStoreAreas[newID] # i hope new RB has only 1 contour
+                    relArea = abs(oldArea - newArea)/oldArea
+                    if dist <= distCheck and relArea < 0.2:
+                        RBOldNewDist = np.append(RBOldNewDist,[[oldID,newID]],axis=0)
+                    #fbStoreAreas  fbStoreAreas_old ringOldNewIDs_old
                 
             print('**analyzing new Ring and old Ring/Recover bubbles**')
-            newFoundBubsRings = list(ringBubCentoids.keys()); print("newFoundBubsRings (new typeRing bubbles):\n",newFoundBubsRings)
-            oldFoundRings = list(ringBubCentroids_old.keys()); print("oldFoundRings (all old R,rR bubbles):\n",oldFoundRings)
-            # print('tempDistListTest (distance relation all dist, distCheck):\n',tempDistListTest)
-            print("RBOldNewDist (distance relations < distCheck):\n",list(map(list,RBOldNewDist)))
-            if len(RBOldNewDist) > 0: # if all distance checks fail (elseOldNewDist)
-                newFoundBubsRings = [a for a in newFoundBubsRings if a not in RBOldNewDist[:,1]]; print("newFoundBubsRings (unresolved new indices)\n",newFoundBubsRings)
-                oldFoundRings = [a for a in oldFoundRings if a not in RBOldNewDist[:,0]]; print("oldFoundRings (updated, unresolved old R,rR IDs)\n",oldFoundRings)
+            newFoundBubsRings = list(ringBubCentoids.keys())
+            oldFoundRings = list(ringBubCentroids_old.keys())
+            if debugOnly(11):
+                print("newFoundBubsRings (new typeRing bubbles):\n",newFoundBubsRings)
+                print("oldFoundRings (all old R,rR bubbles):\n",oldFoundRings)
+                # print('tempDistListTest (distance relation all dist, distCheck):\n',tempDistListTest)
+                print("RBOldNewDist (distance relations < distCheck):\n",list(map(list,RBOldNewDist)))
             
-    
+            if len(RBOldNewDist) > 0: # if all distance checks fail (elseOldNewDist)
+                newFoundBubsRings = [A for A in newFoundBubsRings if A not in RBOldNewDist[:,1]]
+                oldFoundRings = [A for A in oldFoundRings if A not in RBOldNewDist[:,0]]
+                if debugOnly(11):
+                    print("newFoundBubsRings (unresolved new indices)\n",newFoundBubsRings)
+                    print("oldFoundRings (updated, unresolved old R,rR IDs)\n",oldFoundRings)
             # recoveredMaskRB, recoveredImgRB, recoverRectParamsRB, recoverOldNewIDsRB, recoveredCentroidsRB = {} , {} , {} , {} , {}
-            # ------------- RECOVER old unresolved RB and recovred RB USING matchTemplate() -----------------------
-            print(f'{globalCounter}:--------- Begin recovery of Ring bubbles --------') if len(oldFoundRings) > 0 else print(f'{globalCounter}:--------- No unresolved old RB, skip recovery --------')
+            
+            # 1.2 ------------- RECOVER old unresolved RB and recovred RB USING matchTemplate() -----------------------
+            
+            if len(oldFoundRings)>0:    print(f'{globalCounter}:--------- Begin recovery of Ring bubbles ---------')
+            else:                       print(f'{globalCounter}:-------------- No RBubs to recover ---------------')
+
             recoveredBubsRelation = {}
-            jointMasks = {**ringBubMasks_old, **distanceBubMasks_old}  # all prev resolved/detected
+            jointMasks = {**ringBubMasks_old, **distanceBubMasks_old}  # possibly no need for dist bubs here!
             jointRectParams = {**ringBubRectParams_old, **distanceBubRectParams_old}
             jointImages = {**ringBubImages_old, **distanceBubImages_old}
-            
+            gfx = 1 if debugOnlyGFX(12) else 0
             for i in oldFoundRings.copy(): # take unresolved R,rR old global IDs (i)
                 print(f'{globalCounter}:Trying to recover old ring {i}')
-                gfx = 1 if i == 4 and globalCounter == 17 else 0
-                (x,y,w,h) = matchTemplateBub(err,jointMasks[i],jointRectParams[i],graphics=0,prefix = f'MT: Time: {globalCounter}, RB_old_ID: {i} ')
+                (x,y,w,h) = matchTemplateBub(err,jointMasks[i],jointRectParams[i],graphics=gfx,prefix = f'MT: Time: {globalCounter}, RB_old_ID: {i} ')
                 (tempMask, [xt,yt,wt,ht], overlapingContourIDList) = \
-                    overlapingContours(contours4, whereParentOriginal, jointMasks[i], (x,y,w,h), 0, prefix = f'OC: Time: {globalCounter}, RB_old_ID: {i} ')
+                    overlapingContours(contours4, whereParentOriginal, jointMasks[i], (x,y,w,h), gfx, prefix = f'OC: Time: {globalCounter}, RB_old_ID: {i} ')
                 
                 if len(overlapingContourIDList)>0:
                     
@@ -760,52 +812,57 @@ def mainer(index):
                     baseSubImage[tempMask == 0] = 0
                     shapePass = compareMoments(big=err,
                                                    shape1=baseSubImage,shape2=jointImages[i],
-                                                   coords1=[xt,yt,wt,ht],coords2 = jointRectParams[i])
-                    print('shapePass',shapePass)
+                                                   coords1=[xt,yt,wt,ht],coords2 = jointRectParams[i],debug = debugOnly(12))
+                    print(f'recovery of {i} {overlapingContourIDList} completed') if shapePass == 1 else print(f'recovery of {i} {overlapingContourIDList} failed.')
                     if shapePass == 1:# i- globals
-                        recoveredMaskRB[i]    = tempMask 
-                        recoveredImgRB[i]     = baseSubImage
-                        recoverRectParamsRB[i]    = [xt,yt,wt,ht]
+                        recoveredMaskRB[i]      = tempMask 
+                        recoveredImgRB[i]       = baseSubImage
+                        recoverRectParamsRB[i]  = [xt,yt,wt,ht]
                         recoveredCentroidsRB[i] = getCentroidPos(inp = tempMask, offset = (xt,yt), mode=0, mask=[])
-                        recoverOldNewIDsRB[i]     = overlapingContourIDList
+                        recoverOldNewIDsRB[i]   = overlapingContourIDList
                         # bubTypesLocal[i] = typeRecoveredRing
                         bubTypesByID[i][globalCounter] = typeRecoveredRing
                         # centroidsByID2[i][globalCounter] = tempC
-                        oldFoundRings.remove(i);print(f'Recovered old ring {i}, oldFoundRings (remaining unresolved): {oldFoundRings}')
+                        oldFoundRings.remove(i)
+                        print(f'Recovered old ring {i}, oldFoundRings (remaining unresolved): {oldFoundRings}')  if debugOnly(12) else 0
                         
                         # if i in oldFoundRings: oldFoundRings.remove(i)
-                        # <<<<< i dont expect to recover multiple new from one old, but in case check this block!
-                        newRBinTemp = [a for a in newFoundBubsRings if a in overlapingContourIDList]
+                        # <<<<< i dont expect to recover multiple new from one old, but in case check this block! (*EDIT: IDK IF RELEVANT)
+                        newRBinTemp = [A for A in newFoundBubsRings if A in overlapingContourIDList]
                         if len(newRBinTemp) > 1: print('<<<<<<<<<<<<len(newRBinTemp) > 1 !!!!!!!!!!!!!!!!!!!!!!!')
                         if len(newRBinTemp) > 0:
                             recoveredBubsRelation[i] = newRBinTemp[0] # storage is mapped global key->global key instead of local-> global. this to recover index
                             newFoundBubsRings = [ ID for  ID in newFoundBubsRings if ID not in newRBinTemp]
-                            print(f'Recovered new rings {newRBinTemp}, newFoundBubsRings (remaining unresolved): {newFoundBubsRings}')
+                            print(f'Recovered new rings {newRBinTemp}, newFoundBubsRings (remaining unresolved): {newFoundBubsRings}') if debugOnly(12) else 0
                         else: recoveredBubsRelation[i] = min(overlapingContourIDList)
                         
-                print('recoveredBubsRelation',recoveredBubsRelation)
-        # -------------- RECOVER UNRESOLVED BUBS VIA DISTANCE CLUSTERING --------------------- 
-        print(f'{globalCounter}:---- cluster remaining unresolved bubbles using edge-edge distance ----')    
+                print('recoveredBubsRelation',recoveredBubsRelation) if debugOnly(21) else 0
+            print('mergeCandidates',mergeCandidates) if debugOnly(21) else 0
+        
+            
+        # 2.1 ====================== RECOVER UNRESOLVED BUBS VIA DISTANCE CLUSTERING ======================= 
+        print(f'{globalCounter}:--------- Cluster remaining via distance ---------') 
         # single frame analysis, do this when everything else is resolved.   
         if globalCounter >= 0:      
-            #  GRAB ALL contours except for ones resolved and delete small objects 
-            tIDs2 = list(ringBubRectParam.keys())+sum(list(recoverOldNewIDsRB.values()),[]) # <<< ringBubRectParam does not hold info on children
-            cIDnoChildrenNoSmall = [cID for cID in whereParentOriginal if cID not in tIDs2+contoursFilter_RectParams_dropIDs ]#or cID not in contoursFilter_RectParams_dropIDs
-            # cIDnoChildrenNoSmall = [cID for cID in cIDnoChildrenNoSmall if cv2.contourArea(contours4[cID]) > minArea]
-            cntrRemaining = {ID:contours4[ID] for ID in cIDnoChildrenNoSmall}
+            #  GRAB ALL contours except resolved RBs and size-location filtered
+            dropResolvedRingIDs = list(ringBubRectParam.keys())+sum(list(recoverOldNewIDsRB.values()),[]) # <<< ringBubRectParam does not hold info on children | idk if relevant
+            # whereParentOriginal all non-child contours 
+            cntrRemainingIDs = [cID for cID in whereParentOriginal if cID not in dropResolvedRingIDs + contoursFilter_RectParams_dropIDs ]
+            cntrRemaining = {ID:contours4[ID] for ID in cntrRemainingIDs}
             
-            stats = {ID: cv2.boxPoints(cv2.minAreaRect(c)) for ID,c in cntrRemaining.items()}#;print(stats)
-            areas = {ID: cv2.contourArea(c) for ID,c in cntrRemaining.items()}#;print(stats)
-            EPSes = {key: np.linalg.norm(p1-p3) for key, (p1,_,p3,_) in stats.items()}#;print(EPSes);
+            #stats = {ID: cv2.boxPoints(cv2.minAreaRect(c)) for ID,c in cntrRemaining.items()}#;print(stats)
+            #areas = {ID: cv2.contourArea(c) for ID,c in cntrRemaining.items()}#;print(stats)
+            #EPSes = {key: np.linalg.norm(p1-p3) for key, (p1,_,p3,_) in stats.items()}#;print(EPSes);
             
-            centroids = {
-                            ID: getCentroidPos(inp = c, offset = (0,0), mode=0, mask=[], value= 0)
-                            for ID,c in cntrRemaining.items()
-                        }#;print(centroids)
+            #centroids = {
+            #                ID: getCentroidPos(inp = c, offset = (0,0), mode=0, mask=[], value= 0)
+            #                for ID,c in cntrRemaining.items()
+            #            }#;print(centroids)
             #print('cIDnoChildrenNoSmall',cIDnoChildrenNoSmall)
-            # calculate centroid to neighbor contour distance and filter by some asumptions
             
-            strgD_IDs = [];strgD_anis_IDs = []
+            # calculate centroid to neighbor contour distance and filter by some asumptions
+            strgD_anis_IDs = []
+            edges = []
             selfCombs = list(itertools.combinations(cntrRemaining,2))
             charBubSize =  100
             x_weight, y_weight = 4, 1 # elongates vectors in x direction. horizontal vecs fail more.
@@ -814,11 +871,10 @@ def mainer(index):
                 vec, dist, p1, p2 = closes_point_contours(cntrRemaining[i],cntrRemaining[j])
                 vec_scaled = np.matmul(smx,np.array(vec))
                 dist_scaled = np.linalg.norm(vec_scaled)
-                strgD_IDs.append([vec, dist, i, j, p1, p2])
                 strgD_anis_IDs.append([vec_scaled, dist_scaled, i, j, p1, p2])
-            
+                if dist_scaled < charBubSize : edges.append(tuple([i,j]))
             # ------- draw distance bubbles with connections ---------
-            if 1==221:
+            if debugOnlyGFX(21):
                 blank  = np.zeros(err.shape,np.uint8)
                 blank = convertGray2RGB(blank)
                 [cv2.drawContours( blank, contours4, i, (125,125,220), -1) for i in cntrRemaining]
@@ -828,11 +884,11 @@ def mainer(index):
                 dims = (np.array(err.shape)*frac).astype(np.uint16)#;print(dims)
                 cv2.imshow(f'32 {globalCounter}',cv2.resize(blank,tuple((1*dims[1],1*dims[0])), interpolation= cv2.INTER_LINEAR) )    
             
-            edges = [(i,k) for _, dist_scaled, i, k, _, _ in strgD_anis_IDs if dist_scaled < charBubSize]
+            #edges = [(i,k) for _, dist_scaled, i, k, _, _ in strgD_anis_IDs if dist_scaled < charBubSize]
             #print('edges',edges)
                 
-                
-            
+            # make A graph of contours connections specified by anisatropic distance.
+                        
             H = nx.Graph()
             H.add_nodes_from(cntrRemaining)
             H.add_edges_from(edges)
@@ -846,116 +902,256 @@ def mainer(index):
                     [x,y] = np.array(cntr).reshape(-1,2).T
                     plt.plot(x,y)
                 nx.draw(H, pos)
-                
-            cnctd_comp = [list(nx.node_connected_component(H, key)) for key in cntrRemaining]
-            cc_unique = [];[cc_unique.append(x) for x in cnctd_comp if x not in cc_unique]#;print('Connected Components: ',cnctd_comp)
             
-            jointNeighbors = {min(elem): elem for elem in cc_unique}
-            print('jointNeighbors: ', jointNeighbors)
+            # extract clusters that are connected (undirected)    
+            cnctd_comp = [list(sorted(nx.node_connected_component(H, key))) for key in cntrRemaining]
+            cc_unique = [];[cc_unique.append(x) for x in cnctd_comp if x not in cc_unique] # remove duplicates
+            print('Connected Components: ',cnctd_comp,'\nCC unique:', cc_unique) if debugOnly(21) else 0
+
+            # forzen bubs (FB) can be falsely joint for being too close. or it can be false positive FB
+            
+            
+            frozenSeparated = False
+            for i,comb in enumerate(cc_unique.copy()):
+                for fID in frozenIDs:
+                    if fID in comb:
+                        cc_unique[i].remove(fID)
+                        cc_unique.append([fID])
+                        frozenSeparated = True
+                        
+
+            jointNeighbors = {min(elem): elem for elem in cc_unique if len(elem)>0}
+            clusterMsg = 'Cluster groups: ' if frozenSeparated == False else 'Cluster groups (frozenIDs detected): '
+            print(clusterMsg,"\n", jointNeighbors)
             # collect multiple contours into one object, store it for further check
-            blank  = np.zeros(err.shape,np.uint8)
-            blank = convertGray2RGB(blank)                                                              # IMSHOW
-            distanceBubMasks, distanceBubImages, distanceBubRectParams, distanceBubCentroids, distanceOldNewIDs = {},{},{},{},{}
+            # on first iteration there are no more checks to be done. store it early
+            if globalCounter == 0:
+                blank  = np.zeros(err.shape,np.uint8)
+                blank = convertGray2RGB(blank)                                                              # IMSHOW
+                distanceBubMasks, distanceBubImages, distanceBubRectParams, distanceBubCentroids, distanceOldNewIDs = {},{},{},{},{}
     
-            for key, cntrIDlist in jointNeighbors.items():
-                [cv2.drawContours( blank, contours4, ID, cyclicColor(key), -1) for ID in cntrIDlist]    # IMSHOW
-                distCntrSubset = np.vstack([contours4[ID] for ID in cntrIDlist])#;print(distCntrSubset.shape)
-                x,y,w,h = cv2.boundingRect(distCntrSubset)#;print([x,y,w,h])
-                tempID = min(cntrIDlist)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
+                for key, cntrIDlist in jointNeighbors.items():
+                    #[cv2.drawContours( blank, contours4, ID, cyclicColor(key), -1) for ID in cntrIDlist]    # IMSHOW
+                    distCntrSubset = np.vstack([contours4[ID] for ID in cntrIDlist])#;print(distCntrSubset.shape)
+                    x,y,w,h = cv2.boundingRect(distCntrSubset)#;print([x,y,w,h])
+                    tempID = min(cntrIDlist)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
                 
-                baseSubMask,baseSubImage = err.copy()[y:y+h, x:x+w], orig.copy()[y:y+h, x:x+w]
-                subSubMask = np.zeros((h,w),np.uint8)
-                [cv2.drawContours( subSubMask, contours4, ID, 255, -1, offset = (-x,-y)) for ID in cntrIDlist]
+                    baseSubMask,baseSubImage = err.copy()[y:y+h, x:x+w], orig.copy()[y:y+h, x:x+w]
+                    subSubMask = np.zeros((h,w),np.uint8)
+                    [cv2.drawContours( subSubMask, contours4, ID, 255, -1, offset = (-x,-y)) for ID in cntrIDlist]
     
-                baseSubMask[subSubMask == 0] = 0
+                    baseSubMask[subSubMask == 0] = 0
                 
-                baseSubImage[subSubMask == 0] = 0
+                    baseSubImage[subSubMask == 0] = 0
                 
-                distanceBubMasks[tempID] = baseSubMask
-                distanceBubImages[tempID] = baseSubImage
-                distanceOldNewIDs[tempID] = cntrIDlist
-                distanceBubRectParams[tempID] = ([x,y,w,h])
-                distanceBubCentroids[tempID] = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
-            #print('distanceBubCentroids',distanceBubCentroids)
+                    distanceBubMasks[tempID] = baseSubMask
+                    distanceBubImages[tempID] = baseSubImage
+                    distanceOldNewIDs[tempID] = cntrIDlist
+                    distanceBubRectParams[tempID] = ([x,y,w,h])
+                    distanceBubCentroids[tempID] = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
+                #print('distanceBubCentroids',distanceBubCentroids)
+                #cv2.imshow('gfx debug 22: jointNeighbors',blank) if debugOnlyGFX(22) else 0
+
                 
             # -------------- RECOVER UNRESOLVED BUBS VIA DISTANCE CLUSTERING ---------------------   
             # -------------- join with newFoundBubsRings and search relations ----------------- 
-            
+            # jointNeighbors is a rough estimate. In an easy case neighbor bubs will be far enough away
+            # so clusters wont overlap. rather strict area/centroid displ restrictions can be satisfied
+            # if it fails, take overlapped cluster IDs and start doing permutations and check dist/areas
             if globalCounter >= 1: # unresolved new + distance bubs
-                unresolvedNewBubsRings = {a:ringBubCentoids[a] for a in newFoundBubsRings}
-                centroidsJoin = {**unresolvedNewBubsRings, **distanceBubCentroids}#;print('centroidsJoin\n',centroidsJoin)
-                tempDistListTest = list()
-                for keyOld, cntrdOld in distanceBubCentroids_old.items():
-                    for keyNew, cntrd in centroidsJoin.items(): 
-                        dist = np.linalg.norm(np.array(cntrd) - np.array(cntrdOld)).astype(np.uint32)
-                        tempDistListTest.append(tuple([keyOld,keyNew,dist]))
-                
+                elseOldNewDoubleCriterium = []
+                elseOldNewDoubleCriteriumSubIDs = {}
                 elseOldNewDist = []
-                for (oldID,newID,distanceBetween) in tempDistListTest:
+                for oldID, oldCentroid in distanceBubCentroids_old.items():
                     cntrds = list(centroidsByID2[oldID].values())
                     distCheck = distStatPrediction(trajectory = cntrds,startAmp0 = 30, expAmp = 10, halfLife = 2, numsigmas = 2, plot=0,extraStr = f'E:ID {oldID} ')
-                    if distanceBetween <= distCheck:
-                        elseOldNewDist.append([oldID,newID])
+                    areaCheck = getContourHullArea([contours_old[subOldID] for subOldID in distanceOldNewIDs_old[oldID]])
+                    for mainNewID, subNewIDs in jointNeighbors.items():
+                        newCentroid, newArea = getCentroidPosContours(bodyCntrs = [contours4[k] for k in subNewIDs], hullArea = 1)
+                        relArea = abs(areaCheck - newArea)/areaCheck
+                        dist = np.linalg.norm(np.array(newCentroid) - np.array(oldCentroid)).astype(np.uint32)
+                        if dist <= distCheck:
+                            #print(tuple([oldID,mainNewID,dist,relArea]))
+                            elseOldNewDist.append([oldID,mainNewID])
+                        
+                        if dist <= distCheck and relArea <= 0.1:
+                            print(f'Perfect match: {oldID} <-> mainNewID: {mainNewID}, dist: {dist:0.1f}, relArea: {relArea:0.1f}')
+                            elseOldNewDoubleCriterium.append([oldID,mainNewID,dist,relArea])
+                            elseOldNewDoubleCriteriumSubIDs[mainNewID] = subNewIDs
+                        elif dist > 70 or relArea > 1:
+                            0 #soft break. if pefect match failed, but this is true, dont do next.
+                            #print(f'droping rD/rA oldID: {oldID} <-> mainNewID: {mainNewID}, dist: {dist:0.1f}, relArea: {relArea:0.1f}')
+                        else:
+                            beb, dist, relArea = centroidAreaSumPermutations(contours4, subNewIDs, fbStoreCentroids, fbStoreAreas,
+                                                        oldCentroid, distCheck, areaCheck, relAreaCheck = 0.7, debug = 0)
+                            if len(beb)>0:
+                                print(f'Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, beb: {beb}')
+                                elseOldNewDoubleCriterium.append([oldID,min(beb),dist,relArea])
+                                elseOldNewDoubleCriteriumSubIDs[min(beb)] = beb
+                    for unresNewRBID in newFoundBubsRings:
+                        newCentroid, newArea = getCentroidPosContours(bodyCntrs = [contours4[unresNewRBID]], hullArea = 1)
+                        relArea = abs(areaCheck - newArea)/areaCheck
+                        dist = np.linalg.norm(np.array(newCentroid) - np.array(oldCentroid)).astype(np.uint32)
+                        if dist <= distCheck:
+                            print(tuple([oldID,mainNewID,dist,relArea]))
+                            elseOldNewDist.append([oldID,mainNewID])
+                print(f'elseOldNewDoubleCriterium: {[listFormat(data, formatList = ["{:.0f}", "{:0.0f}", "{:.2f}","{:0.2f}"], outType = float) for data in elseOldNewDoubleCriterium]}')
+                print(f'elseOldNewDoubleCriteriumSubIDs: {elseOldNewDoubleCriteriumSubIDs}')
+                
+                # modify jointNeighbors by splitting clusters using elseOldNewDoubleCriteriumSubIDs
+                removeFoundSubIDsAll = sum(elseOldNewDoubleCriteriumSubIDs.values(),[])
+                # delete new cluster IDs from original jointNeighbors, gather remaining and new found in jointNeighbors22
+                jointNeighborsDelSubIDs = [ [subelem for subelem in elem if subelem not in removeFoundSubIDsAll] for elem in jointNeighbors.values()]
+                jointNeighbors = {**{min(vals):vals for vals in jointNeighborsDelSubIDs if len(vals) > 0},**elseOldNewDoubleCriteriumSubIDs}
+                #print(f'jointNeighbors: {jointNeighbors}')
+                #unresolvedNewBubsRings = {A:ringBubCentoids[A] for A in newFoundBubsRings}
+                #centroidsJoin = {**unresolvedNewBubsRings, **distanceBubCentroids}#;print('centroidsJoin\n',centroidsJoin)
+                #tempDistListTest = list()
+                #for keyOld, cntrdOld in distanceBubCentroids_old.items():
+                #    for keyNew, cntrd in centroidsJoin.items(): 
+                #        dist = np.linalg.norm(np.array(cntrd) - np.array(cntrdOld)).astype(np.uint32)
+                #        tempDistListTest.append(tuple([keyOld,keyNew,dist]))
+                
+                
+                #for (oldID,newID,distanceBetween) in tempDistListTest:
+                #    cntrds = list(centroidsByID2[oldID].values())
+                #    distCheck = distStatPrediction(trajectory = cntrds,startAmp0 = 30, expAmp = 10, halfLife = 2, numsigmas = 2, plot=0,extraStr = f'E:ID {oldID} ')
+                #    if distanceBetween <= distCheck:
+                #        elseOldNewDist.append([oldID,newID])
                     # print(f'old trajectory {oldID}  (len = {len(cntrds)}) has dist of {distCheck:.1f}')
                 # print("tempDistListTest (else dists all)\n", tempDistListTest)
-                elseOldNewDist = np.array(elseOldNewDist);print("elseOldNewDist (Else IDs pass dist)\n", list(map(list,elseOldNewDist)))
-                newFoundBubsElse = list(centroidsJoin.keys()); print("newFoundBubsElse (new Else IDs)\n",newFoundBubsElse)
-                oldFoundElse = list(distanceBubCentroids_old.keys());print("oldFoundElse (all old Else IDs)\n",oldFoundElse)
-                if len(elseOldNewDist) > 0: # if all distance checks fail (elseOldNewDist)
-                    newFoundBubsElse = [a for a in newFoundBubsElse if a not in elseOldNewDist[:,1]]; print("newFoundBubsElse (unresolved new IDs)\n",newFoundBubsElse)
-                    oldFoundElse = [a for a in oldFoundElse if a not in elseOldNewDist[:,0]]; print("oldFoundElse (unresolved old Else IDs)\n",oldFoundElse)
                 
-                # if RB is "recovered" from E, add it to RB data, remove from unresolved RB
+                distanceBubMasks, distanceBubImages, distanceBubRectParams, distanceBubCentroids, distanceOldNewIDs = {},{},{},{},{}
+    
+                for key, cntrIDlist in jointNeighbors.items():
+                    #[cv2.drawContours( blank, contours4, ID, cyclicColor(key), -1) for ID in cntrIDlist]    # IMSHOW
+                    distCntrSubset = np.vstack([contours4[ID] for ID in cntrIDlist])#;print(distCntrSubset.shape)
+                    x,y,w,h = cv2.boundingRect(distCntrSubset)#;print([x,y,w,h])
+                    tempID = min(cntrIDlist)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
+                
+                    baseSubMask,baseSubImage = err.copy()[y:y+h, x:x+w], orig.copy()[y:y+h, x:x+w]
+                    subSubMask = np.zeros((h,w),np.uint8)
+                    [cv2.drawContours( subSubMask, contours4, ID, 255, -1, offset = (-x,-y)) for ID in cntrIDlist]
+    
+                    baseSubMask[subSubMask == 0] = 0
+                
+                    baseSubImage[subSubMask == 0] = 0
+                
+                    distanceBubMasks[tempID] = baseSubMask
+                    distanceBubImages[tempID] = baseSubImage
+                    distanceOldNewIDs[tempID] = cntrIDlist
+                    distanceBubRectParams[tempID] = ([x,y,w,h])
+                    distanceBubCentroids[tempID] = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
+                #print('distanceBubCentroids',distanceBubCentroids)
+                #cv2.imshow('gfx debug 22: jointNeighbors',blank) if debugOnlyGFX(22) else 0
+                
+                #elseOldNewDist = np.array(elseOldNewDist);
+                elseOldNewDist = np.array(elseOldNewDoubleCriterium,np.uint32)[:,:2]#;print(f'elseOldNewDist2: {elseOldNewDist2}')
+                # IN CASE there are duplicates!!
+                #if len(np.unique(elseOldNewDist[:,0]))!=len(np.unique(elseOldNewDist[:,1])):
+                #    sol = centroidSumPermutationsMOD(elseOldNewDist, fbStoreCentroids, fbStoreAreas, distanceBubCentroids_old, 15)
+                #    print(f'sol: {sol}')
+
+                newFoundBubsElse = list(jointNeighbors.keys()) + newFoundBubsRings #list(centroidsJoin.keys()); 
+                oldFoundElse = list(distanceBubCentroids_old.keys());
+                
+                if debugOnly(21):
+                    #print("elseOldNewDist (Else IDs pass dist)\n", list(map(list,elseOldNewDist)))
+                    print(f"elseOldNewDist (Else IDs pass dist, /w subIDs)\n{[[oldID,jointNeighbors[mainNewID]] for oldID,mainNewID in elseOldNewDist]}")
+                    print("newFoundBubsElse (new Else IDs)\n",newFoundBubsElse)
+                    print("oldFoundElse (all old Else IDs)\n",oldFoundElse)
+                if len(elseOldNewDist) > 0: # if all distance checks fail (elseOldNewDist)
+                    newFoundBubsElse = [A for A in newFoundBubsElse if A not in elseOldNewDist[:,1]]; 
+                    oldFoundElse = [A for A in oldFoundElse if A not in elseOldNewDist[:,0]]; 
+                    if debugOnly(21):
+                        print("newFoundBubsElse (unresolved new IDs)\n",newFoundBubsElse)
+                        print("oldFoundElse (unresolved old Else IDs)\n",oldFoundElse)
+                
+                        # if RB is "recovered" from E, add it to RB data, remove from unresolved RB
                 elseToRingBubIDs = [i for i,[_,ID] in enumerate(elseOldNewDist) if ID in newFoundBubsRings] #index for elseOldNewDist
                 newFoundBubsRings = [elem for elem in newFoundBubsRings if elem not in elseOldNewDist[:,1]]
                 for i in elseToRingBubIDs:
                     RBOldNewDist = np.vstack((RBOldNewDist,elseOldNewDist[i]))
                 elseOldNewDist = np.array([ elem for i,elem in enumerate(elseOldNewDist) if i not in elseToRingBubIDs])
-                if len(elseToRingBubIDs)>0:
+                
+                if debugOnly(21) == True and len(elseToRingBubIDs)>0:
                     print(f'newFoundBubsRings, (found RB removed) unrecovered RBs: {newFoundBubsRings}')
                     print("RBOldNewDist, ( new RB added) (distance relations < distCheck):\n",RBOldNewDist)
                     print("elseOldNewDist, (found RB removed) (Else IDs pass dist)\n", elseOldNewDist)
     
                 newFoundBubsElse = [elem for elem in newFoundBubsElse if elem not in newFoundBubsRings] # <<<<<<<<<<<   added in case missing RB is not resolved. should rething structure
                 
-                print(f'{globalCounter}:--------- Begin recovery of Else bubbles --------\n oldFoundElse: {oldFoundElse}') if len(oldFoundElse)>0 else 0
-                # if globalCounter == 17:
-                for i in oldFoundElse.copy(): # take unresolved R,rR old global IDs (i)
+                if len(oldFoundElse)>0: print(f'{globalCounter}:--------- Begin recovery of Else bubbles: {oldFoundElse} --------')
+                else:                   print(f'{globalCounter}:----------------- No Else bubble to recover ---------------------')
+                
+                jointNeighbors = {ID:subIDs for ID,subIDs in jointNeighbors.items() if ID not in elseOldNewDist[:,1]} if len(elseOldNewDist)> 0 else jointNeighbors
+                gfx = 1 if debugOnlyGFX(23) else 0
+                for i in oldFoundElse.copy(): 
                     print(f'Trying to recover old else {i}')
 
-                    (x,y,w,h) = matchTemplateBub(err,jointMasks[i],jointRectParams[i],graphics=0,prefix = f'MT: Time: {globalCounter}, E_old_ID: {i} ')
+                    (x,y,w,h) = matchTemplateBub(err,jointMasks[i],jointRectParams[i],graphics=gfx,prefix = f'MT: Time: {globalCounter}, E_old_ID: {i} ')
                     (tempMask, [xt,yt,wt,ht], overlapingContourIDList) = \
-                        overlapingContours(contours4, whereParentOriginal, jointMasks[i], (x,y,w,h), 0, prefix = f'OC: Time: {globalCounter}, RB_old_ID: {i} ')
-                    if len(overlapingContourIDList)>0:
-                        mergeCandidatesSubcontourIDs[i] = overlapingContourIDList
-                        for ID in overlapingContourIDList:
-                            if ID not in mergeCandidates: mergeCandidates[ID]  = []
-                            mergeCandidates[ID].append(i)
+                        overlapingContours(contours4, whereParentOriginal, jointMasks[i], (x,y,w,h), gfx, prefix = f'OC: Time: {globalCounter}, RB_old_ID: {i} ')
+                    overlapingContourIDListTemp = [ID for ID in overlapingContourIDList if ID not in frozenIDs] # remove frozen IDs
+                    if len(overlapingContourIDListTemp)>0:
+                        mergeCandidatesSubcontourIDs[i] = overlapingContourIDListTemp
+                        for localID in overlapingContourIDListTemp:
+                            if localID not in mergeCandidates: mergeCandidates[localID]  = []
+                            mergeCandidates[localID].append(i)
                     baseSubMask,baseSubImage = err.copy()[yt:yt+ht, xt:xt+wt], orig.copy()[yt:yt+ht, xt:xt+wt]
                     baseSubImage[tempMask == 0] = 0
                     shapePass = compareMoments(big=err,
                                                     shape1=baseSubImage,shape2=jointImages[i],
-                                                    coords1=[xt,yt,wt,ht],coords2 = jointRectParams[i])
-                    print('shapePass',shapePass)
+                                                    coords1=[xt,yt,wt,ht],coords2 = jointRectParams[i],debug = debugOnly(22))
+                    print(f'recovery of {i} {overlapingContourIDList} completed') if shapePass == 1 else print(f'recovery of {i} {overlapingContourIDList} failed.')
                     if shapePass == 1:
-                        recoveredMaskElse[i]        = tempMask 
+                        # account for frozenIDs: keep resolvedEBub, modify mask. frozenID will be left in newFoundBubsElse, if it stay there it will bw asigned typeFrozen
+                        if any(item in frozenIDs for item in overlapingContourIDList):
+                            overlapingContourIDList = [ID for ID in overlapingContourIDList if ID not in frozenIDs] # no need to copy(), it seems
+                            tempMask, baseSubImage, [xt,yt,wt,ht], tempC = getMasksParams(contours4,overlapingContourIDList,err,orig)
+                            
+                        else:
+                            tempC = getCentroidPos(inp = tempMask, offset = (xt,yt), mode=0, mask=[])
+                           
+
+                        recoveredMaskElse[i]        = tempMask  # recoveredMaskElse keys are used for _old/global storage
                         recoveredImgElse[i]         = baseSubImage
                         recoverRectParamsElse[i]    = [xt,yt,wt,ht]
-                        recoverCentroidsElse[i]     = getCentroidPos(inp = tempMask, offset = (xt,yt), mode=0, mask=[])
-                        recoverOldNewIDsElse[i]     = overlapingContourIDList; print(f'C: {globalCounter}, IDE: {i}, recoverOldNewIDsElse[{i}]: {recoverOldNewIDsElse[i]}')
+                        recoverCentroidsElse[i]     = tempC
+                        recoverOldNewIDsElse[i]     = overlapingContourIDList
                         # bubTypesLocal[i]            = typeRecoveredElse
                         bubTypesByID[i][globalCounter] = typeRecoveredElse
                         # centroidsByID2[i][globalCounter] = tempC
                         
     
-                        oldFoundElse.remove(i);print(f'Recovered old else {i}, remaining oldFoundElse: {oldFoundElse}')
-                        # print('overlapingContourIDList',overlapingContourIDList)
-                        resolveElseIDs = sum([[ID for ID,subIDs in jointNeighbors.items() if foundID in subIDs] for foundID in overlapingContourIDList],[])
-                        newFoundBubsElse = [elem for elem in newFoundBubsElse if elem not in resolveElseIDs]
-                        
-                        print("newFoundBubsElse (unresolved  (updated) new IDs)\n",newFoundBubsElse) if len(resolveElseIDs)>0 else 0
+                        oldFoundElse.remove(i)
 
-        print('mergeCandidates',mergeCandidates)
+                        # print('overlapingContourIDList',overlapingContourIDList)
+                        # resolveElseIDs - get main local cluster IDs which own contours in overlapingContourIDList
+                        resolveElseIDs = set(sum([[ID for ID,subIDs in jointNeighbors.items() if foundID in subIDs] for foundID in overlapingContourIDList],[]))
+                        newFoundBubsElse = [elem for elem in newFoundBubsElse if elem not in resolveElseIDs] # drop resolved
+                        jointNeighbors2 = {A:[ID for ID in subIDs if ID not in overlapingContourIDList] for A,subIDs in jointNeighbors.items()}
+                        jointNeighbors = {min(subIDs): subIDs for _,subIDs in jointNeighbors2.items() if len(subIDs) > 0}
+                        if debugOnly(22):
+                            print(f'resolveElseIDs {resolveElseIDs}')
+                            print(f'jointNeighbors {jointNeighbors}')
+                            print(f'jointNeighbors2 {jointNeighbors2}')
+                            #print(f'jointNeighbors3 {jointNeighbors3}')
+                            print(f'C: {globalCounter}, IDE: {i}, recoverOldNewIDsElse[{i}]: {recoverOldNewIDsElse[i]}')
+                            print(f'Recovered old else {i}, remaining oldFoundElse: {oldFoundElse}')
+                            print("newFoundBubsElse (unresolved  (updated) new IDs)\n",newFoundBubsElse) if len(resolveElseIDs)>0 else 0
+        
+                if len(jointNeighbors)> 0:
+                    for ID,cntrIDs in jointNeighbors.items():
+                        tempMask, baseSubImage, [xt,yt,wt,ht], tempC = getMasksParams(contours4,cntrIDs,err,orig)
+                        distanceBubMasks[ID] = tempMask
+                        distanceBubImages[ID] = baseSubImage
+                        distanceBubRectParams[ID] = [xt,yt,wt,ht]
+                        distanceBubCentroids[ID] = tempC
+                        distanceOldNewIDs[ID] = cntrIDs
+                    newFoundBubsElse = newFoundBubsElse + [elem for elem in list(jointNeighbors.keys()) if elem not in newFoundBubsElse]
+                        
+                print('mergeCandidates',mergeCandidates) if debugOnly(22) else 0
         
         print(f'{globalCounter}:--------- Begin merge detection/processing --------\n')
         
@@ -967,7 +1163,7 @@ def mainer(index):
             H.add_nodes_from([str(key) for key in mergeCandidates])
             H.add_edges_from(graphConnections2)
             # ----- visualize  netrworkx graph with background contrours
-            if globalCounter == 17:
+            if debugOnlyGFX(31) == True:
                 blank  = np.full(err.shape,128, np.uint8)
                 blank = convertGray2RGB(blank)
                 [cv2.drawContours( blank, contours4, i, (6,125,220), -1) for i in mergeCandidates]
@@ -982,21 +1178,24 @@ def mainer(index):
                 uniqNodes2 = set([oldID for _,oldID in graphConnections2])
                 clrs = ['#00FFFF' for _ in mergeCandidates]+ ['#FFB6C1' for _ in uniqNodes2]
                 nx.draw(H, pos, with_labels = True, node_color = clrs)#, node_size= 90
-                
+                plt.show()
             cnctd_comp = [set(nx.node_connected_component(H, str(key))) for key in mergeCandidates]
             cc_unique = [];[cc_unique.append(x) for x in cnctd_comp if x not in cc_unique]
-            cc_unique = [list(a) for a in cc_unique]#;print('Connected Components: ',cnctd_comp,cc_unique)
+            cc_unique = [list(A) for A in cc_unique]#;print('Connected Components: ',cnctd_comp,cc_unique)
             cc_newIDs = [[int(elem) for elem in vec if type(elem) == str] for vec in cc_unique]
             cc_oldIDs = [[elem for elem in vec if type(elem) != str] for vec in cc_unique]
-            print(f'cc_newIDs IDs: {cc_newIDs}, newFoundBubsRings {newFoundBubsRings}, newFoundBubsElse {newFoundBubsElse}, cc_oldIDs IDs: {cc_oldIDs}')
+            print(f'newFoundBubsRings {newFoundBubsRings}, newFoundBubsElse {newFoundBubsElse}')
+            print(f'oldFoundRings {oldFoundRings}, oldFoundElse {oldFoundElse}')
+            print(f'cc_newIDs IDs: {cc_newIDs}\ncc_oldIDs IDs: {cc_oldIDs}')
             for old,new in zip(cc_oldIDs,cc_newIDs):
+                print(f'old {old}, new {new}')
                 # grab new that is known (not stray) EG. is in unresolved new
                 new = [elem for elem in new if elem in newFoundBubsRings + newFoundBubsElse]
-                # print(new)
+                print(f'new: {new}')
                 if len(new)<len(old) and len(new)>0: # merge
                     typeTemp = typeRing if any(item in newFoundBubsRings for item in new) else typeElse
-                    # print(f'typeTemp {typeTemp}')
-                     # smallest x centroid survives. ID:Cx -> smallest Cx ID
+                    print(f'typeTemp {typeTemp}')
+                    # smallest x centroid survives. ID:Cx -> smallest Cx ID
                     centroidsTemp = {ID: centroidsByID2[ID][globalCounter-1][0] for ID in old}
                     selectID = min(centroidsTemp, key=centroidsTemp.get)
                     
@@ -1133,8 +1332,8 @@ def mainer(index):
             distanceBubMasks_old, distanceBubImages_old, distanceBubRectParams_old,  distanceBubCentroids_old, distanceOldNewIDs_old = {}, {}, {}, {}, {}
             # print('distanceBubCentroids',distanceBubCentroids)
             for [old,new] in elseOldNewDist: # contains relation indices that satisfy distance
-                bubTypesLocal[old]                  = typeElse
-                bubTypesByID[old][globalCounter]    = typeElse
+                bubTypesLocal[old]                  = typeElse if new not in frozenIDs else typeFrozen
+                bubTypesByID[old][globalCounter]    = typeElse if new not in frozenIDs else typeFrozen
                 # centroidsByID2[old][globalCounter]  = distanceBubCentroids[new]
                 distanceBubMasks_old[old]           = distanceBubMasks[new]
                 distanceBubImages_old[old]          = distanceBubImages[new]
@@ -1202,7 +1401,7 @@ def mainer(index):
                 # gID = max(centroidsByID2)+1 # added last
                 bubTypesLocal[gID] = typeElse
                 bubTypesByID[gID] = {}
-                bubTypesByID[gID][globalCounter] = typeElse
+                bubTypesByID[gID][globalCounter] = typeElse if localID not in frozenIDs else typeFrozen
                 # centroidsByID2[gID] = {}
                 # centroidsByID2[gID][globalCounter] = distanceBubCentroids[localID]
                 
@@ -1241,51 +1440,21 @@ def mainer(index):
             if len(intersection)>0:
                 if key not in list(cntrChildrenIDsByIDs.keys()): cntrChildrenIDsByIDs[key] = {}
                 cntrChildrenIDsByIDs[key][globalCounter]    = \
-                    sum([whereChildrenAreaFiltered[a] for a in intersection],[] ) # pretty general. for ex in case one bubble is two ring bubbles (?!)
+                    sum([whereChildrenAreaFiltered[A] for A in intersection],[] ) # pretty general. for ex in case one bubble is two ring bubbles (?!)
         
         # ============================ detect stuck bubbles =======================================    
         # grab all current time IDs, check their traj-s, calculate last nSteps average displacement
         # if its small, collect info. if its that bubble's last live timestep, start investigation by backtracking
-        if globalCounter >= 1:
-            # fbStoreRectParams_old = {str(key):val for key,val in fbStoreCentroids_old.items()}
-            # fbStoreAreas_old = {str(key):val for key,val in fbStoreAreas_old.items()}
-            # fbStoreRectParams_oldl = {str(key):val for key,val in fbStoreRectParams.items()}
-            allCombs = list(itertools.product(list(fbStoreRectParams_old.keys()), list(fbStoreRectParams.keys())))#;print(f'allCombs,{allCombs}')
-            intersectingCombs = []
-            for (keyOld,keyNew) in allCombs:
-                x1,y1,w1,h1 = fbStoreRectParams[keyNew]
-                rotatedRectangle_new = ((x1+w1/2, y1+h1/2), (w1, h1), 0)
-                x2,y2,w2,h2 = fbStoreRectParams_old[keyOld]
-                rotatedRectangle_old = ((x2+w2/2, y2+h2/2), (w2, h2), 0)
-                interType,interPoints = cv2.rotatedRectangleIntersection(rotatedRectangle_new, rotatedRectangle_old)
-                if interType > 0:
-                    intersectingCombs.append([keyOld,keyNew])
-            # print(f'intersectingCombs,{intersectingCombs}')
-            # blank = convertGray2RGB(err.copy())
-            # for (keyOld,keyNew) in intersectingCombs:
-            #     x1,y1,w1,h1 = fbStoreRectParams[keyNew]
-            #     cv2.rectangle(blank, (x1,y1), (x1 + w1, y1 + h1),(0,0,255),1)
-            #     cv2.putText(blank, str(keyNew), (x1,y1-2), font, 0.5, (0,0,255),1, cv2.LINE_AA)
-            #     x2,y2,w2,h2 = fbStoreRectParams_old[keyOld]
-            #     cv2.rectangle(blank, (x2,y2), (x2 + w2, y2 + h2),(0,255,0),1)
-            #     cv2.putText(blank, str(keyOld), (x1,y1+h1+12), font, 0.5, (0,255,0),1, cv2.LINE_AA)
-            # cv2.imshow('rec',blank)
-            intersectingCombs_stage2 = []
-            for (keyOld,keyNew) in intersectingCombs:
-                areaOld, areaNew = fbStoreAreas_old[keyOld], fbStoreAreas[keyNew]
-                relativeAreaChange = abs(areaOld-areaNew)/areaOld
-                centroidOld,centroidNew = fbStoreCentroids_old[keyOld], fbStoreCentroids[keyNew]
-                dist = np.linalg.norm(np.diff([centroidOld,centroidNew],axis=0),axis=1)[0]
-                # np.linalg.norm(np.diff[centroidOld,centroidNew])
-                if  relativeAreaChange < 0.15 and dist < 10:#
-                      intersectingCombs_stage2.append([keyOld,keyNew,relativeAreaChange,dist])
-            print(f'intersectingCombs_stage2,{intersectingCombs_stage2}')   
+           
+  
+                    
         # if globalCounter == 0:
         fbStoreAreas_old = fbStoreAreas
         fbStoreCentroids_old = fbStoreCentroids
         fbStoreRectParams_old = fbStoreRectParams
+        contours_old = contours4
         
-        if globalCounter >= 1:
+        if globalCounter >= 1231231:
             investigateBubIDs = []
             nSteps = 4 
             activeBubsIDs = list(dumpMasks.keys())      # get all current IDs
@@ -1429,7 +1598,7 @@ def mainer(index):
                         storeOverlappingIDs[-1].append(np.int32(linePts))
                 
                 if len(storeOverlappingIDs)>1:
-                    maxAreaPos = np.argmax(np.array([cv2.contourArea(a) for [_,a] in storeOverlappingIDs]))
+                    maxAreaPos = np.argmax(np.array([cv2.contourArea(A) for [_,A] in storeOverlappingIDs]))
                     storeOverlappingIDs = [storeOverlappingIDs[maxAreaPos]]
                 if len(storeOverlappingIDs)>0:
                     storeOverlappingIDs = storeOverlappingIDs[0][0]
@@ -1492,58 +1661,7 @@ def mainer(index):
         cv2.drawContours(  img,  hull, -1, (125,0,180), 1)
         cv2.imshow('asd',img)
        
-        
-    # CHILD-PATERNT CENTROID DISTANCE CHECK
-    # RELATIVE AREA CHECK
-    # NUMBER OF CHILDREN CHECK- WEAK
-    if 1 == 12:
-        minAreaRatio = 0.1
-        minDistParentChildCentroid = 75
-        for  c1, children in enumerate(parentChildNorms): # check distances
-            tempStrings = []
-            tempPID = whereParentAreaFiltered[c1]
-            for c2, child in enumerate(children):
-                areaParent  = cv2.contourArea(contours4[tempPID])
-                areaChild   = cv2.contourArea(contours4[whereChildrenAreaFiltered[tempPID][c2]])
-                areaRatio   = (areaChild)/areaParent
-                if minAreaRatio >= 0.1:
-                    tempStrings.append('relArea {}, {:01.2f}'.format(c2, areaRatio))
-                if child <= minDistParentChildCentroid :
-                    # aas = drawContoursGeneral(aas, contours4, whereChildrenAreaFiltered[tempPID][c2], (0,255,0), 1)
-                    # aas = drawContoursGeneral(aas, contours4, whereParentAreaFiltered[c1], (0,0,255), 2)
-                    # aas = cv2.circle(aas.copy(), tuple(childParentCentroids[c1][c2][0]), radius=3, color=(0, 0, 255), thickness=-1)
-                    # aas = cv2.circle(aas.copy(), tuple(childParentCentroids[c1][c2][1]), radius=3, color=(0, 255, 255), thickness=-1)
-                    linePts = np.array(childParentCentroids[c1][c2]).reshape((-1, 1, 2))
-                    aas = cv2.polylines(aas.copy(), [linePts],0, (255,255,0), 2)
-                    # print(linePts[0][0])
-                    tempStrings.append('dist {}, {:01.2f}'.format(c2,child))
-                    
-                # offset = np.array([0,15])
-                # for string in tempStrings:
-                #     aas = cv2.putText(aas.copy(), string, tuple(linePts[0][0]+offset), font, 0.5, (0,0,0),2, cv2.LINE_AA)
-                #     aas = cv2.putText(aas.copy(), string, tuple(linePts[0][0]+offset), font, 0.5, (255,255,125),1, cv2.LINE_AA)
-                #     offset+=[0,15]
-            # if len(childParentCentroids[c1])>=1:
-            #     # print(childParentCentroids[c1][0][0])
-            #     aas = cv2.circle(aas.copy(),tuple(childParentCentroids[c1][0][0]), int(np.sqrt(areaParent/np.pi)), (0,0,255), 1)
-            
-                
-        # [
-            # drawContoursGeneral(aas, contours4, whereChildrenAreaFiltered[c][0], (0,255,0), 1)
-            
-        # print( whereChildrenAreaFiltered[c][0])
-        
-        # ]
-
-    # aas = maskedBlend(convertGray2RGB(aas),(127,255,127),err,0.35);
-
-    # [                                                       # ------------------------small contour IDS
-    #      [
-    #          cv2.putText(aas, f'{ID}', tuple(np.array(c[0][0])), font, 0.5, clr,s, cv2.LINE_AA)
-    #          for s, clr in zip([3,1],[(255,255,255),(0,0,0)])
-    #       ]
-    #       for ID,c in cntrRemaining.items()
-    #   ]
+    
     if globalCounter == 212312312312:
         print('adsadsadsadas -----------------')
         keys = list(ringBubImages_old.keys())
@@ -1552,151 +1670,9 @@ def mainer(index):
                                                    shape1=ringBubImages_old[i],shape2=ringBubImages_old[j],
                                                    coords1=ringBubRectParams_old[i],coords2 = ringBubRectParams_old[j])
     
-    # DRAW RECT FROM THIS STEP
-    # [ cv2.rectangle(aas, (x,y), (x + w, y + h),(125,255,255),2) for [x,y,w,h] in ringBubRectParams_old.values()]
-    # cv2.imwrite("D:\\Alex\\Darbs.exe\\Python_general\\bubble_process\\imageMainFolder_output\\"+str(index).zfill(4)+".png" ,err)
-    # if globalCounter == 3222 :
-    #     gs1 = list(ringBubImages_old.values())
-    #     gs2 = list(subImages_oldTest2.values())
-    #     masks1 = list(ringBubMasks_old.values())
-    #     masks2 = list(subMasks_oldTest2.values())
-    #     recPars1 = list(ringBubRectParams_old.values())
-    #     recPars2 = list(rectParams_old2.values())
-    #     [cv2.imshow(f"masks1 {i}",a) for i,a in enumerate(masks1)]
-    #     [cv2.imshow(f"masks2 {i}",a) for i,a in enumerate(masks2)]
-    #     checkMoments(err,gs1,gs2,masks1,masks2,recPars1,recPars2)
-    # # cv2.imshow(f"aas {index}",aas)    
-    # centroidData.append(momentsListPonly)
-    # # Structuring Element
-    # kernel = cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3))
-    # # Create an empty output image to hold values
-    # thin = np.zeros(err.copy().shape,dtype='uint8')
-    # img1 = err.copy()
-    # while (cv2.countNonZero(img1)!=0):
-    #     # Erosion
-    #     erode = cv2.erode(img1,kernel)
-    #     # Opening on eroded image
-    #     opening = cv2.morphologyEx(erode,cv2.MORPH_OPEN,kernel)
-    #     # Subtract these two
-    #     subset = erode - opening
-    #     # Union of all previous sets
-    #     thin = cv2.bitwise_or(subset,thin)
-    #     # Set the eroded image for next iteration
-    #     img1 = erode.copy()
-    
-    # dst	=	cv2.ximgproc.thinning(err.copy()) # uhuhuhhuhuhuhUHUHUHUHUUHUH
-
-   
-    # assa = cv2.ximgproc.edgePreservingFilter(	convertGray2RGB(orig), 3, 11)
-    # cv2.imshow(f"assa {index}",assa)
-    
-    # cv2.imshow(f"dst {index}",dst)
-     
-    # cv2.imshow(f"orig {index}",convertGray2RGB(orig))
-    
-    # cv2.imshow(f"err {index}",err)
     
     if big != 1: cv2.imshow("aas",aas)
 
-    # we filtered main cntrs by size and calculated ratio of inside cntr area vs outside
-    # anything non-zero is a ring, higher- closer to thin halo. lower- how solid it is.
-    
-    
-    # cSel4 = [i for i in range(len(contours4)) if cv2.contourArea(contours[i]) > minArea]
-    # contours4 = [contours4[i] for i in cSel]
-    # gfx = 0
-    # ww = maskProcSegments(img = orig, mask = qq, lowThreshold = thresh1, graphics = gfx,exportGraphics = 1, drawBG = convertGray2RGB(orig), name = 1)
-    # cv2.imshow("ww",ww)
-    # ww = resizeToMaxHW(ww,700,400)
-    # cntrWW, _ = cv2.findContours(ww,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
-    # zz = cv2.drawContours( convertGray2RGB(orig),   cntrWW, -1, (0,255,255), 1)
-    # cv2.imwrite("D:\\Alex\\Darbs.exe\\Python_general\\bubble_process\\imageMainFolder_output\\experiment_sample1\\"+str(index).zfill(4)+".png" ,zz)
-    if 1==21:
-        
-        prevTimeRectangles  = np.array(shareData[globalCounter]["recCntOffset"])
-        prevTimeCentroids   = np.array(shareData[globalCounter]["centroids"])
-     
-        [cv2.polylines(aas, [cntr],1, (255,0,125), 1) for cntr in prevTimeRectangles]
-        # a= np.array(a)+[20,20]
-        preRectIDs = prevTimeRectangles.reshape(-1,4,2)[:,1]
-        [cv2.putText(aas, str(i), tuple(a+[0,15]), font, 0.5, (255,0,125), 1, cv2.LINE_AA) for i,a in enumerate(preRectIDs)]
-        [cv2.circle(aas, tuple(c), 3, (255, 244, 0), -1) for c in prevTimeCentroids]
-        
-        # rectangleContours, rectanglePos = boundingRect2Contour(parentsCNTRS,
-        #                                         xOffset=-10,yOffset=0,xAdd=10,yAdd=10)
-        if globalCounter > 0:
-            relations = list() # [[rect0_Ck,rect0_Cj],[rect1_Cm],...]
-            epsD = -10
-            for (ri,rectangle) in enumerate(prevTimeRectangles):
-                relations.append(list())
-                for (ci,centroid) in enumerate(momentsListPonly):
-                    distance = cv2.pointPolygonTest(rectangle, tuple(centroid), True)
-                    if distance >= epsD:
-                        relations[ri].append(ci)
-                        # print(f'rectangle: {ri}, C # {ci}, distance: {distance}' )
-            # print(relations)
-            # dist1 = cv2.pointPolygonTest(contours[0], (50, 70), True) #green 
-    
-            parentsCNTRS_rect = [np.vstack(np.array(contours4[whereParentAreaFiltered],dtype=object)[a]) for a in relations]
-        else:
-            relations = [[i] for i in range(len(momentsListPonly))]#;print(relations) #first iter
-            parentsCNTRS_rect = contours4[whereParentAreaFiltered]
-            
-        rectangleContoursWithOffset, rectanglePos = boundingRect2Contour(parentsCNTRS_rect,
-                                                xOffset=-10,yOffset=0,xAdd=10,yAdd=10)
-        
-        momentsListPonly = list()
-        blanks = [np.zeros((h,w), dtype=np.uint8) for (x,y,w,h) in rectanglePos]
-        for i,rel  in enumerate(relations):
-            blank = np.zeros(err.shape, dtype=np.uint8)
-            (x,y,w,h) = rectanglePos[i]
-            if len(rel) > 1: # contour selection probly does not work, generate it anew.
-                [cv2.drawContours(blank,
-                        contours4[whereParentAreaFiltered],k,255,-1,cv2.LINE_AA) for k in rel]#,offset=(-x,-y)
-            else:
-                cv2.drawContours(blank,
-                        contours4[whereParentAreaFiltered],rel[0],255,-1,cv2.LINE_AA)
-            cv2.drawContours(blank,
-                        contours4[whereChildrenAreaFiltered[ccntPintPi]],-1,0,-1,cv2.LINE_AA)
-            #moments mode 0- inp, 1-> mask by value, 2-> only mask
-            momentsListPonly.append(getCentroidPos(inp = orig, offset = (0,0), mode=1, mask=blank, value= 0))
-            blanks[i] = blank[y:y+h, x:x+w]
-        # print(momentsListPonly)
-        origs = [orig[y:y+h, x:x+w] for (x,y,w,h) in rectanglePos]
-        # [getCentroidPos(inp = img, offset = 0, mode=0, mask=[]) for img in blanks]  
-        # [[cv2.circle(aas, tuple(p2), 3, (0, 0, 255), -1) for [p1,p2] in a] for a in childParentCentroids]
-        # [cv2.circle(aas, tuple(a), 1, (0, 244, 0), -1) for a in momentsListPonly]
-        # for i,a in enumerate(momentsListPonly):
-        #     a= np.array(a)+[-15,0]
-        #     cv2.putText(aas, str(i), tuple(a), font, 0.8, (0, 244, 0), 2, cv2.LINE_AA)
-        
-        # cv2.imwrite("D:\\Alex\\Darbs.exe\\Python_general\\bubble_process\\imageMainFolder_output\\experiment_sample1\\"+str(index).zfill(4)+".png" ,aas)
-        
-
-        shareData.append({
-            "recCntOffset":rectangleContoursWithOffset,
-            "recBountdParams":rectanglePos,
-            "centroids":momentsListPonly,
-            "masks":blanks,
-            "grayscale":origs
-            })
-        
-    # for centroid in centroidDataRings:
-    #     aas = cv2.circle(aas, tuple(centroid), 2, (0,255,255), -1)
-            
-    # for centroid in centroidDataOther:
-    #     aas = cv2.circle(aas, tuple(centroid), 1, (0,0,255), -1)
-    
-    # for i,a in enumerate(centroidsByID):
-    #     zug = [v for i, v in enumerate(a) if i == 0 or v != a[i-1]]
-    #     zug2 = [list(y) for x, y in itertools.groupby(zug, lambda z: z == ()) if not x]
-
-    #     cv2.polylines(aas, [np.array(arr) for arr in zug2],0, cyclicColor(i), 2)
-
-    
-    # print(list(np.random.randint(low=50, high=255, size=(3,),dtype=np.uint8)))
-    # cv2.imwrite("D:\\Alex\\Darbs.exe\\Python_general\\bubble_process\\imageMainFolder_output\\ringDetect\\"+str(index).zfill(4)+".png" ,aas)
-            
     globalCounter += 1
 
 
@@ -1777,8 +1753,8 @@ for globalCounter in range(globalCounter):
         # text            = currentTypeStr + '('+','.join(list(map(str,currentCntrIds)))+')'
         temp.append(currentTypeStr + '(')
         cCIstr = list(map(str,currentCntrIds))
-        a = [x for y in zip(cCIstr, [","]*len(cCIstr)) for x in y][:-1] #dont ask me
-        temp += a
+        A = [x for y in zip(cCIstr, [","]*len(cCIstr)) for x in y][:-1] #dont ask me
+        temp += A
         # if len(cntrIDsByIDs[ID]) == 1:
         if globalCounter-1 not in cntrIDsByIDs[ID]:
             # text += " new"
@@ -1802,7 +1778,7 @@ for globalCounter in range(globalCounter):
         thc = thcSet[currentType]
         [cv2.drawContours(  blank,   contoursAll[globalCounter], cid, clr, thc) for cid in currentCntrIds]
         if len(cntrIDsByIDs[ID][globalCounter])> 1:
-            cnt = np.vstack([contoursAll[globalCounter][a] for a in cntrIDsByIDs[ID][globalCounter]])
+            cnt = np.vstack([contoursAll[globalCounter][A] for A in cntrIDsByIDs[ID][globalCounter]])
     
             points_2d = np.array(cnt).reshape(-1,2)
             # print(len(points_2d))
@@ -1831,7 +1807,7 @@ for globalCounter in range(globalCounter):
         ySize = max([sz[1] for sz,_ in strDims])
         xSize = [sz[0] for sz,_ in strDims]
         totSize = sum(xSize)
-        # distToIDs = [sum(xSize[:(2*a)] ) for a in range(numIDs)]#;print('distToIDs',distToIDs)
+        # distToIDs = [sum(xSize[:(2*A)] ) for A in range(numIDs)]#;print('distToIDs',distToIDs)
         ci = 0
         for i, string in enumerate(strings):
             origPos = np.array(centroidsByID2[ID][globalCounter])
@@ -1861,7 +1837,7 @@ for globalCounter in range(globalCounter):
     
     #--------------- trajectories ---------------------------------
     for i,times in centroidsByID2.items(): # key IDs and IDS-> times
-        useTimes = [t for t in times.keys() if t <= globalCounter]
+        useTimes = [t for t in times.keys() if t <= globalCounter and t>globalCounter - 12]
         pts = np.array([times[t] for t in useTimes]).reshape(-1, 1, 2)
         if pts.shape[0]>1:
             cv2.polylines(blank, [pts] ,0, cyclicColor(i), 1)
@@ -1869,7 +1845,7 @@ for globalCounter in range(globalCounter):
         [cv2.circle(blank, tuple(p), 3, cyclicColor(i), -1) for [p] in pts]
             
     cv2.putText(blank, str(globalCounter), (25,25), font, 0.9, (255,220,195),2, cv2.LINE_AA)
-    cv2.imwrite("D:\\Alex\\Darbs.exe\\Python_general\\bubble_process\\imageMainFolder_output\\ringDetect\\"+str(dataStart+globalCounter).zfill(4)+".png" ,blank)
+    cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\"+str(dataStart+globalCounter).zfill(4)+".png" ,blank)
     # cv2.imshow(f'{globalCounter}', resizeToMaxHW(blank))
     
     #==============================================================================================
@@ -1897,8 +1873,8 @@ if crossCheckBubbles == 1:
 
     matchTemplateBub(err,m1,graphics=1)
     
-# for a,(b,c) in enumerate(zip(range(1,3,1),range(4,6,1))):
-#     print(f'a {a}, b {b}, c {c}')
+# for A,(b,c) in enumerate(zip(range(1,3,1),range(4,6,1))):
+#     print(f'A {A}, b {b}, c {c}')
 
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key
@@ -1968,7 +1944,7 @@ if k == 27:  # close on ESC key
     
 #         if 1==21:
 #             def store_evolution_in(lst):
-#                 """Returns a callback function to store the evolution of the level sets in
+#                 """Returns A callback function to store the evolution of the level sets in
 #                 the given list.
 #                 """
             
@@ -2023,7 +1999,7 @@ if k == 27:  # close on ESC key
             
 #             # if big != 1: cv2.imshow("dasdsada",asz)                       
  
-#             with open('matchShape.pickle', 'wb') as handle:
+#             with open('matchShape.pickle', 'weightedB') as handle:
 #                         pickle.dump(parentsCNTRS[1], handle)
 #         if 1 == 1:
 #             # gug = aas.copy() * 0

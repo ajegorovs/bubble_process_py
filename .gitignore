@@ -1,0 +1,11 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/imageMainFolder_output/ringDetect
+/ideas
+/X_data.pickle
+/picklesImages
+/.vs/bubble_process_py/FileContentIndex
+/.vs
+/__pycache__

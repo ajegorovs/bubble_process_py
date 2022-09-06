@@ -112,9 +112,9 @@ def distStatPrediction(trajectory, startAmp0 = 20, expAmp = 20, halfLife = 1, nu
     else:
         numStepsFor = [len(trajectory) - 1]
     print(f'numStepsFor:{numStepsFor}')
-    numPlots = numStepsFor[-1]+1 +1
+    numPlots = len(numStepsFor)+1 if mode  ==  1 else 2
     fig, axes = plt.subplots(1,numPlots , figsize=( numPlots*5,5), sharex=True, sharey=True)
-    for numSteps in numStepsFor:
+    for numSteps,numSteps2 in enumerate(numStepsFor):
 
         interpKind = interpOrder[numSteps] if numSteps < len(interpOrder) else interpOrder[-1]
         print(f'interpKind: {interpKind}')
@@ -130,44 +130,38 @@ def distStatPrediction(trajectory, startAmp0 = 20, expAmp = 20, halfLife = 1, nu
         if numSteps >= 2: 
             distCheck += numsigmas* np.std(mags)
         
-        x = np.array([a[0] for a in trajectory[:numSteps+1]])
-        y = np.array([a[1] for a in trajectory[:numSteps+1]])
+        x = np.array([a[0] for a in trajectory[:numSteps2+1]]);print(f'x:{x}')
+        y = np.array([a[1] for a in trajectory[:numSteps2+1]])
         t = np.arange(0,len(x),1)
-        
-        if numSteps == 0:
-            interp_fill_value_x = 0
-            interp_fill_value_y = trajectory[-1][0]
-            plusTime = t[-1]
-        else:
-            interp_fill_value_x = "extrapolate"
-            interp_fill_value_y = "extrapolate"
-            plusTime  = t[-1]+1
-        
-        t1 = np.arange(0,plusTime+0.00001,1);print(t1)
-        fsx2 = interpolate.interp1d(t, x, kind = interpKind, fill_value=interp_fill_value_x)
-        fsy2 = interpolate.interp1d(t, y, kind = interpKind, fill_value=interp_fill_value_y)
-        fx2 = fsx2(t1)
-        fy2 = fsy2(t1)
-        predictPoints.append([fsx2(plusTime),fsy2(plusTime)])
-        if numSteps > 1:
+        t1 = np.arange(0,len(x)+1,1);print(f't1:{t1}')
+
+        zerothDisp = [0,-7]
+        if numSteps2 == 0:
+            predictPoints.append([trajectory[0][0]+zerothDisp[0],trajectory[0][1]+zerothDisp[1]])
+            axes[numSteps].plot(x, y, 'o')
+            axes[numSteps].plot(predictPoints[0][0], predictPoints[0][1], 'o')
+        if numSteps2 > 0:
             #t, c, k = interpolate.splrep(x, y, s=0, k=1)
-            spline, _ = interpolate.splprep([x, y], u=t, s=0,k=2)
+            spline, _ = interpolate.splprep([x, y], u=t, s=0,k=1)
             #spline = interpolate.BSpline(t, c, k, extrapolate=False)
             #x_i, y_i = interpolate.splev(t, spline)
             #axes[numSteps].plot(x_i, y_i, '-o')
             new_points = interpolate.splev(t1, spline,ext=0)
-            axes[numSteps].plot(new_points[0],new_points[1], '-o')
-        
+            axes[numSteps].plot(new_points[0][-2:],new_points[1][-2:], '--o')
+            if mode != 0:
+                axes[numSteps].plot([x[-2],predictPoints[-1][0]],[y[-2],predictPoints[-1][1]], '--o')
+                predictPoints.append([new_points[0][-1],new_points[1][-1]]);print(f'predictPoints:{predictPoints}')
         #axes[numSteps].plot(fx2, fy2, '-',linewidth=0.5)
         #axes[numSteps].plot(fx2[-2:], fy2[-2:], '-o',ms=5)
-        axes[numSteps].plot(x, y, 'o')
+        axes[numSteps].plot(x, y, '-o')
         #axes[numSteps].set_aspect('equal', 'box')
-    predictPoints = np.array(predictPoints).reshape(-1,2)
-    axes[numSteps+1].plot(predictPoints[:,0], predictPoints[:,1], '-.')
-    axes[numSteps+1].plot(x, y, 'o')
+    if mode != 0:
+        predictPoints = np.array(predictPoints).reshape(-1,2)
+        axes[numSteps+1].plot(predictPoints[:,0], predictPoints[:,1], '-o')
+        axes[numSteps+1].plot(x, y, 'o')
     plt.show()
     return distCheck
-distStatPrediction(list(traj0.values()), startAmp0 = 20, expAmp = 20, halfLife = 1, numsigmas = 2, plot=22, extraStr = '')
+distStatPrediction(list(traj0.values()), startAmp0 = 20, expAmp = 20, halfLife = 1, numsigmas = 2, plot=22, extraStr = '',mode = 1)
 #print([1,2][:0+1])
 #print(f'trajectory: {trajectory}')   
 #    if (plot == 1 and numSteps >=  cutoff+1 and showDistDecay == True) or plot == 2:

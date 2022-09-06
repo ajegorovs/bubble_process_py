@@ -27,7 +27,7 @@ def initImport(mode, workBigArray,recalcMean,readSingleFromArray,pickleNewDataLo
         readSingleFromArray = 1
         pickleNewDataLoad = 0
         pickleNewDataSave = 0
-        pickleSingleCaseSave = 1
+        pickleSingleCaseSave = 0
     if mode == 2: # read one from saved pickles
         workBigArray = 0
         recalcMean = 0

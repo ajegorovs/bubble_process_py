@@ -5,6 +5,7 @@ Created on Wed Apr 13 13:30:19 2022
 @author: User
 """
 #print("\014") #clear spyder console, if you use it
+from ast import For
 import cv2
 # from cv2.ximgproc import anisotropicDiffusion
 # from cv2.ximgproc import getDisparityVis
@@ -49,7 +50,8 @@ from imageFunctionsP2 import (initImport, init, bubbleTypeCheck,
                               maskByValue, getCentroidPos,getCentroidPosContours, compareMoments,
                               checkMoments,closes_point_contours, distStatPrediction,detectStuckBubs
                               ,getMasksParams,getCentroidPosCentroidsAndAreas,centroidSumPermutationsMOD,
-                              getContourHullArea, centroidAreaSumPermutations, listFormat)
+                              getContourHullArea, centroidAreaSumPermutations, listFormat,
+                              distStatPredictionVect)
 def resizeImage(img,frac):
     width = int(img.shape[1] * frac)
     height = int(img.shape[0] * frac)
@@ -564,7 +566,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart = 58#46
-dataNum = 6
+dataNum = 3
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -629,12 +631,14 @@ distanceBubMasks, distanceBubImages, distanceBubRectParams,  distanceBubCentroid
 distanceOldNewIDs = {}
 contoursAll, contours_old, frozenBubs, frozenBubsTimes, bubTypesLocal, bubTypesLocal_old, bubTypesLocal = {}, {}, {}, {}, {}, {} ,[]
 fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits = {}, {}, {}, {}, {}
+predictCentroidDiff = {}
 def mainer(index):
     global shareData, globalCounter, contoursAll, contours_old, frozenBubs, frozenBubsTimes, fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits, contours_old
     global ringBubMasks_old, ringBubImages_old, ringBubRectParams_old, ringBubCentroids_old, ringCntrIDs, ringOldNewIDs_old
     global distanceBubMasks_old, distanceBubImages_old, distanceBubRectParams_old,  distanceBubCentroids_old, distanceOldNewIDs_old
     global distanceBubMasks, distanceBubImages, distanceBubRectParams,  distanceBubCentroids, distanceOldNewIDs
     global centroidsByID2,recParamsByID,areasByID,masksByID,imagesByID,cntrIDsByIDs,bubTypesByID,bubTypesLocal,bubTypesLocal_old,cntrChildrenIDsByIDs
+    global predictCentroidDiff
     orig0 = X_data[index]
     if 1==12:
         # orig = cv2.circle(orig.copy() * 0, (300,500), 250, 255, -1)
@@ -752,22 +756,37 @@ def mainer(index):
 
         # -----  calculate centroid-centroid distance for old and new ring bubbles
         # -----  take only ones that satisfy criteria
+        timeZeroDistCritRing = 8
+        timeZeroDistCritElse = 30
+        for ID in list(ringBubCentroids_old.keys()):
+            if ID not in predictCentroidDiff: predictCentroidDiff[ID] = {globalCounter-1:timeZeroDistCritRing}
+        for ID in list(distanceBubCentroids_old.keys()):
+            if ID not in predictCentroidDiff: predictCentroidDiff[ID] = {globalCounter-1:timeZeroDistCritElse}
+        
         tempDistListTest = list()
         RBOldNewDist = np.empty((0,2), np.uint16)
+        RBOldNewDist2 = RBOldNewDist.copy()
         if globalCounter >= 1: # << uses centroids as it goes, any changes due to back-tracking are not accounted.
             for oldID, oldCentroid in ringBubCentroids_old.items(): 
                 cntrds = np.array(list(centroidsByID2[oldID].values()))
                 distCheck = distStatPrediction(trajectory = cntrds, startAmp0 = 30, expAmp = 10, halfLife = 2, numsigmas = 2, plot=0,extraStr = 'RB: ')
+                testPred = 1 if globalCounter == 4 and oldID == 0 else 0
+                predictCentroid = distStatPredictionVect(cntrds, zerothDisp = [-7,0], maxInterpSteps = 3, maxInterpOrder = 1, mode = 1,debug = testPred, maxNumPlots = 4)
+                #distCheck2 = predictCentroidDiff[oldID]
                 for newID, newCentroid in list(ringBubCentoids.items()):
                     dist = np.linalg.norm(np.array(oldCentroid) - np.array(newCentroid)).astype(np.uint32)
+                    dist2 = np.linalg.norm(np.array(predictCentroid) - np.array(newCentroid)).astype(np.uint32);print(f'oldID:{oldID}; newID:{newID}, dist2:{dist2}')
                     tempDistListTest.append(tuple([oldID,newID,dist,np.uint16(distCheck)]))
                     oldArea = sum([fbStoreAreas_old[subOldID] for subOldID in ringOldNewIDs_old[oldID]])
                     newArea = fbStoreAreas[newID] # i hope new RB has only 1 contour
                     relArea = abs(oldArea - newArea)/oldArea
                     if dist <= distCheck and relArea < 0.2:
                         RBOldNewDist = np.append(RBOldNewDist,[[oldID,newID]],axis=0)
+                    if dist2 <= predictCentroidDiff[oldID][globalCounter-1] and relArea < 0.2: #predictCentroidDiff may be missing if failed
+                        predictCentroidDiff[oldID][globalCounter] = dist2
+                        RBOldNewDist2 = np.append(RBOldNewDist2,[[oldID,newID]],axis=0)
                     #fbStoreAreas  fbStoreAreas_old ringOldNewIDs_old
-                
+            print(f'RBOldNewDist:{RBOldNewDist}, RBOldNewDist2:{RBOldNewDist2}')    
             print('**analyzing new Ring and old Ring/Recover bubbles**')
             newFoundBubsRings = list(ringBubCentoids.keys())
             oldFoundRings = list(ringBubCentroids_old.keys())
@@ -794,6 +813,7 @@ def mainer(index):
             jointMasks = {**ringBubMasks_old, **distanceBubMasks_old}  # possibly no need for dist bubs here!
             jointRectParams = {**ringBubRectParams_old, **distanceBubRectParams_old}
             jointImages = {**ringBubImages_old, **distanceBubImages_old}
+            jointCentroids = {**ringBubCentroids_old,**distanceBubCentroids_old}
             gfx = 1 if debugOnlyGFX(12) else 0
             for i in oldFoundRings.copy(): # take unresolved R,rR old global IDs (i)
                 print(f'{globalCounter}:Trying to recover old ring {i}')
@@ -823,6 +843,8 @@ def mainer(index):
                         # bubTypesLocal[i] = typeRecoveredRing
                         bubTypesByID[i][globalCounter] = typeRecoveredRing
                         # centroidsByID2[i][globalCounter] = tempC
+                        oldC = jointCentroids[i];print(f'**** oldC:{oldC}, tempC:{tempC}')
+                        predictCentroidDiff[i][globalCounter] = np.linalg.norm(np.diff([tempC,oldC],axis=0),axis=1)[0]
                         oldFoundRings.remove(i)
                         print(f'Recovered old ring {i}, oldFoundRings (remaining unresolved): {oldFoundRings}')  if debugOnly(12) else 0
                         
@@ -961,15 +983,24 @@ def mainer(index):
             if globalCounter >= 1: # unresolved new + distance bubs
                 elseOldNewDoubleCriterium = []
                 elseOldNewDoubleCriteriumSubIDs = {}
+                elseOldNewDoubleCriterium2 = []
+                elseOldNewDoubleCriteriumSubIDs2 = {}
                 elseOldNewDist = []
                 for oldID, oldCentroid in distanceBubCentroids_old.items():
                     cntrds = list(centroidsByID2[oldID].values())
                     distCheck = distStatPrediction(trajectory = cntrds,startAmp0 = 30, expAmp = 10, halfLife = 2, numsigmas = 2, plot=0,extraStr = f'E:ID {oldID} ')
+                    dist2Check = predictCentroidDiff[oldID][globalCounter-1]
+                    print(f'oldID: {oldID}, distCheck: {distCheck}, dist2Check: {dist2Check}')
+                        
+                    predictCentroid = distStatPredictionVect(cntrds, zerothDisp = [0,0], maxInterpSteps = 3, maxInterpOrder = 1, mode = 1,debug = 0, maxNumPlots = 4)
+                    print(f'old vs new predict. predictCentroid:{predictCentroid}, oldCentroid:{oldCentroid}')
                     areaCheck = getContourHullArea([contours_old[subOldID] for subOldID in distanceOldNewIDs_old[oldID]])
                     for mainNewID, subNewIDs in jointNeighbors.items():
                         newCentroid, newArea = getCentroidPosContours(bodyCntrs = [contours4[k] for k in subNewIDs], hullArea = 1)
                         relArea = abs(areaCheck - newArea)/areaCheck
                         dist = np.linalg.norm(np.array(newCentroid) - np.array(oldCentroid)).astype(np.uint32)
+                        dist2 = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid)).astype(np.uint32)
+                        print(f'old vs new dist. dist:{dist}, dist2:{dist2}')
                         if dist <= distCheck:
                             #print(tuple([oldID,mainNewID,dist,relArea]))
                             elseOldNewDist.append([oldID,mainNewID])
@@ -978,25 +1009,49 @@ def mainer(index):
                             print(f'Perfect match: {oldID} <-> mainNewID: {mainNewID}, dist: {dist:0.1f}, relArea: {relArea:0.1f}')
                             elseOldNewDoubleCriterium.append([oldID,mainNewID,dist,relArea])
                             elseOldNewDoubleCriteriumSubIDs[mainNewID] = subNewIDs
+                        
                         elif dist > 70 or relArea > 1:
                             0 #soft break. if pefect match failed, but this is true, dont do next.
                             #print(f'droping rD/rA oldID: {oldID} <-> mainNewID: {mainNewID}, dist: {dist:0.1f}, relArea: {relArea:0.1f}')
                         else:
-                            beb, dist, relArea = centroidAreaSumPermutations(contours4, subNewIDs, fbStoreCentroids, fbStoreAreas,
+                            permIDsol, permDist, permRelArea = centroidAreaSumPermutations(contours4, subNewIDs, fbStoreCentroids, fbStoreAreas,
                                                         oldCentroid, distCheck, areaCheck, relAreaCheck = 0.7, debug = 0)
-                            if len(beb)>0:
-                                print(f'Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, beb: {beb}')
-                                elseOldNewDoubleCriterium.append([oldID,min(beb),dist,relArea])
-                                elseOldNewDoubleCriteriumSubIDs[min(beb)] = beb
+                            if len(permIDsol)>0:
+                                print(f'Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, permIDsol: {permIDsol}')
+                                elseOldNewDoubleCriterium.append([oldID,min(permIDsol),permDist,permRelArea])
+                                elseOldNewDoubleCriteriumSubIDs[min(permIDsol)] = permIDsol
+                        
+                                
+                                
+                        if dist2 <= dist2Check and relArea <= 0.1:
+                            print(f'\ndist 2. Perfect match: {oldID} <-> mainNewID: {mainNewID}, dist2: {dist2:0.1f}, relArea: {relArea:0.1f}')
+                            predictCentroidDiff[oldID][globalCounter] = dist2; print(f'oldID:{oldID}; mainNewID:{mainNewID}, dist2:{dist2}')
+                            elseOldNewDoubleCriterium2.append([oldID,mainNewID,dist,relArea])
+                            elseOldNewDoubleCriteriumSubIDs2[mainNewID] = subNewIDs
+                        elif dist2 > 70 or relArea > 1:
+                            0
+                            #print('dist 2. soft break')
+                        else:
+                            debug = 1 if (globalCounter == 111 and oldID == 3) else 0
+                            permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(contours4, subNewIDs, fbStoreCentroids, fbStoreAreas,
+                                                        predictCentroid, dist2Check, areaCheck, relAreaCheck = 0.7, debug = debug)
+                            if len(permIDsol2)>0:
+                                print(f'\ndist 2. Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, permIDsol2: {permIDsol2}, permDist2: {permDist2}')
+                                predictCentroidDiff[oldID][globalCounter] = permDist2
+                                elseOldNewDoubleCriterium2.append([oldID,min(permIDsol2),dist,permRelArea2])
+                                elseOldNewDoubleCriteriumSubIDs2[min(permIDsol2)] = permIDsol2
+
                     for unresNewRBID in newFoundBubsRings:
                         newCentroid, newArea = getCentroidPosContours(bodyCntrs = [contours4[unresNewRBID]], hullArea = 1)
                         relArea = abs(areaCheck - newArea)/areaCheck
                         dist = np.linalg.norm(np.array(newCentroid) - np.array(oldCentroid)).astype(np.uint32)
                         if dist <= distCheck:
                             print(tuple([oldID,mainNewID,dist,relArea]))
-                            elseOldNewDist.append([oldID,mainNewID])
+                            elseOldNewDist.append([oldID,mainNewID]) # maybe ku-ku 'cause elseOldNewDist is redefined from elseOldNewDoubleCriterium
                 print(f'elseOldNewDoubleCriterium: {[listFormat(data, formatList = ["{:.0f}", "{:0.0f}", "{:.2f}","{:0.2f}"], outType = float) for data in elseOldNewDoubleCriterium]}')
                 print(f'elseOldNewDoubleCriteriumSubIDs: {elseOldNewDoubleCriteriumSubIDs}')
+                print(f'elseOldNewDoubleCriterium2: {[listFormat(data, formatList = ["{:.0f}", "{:0.0f}", "{:.2f}","{:0.2f}"], outType = float) for data in elseOldNewDoubleCriterium2]}')
+                print(f'elseOldNewDoubleCriteriumSubIDs2: {elseOldNewDoubleCriteriumSubIDs2}')
                 
                 # modify jointNeighbors by splitting clusters using elseOldNewDoubleCriteriumSubIDs
                 removeFoundSubIDsAll = sum(elseOldNewDoubleCriteriumSubIDs.values(),[])
@@ -1122,6 +1177,8 @@ def mainer(index):
                         # bubTypesLocal[i]            = typeRecoveredElse
                         bubTypesByID[i][globalCounter] = typeRecoveredElse
                         # centroidsByID2[i][globalCounter] = tempC
+                        oldC = jointCentroids[i];print(f'**** oldC:{oldC}, tempC:{tempC}')
+                        predictCentroidDiff[i][globalCounter] = np.linalg.norm(np.diff([tempC,oldC],axis=0),axis=1)[0]
                         
     
                         oldFoundElse.remove(i)

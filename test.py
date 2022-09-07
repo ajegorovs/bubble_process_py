@@ -101,67 +101,51 @@ from scipy.interpolate import BSpline
 #plt.show()
 
 showDistDecay = True    
-def distStatPrediction(trajectory, startAmp0 = 20, expAmp = 20, halfLife = 1, numsigmas = 2, plot=0, extraStr = '',mode = 1):
+def distStatPredictionVect(trajectory, zerothDisp, maxInterpSteps = 3, maxInterpOrder = 2, mode = 1,debug = 0, maxNumPlots = 4):
     global showDistDecay
-    print(f'trajectory:{trajectory}')
     predictPoints = []
-    distCheck = 0
-    interpOrder = ['zero', 'slinear']#['zero', 'slinear', 'quadratic', 'cubic']
+    numPointsInTraj = len(trajectory)
+    numStepsInTraj = numPointsInTraj - 1 
     if mode  ==  1:
-        numStepsFor = list(range(len(trajectory)))#;print(numSteps2)
+        numStepsFor = list(range(max(0,numPointsInTraj-maxNumPlots),len(trajectory)))
     else:
-        numStepsFor = [len(trajectory) - 1]
-    print(f'numStepsFor:{numStepsFor}')
-    numPlots = len(numStepsFor)+1 if mode  ==  1 else 2
-    fig, axes = plt.subplots(1,numPlots , figsize=( numPlots*5,5), sharex=True, sharey=True)
+        numStepsFor = [numStepsInTraj]
+    numPlots = len(numStepsFor) if mode  ==  1 else 2
+    if debug == 1:
+        fig, axes = plt.subplots(1,numPlots , figsize=( numPlots*5,5), sharex=True, sharey=True)
     for numSteps,numSteps2 in enumerate(numStepsFor):
+        numSteps = 1 if mode == 0  else numSteps
 
-        interpKind = interpOrder[numSteps] if numSteps < len(interpOrder) else interpOrder[-1]
-        print(f'interpKind: {interpKind}')
-        decay = 0;mags = []
-        lam = 0.693/halfLife  # decay coef based on half-life. ln(2)/t_1/2
-        cutoff = int(2.30/lam)      # at which step value reaches 1/10 of E(0)
-        if numSteps == 0: distCheck = startAmp0
-        if numSteps >= 1 and numSteps <= cutoff + 1: decay = expAmp*np.exp(-lam * (numSteps-1)) 
-        if numSteps > 0: distCheck = decay 
-        if numSteps >= 1:                  
-            mags = np.linalg.norm(np.diff(trajectory,axis=0),axis=1) # magnitude of centroid displacement
-            distCheck += np.mean(mags)
-        if numSteps >= 2: 
-            distCheck += numsigmas* np.std(mags)
-        
-        x = np.array([a[0] for a in trajectory[:numSteps2+1]]);print(f'x:{x}')
-        y = np.array([a[1] for a in trajectory[:numSteps2+1]])
+        start = 0 if numSteps2 < maxInterpSteps else numSteps2-maxInterpSteps
+        x = np.array([a[0] for a in trajectory[start:numSteps2+1]])
+        y = np.array([a[1] for a in trajectory[start:numSteps2+1]])
         t = np.arange(0,len(x),1)
-        t1 = np.arange(0,len(x)+1,1);print(f't1:{t1}')
-
-        zerothDisp = [0,-7]
+        t1 = np.arange(0,len(x)+1,1)
+        
         if numSteps2 == 0:
             predictPoints.append([trajectory[0][0]+zerothDisp[0],trajectory[0][1]+zerothDisp[1]])
-            axes[numSteps].plot(x, y, 'o')
-            axes[numSteps].plot(predictPoints[0][0], predictPoints[0][1], 'o')
+            if debug == 1:
+                axes[numSteps].plot(x, y, 'o',c='green', label = 'traj')
+                axes[numSteps].plot([x[0],predictPoints[0][0]], [y[0],predictPoints[0][1]], '--o', label = 'forecast')
         if numSteps2 > 0:
-            #t, c, k = interpolate.splrep(x, y, s=0, k=1)
-            spline, _ = interpolate.splprep([x, y], u=t, s=0,k=1)
-            #spline = interpolate.BSpline(t, c, k, extrapolate=False)
-            #x_i, y_i = interpolate.splev(t, spline)
-            #axes[numSteps].plot(x_i, y_i, '-o')
+            k = min(numSteps2,maxInterpOrder); print(f' interpOrder = {k}') if debug == 1 else 0
+            spline, _ = interpolate.splprep([x, y], u=t, s=0,k=k)
             new_points = interpolate.splev(t1, spline,ext=0)
-            axes[numSteps].plot(new_points[0][-2:],new_points[1][-2:], '--o')
+            if debug == 1:
+                axes[numSteps].plot(new_points[0][-2:],new_points[1][-2:], '--o', label = 'forecast')
             if mode != 0:
-                axes[numSteps].plot([x[-2],predictPoints[-1][0]],[y[-2],predictPoints[-1][1]], '--o')
-                predictPoints.append([new_points[0][-1],new_points[1][-1]]);print(f'predictPoints:{predictPoints}')
-        #axes[numSteps].plot(fx2, fy2, '-',linewidth=0.5)
-        #axes[numSteps].plot(fx2[-2:], fy2[-2:], '-o',ms=5)
-        axes[numSteps].plot(x, y, '-o')
-        #axes[numSteps].set_aspect('equal', 'box')
-    if mode != 0:
-        predictPoints = np.array(predictPoints).reshape(-1,2)
-        axes[numSteps+1].plot(predictPoints[:,0], predictPoints[:,1], '-o')
-        axes[numSteps+1].plot(x, y, 'o')
-    plt.show()
-    return distCheck
-distStatPrediction(list(traj0.values()), startAmp0 = 20, expAmp = 20, halfLife = 1, numsigmas = 2, plot=22, extraStr = '',mode = 1)
+                if numSteps > 0 and debug == 1:
+                    axes[numSteps].plot([x[-2],predictPoints[-1][0]],[y[-2],predictPoints[-1][1]], '--o', label = 'prev forecast')
+                predictPoints.append([new_points[0][-1],new_points[1][-1]])
+                
+            else: predictPoints.append([new_points[0][-1],new_points[1][-1]])
+        if debug == 1: axes[numSteps].plot(x, y, '-o',c='green', label = 'traj')
+
+    if debug == 1:
+        plt.legend(loc=(1.1, 0.5))
+        plt.show()
+    return np.array(predictPoints[-1],np.uint32)
+print(distStatPredictionVect(list(traj0.values())[:], zerothDisp = [0,-7], maxInterpOrder = 1, mode = 1, debug = 1))
 #print([1,2][:0+1])
 #print(f'trajectory: {trajectory}')   
 #    if (plot == 1 and numSteps >=  cutoff+1 and showDistDecay == True) or plot == 2:

@@ -5,6 +5,7 @@ Created on Tue May 24 17:17:57 2022
 @author: User
 """
 import glob, pickle, numpy as np, cv2, os, itertools
+from scipy import interpolate
 from matplotlib import pyplot as plt
 
 def init(folder,imageNumber): # initialize some globals, so i dont have to pass them
@@ -280,16 +281,18 @@ def centroidAreaSumPermutations(bodyCntrs, IDsOfInterest, centroidDict, areaDict
     passBothIndices = np.intersect1d(distPassIndices, relAreasPassIndices)
     if len(passBothIndices)>0:
         if len(passBothIndices) == 1:
+            print(f'only 1 comb after stage 1: {list(permutations[passBothIndices[0]])}') if debug == 1 else 0 
             return list(permutations[passBothIndices[0]]), relAreas[passBothIndices[0]], distances[passBothIndices[0]]
         distArgSort = np.argsort(distances[passBothIndices])
         relAreasArgSort = np.argsort(relAreas[passBothIndices])
         remainingPermutations = np.array(permutations, dtype=object)[passBothIndices]
+        print(f'remainingPermutations: {remainingPermutations}') if debug == 1 else 0 
         remainingDistances = np.array(distances)[passBothIndices]
         remainingRelAreas = np.array(relAreas)[passBothIndices]
-        A = distArgSort;print(f'A: {A}') if debug == 1 else 0
+        A = distArgSort;print(f'A: (centroid diff  min pos) {A}') if debug == 1 else 0
         print(f'A (deltas): {np.array(A)-min(A)}') if debug == 1 else 0
         B = relAreasArgSort
-        print(f'B: {B}') if debug == 1 else 0 
+        print(f'B: (area ratio  min pos) {B}') if debug == 1 else 0 
         print(f'B (deltas): {np.array(B)-min(B)}') if debug == 1 else 0
         deltaA = max(A) - min(A)
         deltaB = max(B) - min(B)
@@ -521,6 +524,52 @@ def distStatPrediction(trajectory, startAmp0 = 20, expAmp = 20, halfLife = 1, nu
         axes.set_ylabel('displacement magnitude, px')
         showDistDecay = False
     return distCheck
+
+showDistDecay = True    
+def distStatPredictionVect(trajectory, zerothDisp, maxInterpSteps = 3, maxInterpOrder = 2, mode = 1,debug = 0, maxNumPlots = 4):
+    global showDistDecay
+    predictPoints = []
+    numPointsInTraj = len(trajectory)
+    numStepsInTraj = numPointsInTraj - 1 
+    if mode  ==  1:
+        numStepsFor = list(range(max(0,numPointsInTraj-maxNumPlots),len(trajectory)))
+    else:
+        numStepsFor = [numStepsInTraj]
+    numPlots = len(numStepsFor) if mode  ==  1 else 2
+    if debug == 1:
+        fig, axes = plt.subplots(1,numPlots , figsize=( numPlots*5,5), sharex=True, sharey=True)
+    for numSteps,numSteps2 in enumerate(numStepsFor):
+        numSteps = 1 if mode == 0  else numSteps
+
+        start = 0 if numSteps2 < maxInterpSteps else numSteps2-maxInterpSteps
+        x = np.array([a[0] for a in trajectory[start:numSteps2+1]])
+        y = np.array([a[1] for a in trajectory[start:numSteps2+1]])
+        t = np.arange(0,len(x),1)
+        t1 = np.arange(0,len(x)+1,1)
+        
+        if numSteps2 == 0:
+            predictPoints.append([trajectory[0][0]+zerothDisp[0],trajectory[0][1]+zerothDisp[1]])
+            if debug == 1:
+                axes[numSteps].plot(x, y, 'o',c='green', label = 'traj')
+                axes[numSteps].plot([x[0],predictPoints[0][0]], [y[0],predictPoints[0][1]], '--o', label = 'forecast')
+        if numSteps2 > 0:
+            k = min(numSteps2,maxInterpOrder); print(f' interpOrder = {k}') if debug == 1 else 0
+            spline, _ = interpolate.splprep([x, y], u=t, s=0,k=k)
+            new_points = interpolate.splev(t1, spline,ext=0)
+            if debug == 1:
+                axes[numSteps].plot(new_points[0][-2:],new_points[1][-2:], '--o', label = 'forecast')
+            if mode != 0:
+                if numSteps > 0 and debug == 1:
+                    axes[numSteps].plot([x[-2],predictPoints[-1][0]],[y[-2],predictPoints[-1][1]], '--o', label = 'prev forecast')
+                predictPoints.append([new_points[0][-1],new_points[1][-1]])
+                
+            else: predictPoints.append([new_points[0][-1],new_points[1][-1]])
+        if debug == 1: axes[numSteps].plot(x, y, '-o',c='green', label = 'traj')
+
+    if debug == 1:
+        plt.legend(loc=(1.1, 0.5))
+        plt.show()
+    return np.array(predictPoints[-1],np.uint32)
 
 def detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbStoreAreas,fbStoreCentroids_old,fbStoreCentroids,fbStoreCulprits,globalCounter):
     allCombs = list(itertools.product(fbStoreRectParams_old, fbStoreRectParams))#;print(f'allCombs,{allCombs}')

@@ -2,6 +2,7 @@
 # https://math.stackexchange.com/questions/3245481/rotate-and-scale-A-point-around-different-origins
 # i wanted to scale up A contour w/o having to use images and morphological dilate. 
 
+import sqlite3
 import numpy as np
 import numpy
 import cv2
@@ -145,7 +146,7 @@ def distStatPredictionVect(trajectory, zerothDisp, maxInterpSteps = 3, maxInterp
         plt.legend(loc=(1.1, 0.5))
         plt.show()
     return np.array(predictPoints[-1],np.uint32)
-print(distStatPredictionVect(list(traj0.values())[:], zerothDisp = [0,-7], maxInterpOrder = 1, mode = 1, debug = 1))
+#print(distStatPredictionVect(list(traj0.values())[:], zerothDisp = [0,-7], maxInterpOrder = 1, mode = 1, debug = 1))
 #print([1,2][:0+1])
 #print(f'trajectory: {trajectory}')   
 #    if (plot == 1 and numSteps >=  cutoff+1 and showDistDecay == True) or plot == 2:
@@ -194,3 +195,50 @@ print(distStatPredictionVect(list(traj0.values())[:], zerothDisp = [0,-7], maxIn
 #        axes[1].plot( x, y, '-.', x, y, 'o',label = 'orig')
 #        showDistDecay = False
 #        plt.show()
+
+def updateSTDEV(meanOld, stdevOld, setLengthOld, meanNew, elementNew):
+    stdevSqr = 1/setLengthOld * ((setLengthOld-1) * (stdevOld)**2 + (elementNew - meanNew)*(elementNew - meanOld))
+    return np.sqrt(stdevSqr)
+
+# For a new value newValue, compute the new count, new mean, the new M2.
+# mean accumulates the mean of the entire dataset
+# M2 aggregates the squared distance from the mean
+# count aggregates the number of samples seen so far
+def updateStat(count, mean, std, newValue):
+    M2 = count * std**2
+    count += 1
+    delta = newValue - mean
+    mean += delta / count
+    delta2 = newValue - mean
+    M2 += delta * delta2
+    if count < 2:
+        return float("nan")
+    else:
+        (mean, variance) = (mean, M2 / count)
+        return (mean, np.sqrt(variance))
+
+
+# Retrieve the mean, variance and sample variance from an aggregate
+#def finalize(existingAggregate):
+#    (count, mean, M2) = existingAggregate
+#    if count < 2:
+#        return float("nan")
+#    else:
+#        (mean, variance, sampleVariance) = (mean, M2 / count, M2 / (count - 1))
+#        return (mean, variance, sampleVariance)
+#set0 = [1]
+#mean0 = np.mean(set0)
+#std0 = np.std(set0)
+#print(f'mean0: {mean0}, std0: {std0}')
+#set1 = set0 + [6]
+#mean1 = np.mean(set1)
+#std1 = np.std(set1)
+#print(f'mean1: {mean1}, var: {std1}')
+#aggregate = updateStat(len(set0),mean0, std0, 6)
+
+#aa = updateSTDEV(mean0,std0, len(set0), mean1, 6)
+#print(aggregate)
+#lst = [[1,2]]*3;print(lst)
+import os
+predictVectorPathFolder = r'./debugImages/predictVect'
+if not os.path.exists(predictVectorPathFolder): os.makedirs(predictVectorPathFolder)

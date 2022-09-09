@@ -8,7 +8,7 @@ import glob, pickle, numpy as np, cv2, os, itertools
 from scipy import interpolate
 from matplotlib import pyplot as plt
 
-def init(folder,imageNumber): # initialize some globals, so i dont have to pass them
+def init(folder,imageNumber): # initialize some globals, so i dont have to pass them. EDIT: IDK wth does it do, looks like nothing
     global imageMainFolder,imgNum
     imageMainFolder = folder
     imgNum = imageNumber
@@ -525,12 +525,14 @@ def distStatPrediction(trajectory, startAmp0 = 20, expAmp = 20, halfLife = 1, nu
         showDistDecay = False
     return distCheck
 
-showDistDecay = True    
-def distStatPredictionVect(trajectory, zerothDisp, maxInterpSteps = 3, maxInterpOrder = 2, mode = 1,debug = 0, maxNumPlots = 4):
+showDistDecay = True   
+from matplotlib.patches import Circle
+def distStatPredictionVect(trajectory, zerothDisp, sigmasDeltas = [], numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, mode = 1,debug = 0, maxNumPlots = 4):
     global showDistDecay
     predictPoints = []
     numPointsInTraj = len(trajectory)
     numStepsInTraj = numPointsInTraj - 1 
+    #sigmasDeltas = [[10,3]]*numPointsInTraj
     if mode  ==  1:
         numStepsFor = list(range(max(0,numPointsInTraj-maxNumPlots),len(trajectory)))
     else:
@@ -552,6 +554,7 @@ def distStatPredictionVect(trajectory, zerothDisp, maxInterpSteps = 3, maxInterp
             if debug == 1:
                 axes[numSteps].plot(x, y, 'o',c='green', label = 'traj')
                 axes[numSteps].plot([x[0],predictPoints[0][0]], [y[0],predictPoints[0][1]], '--o', label = 'forecast')
+                
         if numSteps2 > 0:
             k = min(numSteps2,maxInterpOrder); print(f' interpOrder = {k}') if debug == 1 else 0
             spline, _ = interpolate.splprep([x, y], u=t, s=0,k=k)
@@ -561,6 +564,12 @@ def distStatPredictionVect(trajectory, zerothDisp, maxInterpSteps = 3, maxInterp
             if mode != 0:
                 if numSteps > 0 and debug == 1:
                     axes[numSteps].plot([x[-2],predictPoints[-1][0]],[y[-2],predictPoints[-1][1]], '--o', label = 'prev forecast')
+                    if len(sigmasDeltas)>0:
+                        circleMean = Circle(tuple(predictPoints[-1]), sigmasDeltas[numSteps][0] , alpha=0.1) 
+                        circleNStd = Circle(tuple(predictPoints[-1]), sigmasDeltas[numSteps][1]*numdeltas , alpha=0.1,fill=False) 
+                        axes[numSteps].add_patch(circleMean)
+                        axes[numSteps].add_patch(circleNStd)
+                        axes[numSteps].text(*predictPoints[-1], s = f'm: {sigmasDeltas[numSteps][0]:0.2f}, s:{sigmasDeltas[numSteps][1]:0.1f}')
                 predictPoints.append([new_points[0][-1],new_points[1][-1]])
                 
             else: predictPoints.append([new_points[0][-1],new_points[1][-1]])
@@ -570,6 +579,46 @@ def distStatPredictionVect(trajectory, zerothDisp, maxInterpSteps = 3, maxInterp
         plt.legend(loc=(1.1, 0.5))
         plt.show()
     return np.array(predictPoints[-1],np.uint32)
+
+def distStatPredictionVect2(trajectory, sigmasDeltas = [], numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug = 0, savePath = r'./', predictvec_old = [], bubID = 1, timestep = 0, zerothDisp = [0,0]):
+    global showDistDecay
+    returnVec = []
+    numPointsInTraj = len(trajectory)
+    numStepsInTraj = numPointsInTraj - 1 
+    start = 0 if numStepsInTraj < maxInterpSteps else numStepsInTraj-maxInterpSteps
+    x = np.array([a[0] for a in trajectory[start:]])
+    y = np.array([a[1] for a in trajectory[start:]])
+    t = np.arange(0,len(x),1)
+    t1 = np.arange(0,len(x)+1,1)
+    if debug == 1:
+        fig, axes = plt.subplots(1,2 , figsize=( 10,5), sharex=False, sharey=False)
+        axes[0].plot(x, y, '-o',c='green', label = 'traj')
+            
+    if numStepsInTraj == 0:
+        returnVec = np.array([x[0]+zerothDisp[0],y[0]+zerothDisp[1]])
+        if debug == 1:
+            axes[0].plot([x[0],x[0]+zerothDisp[0]], [y[0],y[0]+zerothDisp[1]], '--o', label = 'forecast')
+                
+    if numStepsInTraj > 0:
+        k = min(numStepsInTraj,maxInterpOrder); print(f' interpOrder = {k}') if debug == 1 else 0
+        spline, _ = interpolate.splprep([x, y], u=t, s=0,k=k)
+        new_points = interpolate.splev(t1, spline,ext=0)
+        if debug == 1:
+            axes[0].plot(new_points[0][-2:],new_points[1][-2:], '--o', label = 'forecast')
+            axes[0].plot([x[-2],predictvec_old[0]],[y[-2],predictvec_old[1]], '--o', label = 'prev forecast')
+            if len(sigmasDeltas)>0:
+                circleMean = Circle(tuple(predictvec_old), sigmasDeltas[0] , alpha=0.1) 
+                circleNStd = Circle(tuple(predictvec_old), sigmasDeltas[1]*numdeltas , alpha=0.1,fill=False) 
+                axes[0].add_patch(circleMean)
+                axes[0].add_patch(circleNStd)
+                axes[0].text(*predictvec_old, s = f'm: {sigmasDeltas[0]:0.2f}, s:{sigmasDeltas[1]:0.1f}')
+        returnVec = np.array([new_points[0][-1],new_points[1][-1]])
+
+    if debug == 1:
+        plt.legend(loc=(1.1, 0.5))
+        filename = os.path.join(savePath, f"ID_{str(bubID).zfill(3)}_t_{str(timestep).zfill(3)}.png")
+        plt.savefig(filename)
+    return returnVec
 
 def detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbStoreAreas,fbStoreCentroids_old,fbStoreCentroids,fbStoreCulprits,globalCounter):
     allCombs = list(itertools.product(fbStoreRectParams_old, fbStoreRectParams))#;print(f'allCombs,{allCombs}')
@@ -647,3 +696,16 @@ def listFormat(dataList, formatList, outType):
     # if outType = float, then map ints to ints, not float. intFloat = int->int/float->float else float->str
     intFloat = lambda x: int(x) if x.isdigit() else outType(x) if outType != str else lambda x: x
     return [intFloat(frmt.format(nbr)) for nbr,frmt in zip(dataList, formatList)]
+
+def updateStat(count, mean, std, newValue):
+    M2 = count * std**2
+    count += 1
+    delta = newValue - mean
+    mean += delta / count
+    delta2 = newValue - mean
+    M2 += delta * delta2
+    if count < 2:
+        return float("nan")
+    else:
+        (mean, variance) = (mean, M2 / count)
+        return (mean, np.sqrt(variance))

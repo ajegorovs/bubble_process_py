@@ -565,8 +565,8 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart = 58#46
-dataNum = 4
+dataStart = 57#46
+dataNum = 2
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -705,21 +705,45 @@ def mainer(index):
         fbStoreAreas = {key: cv2.contourArea(contours4[key]) for key in contoursFilter_RectParams if key not in contoursFilter_RectParams_dropIDs } # dropped since never used
         contoursFilter_RectParams_dropIDs = contoursFilter_RectParams_dropIDs + [key for key, area in fbStoreAreas.items() if area < minArea]
         
+
+        jointMasks = {**ringBubMasks_old, **distanceBubMasks_old}  # possibly no need for dist bubs here!
+        jointRectParams = {**ringBubRectParams_old, **distanceBubRectParams_old}
+        jointImages = {**ringBubImages_old, **distanceBubImages_old}
+        jointCentroids = {**ringBubCentroids_old,**distanceBubCentroids_old}
+        jointSubIDs = {**ringOldNewIDs_old,**distanceOldNewIDs_old}
+           
+
         fbStoreAreas = {key: area for key, area in fbStoreAreas.items() if area > minArea}
         fbStoreRectParams = {key: val for key, val in contoursFilter_RectParams.items() if key in fbStoreAreas}
         fbStoreCentroids = {key: getCentroidPosContours(bodyCntrs = [contours4[key]])[0] for key in fbStoreRectParams}
         frozenIDs = []
         if globalCounter >= 1:
-            frozenIDs,frozenIDsInfo = detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbStoreAreas,fbStoreCentroids_old,fbStoreCentroids,fbStoreCulprits,globalCounter)
+            print(f'{globalCounter}:-------- Begin search for frozen bubbles ---------')
+        
+            joinAreas = {oldID: sum([fbStoreAreas_old[subID] for subID in subIDs]) for oldID, subIDs in jointSubIDs.items()}# no children- bigger area for rings, no hull- fails if type changes
+            stuckRectParams = {**fbStoreRectParams_old,**{str(key):val for key,val in jointRectParams.items()}}
+            stuckAreas = {**fbStoreAreas_old,**{str(key):val for key,val in joinAreas.items()}}
+            stuckCentroids = {**fbStoreCentroids_old,**{str(key):val for key,val in jointCentroids.items()}}
+            #joinAreas2 = {oldID: np.sum(mask)/255 for oldID, mask in jointMasks.items()}
+            # I want to join old singles and clusters , check them vs new singles. see if there are multiple singles/+cluster point at new single, select most viable, compare to global fb storage and add to old or new
+            fields = [stuckRectParams,fbStoreRectParams,stuckAreas,fbStoreAreas,stuckCentroids,fbStoreCentroids,fbStoreCulprits]
+            frozenIDs,frozenIDsInfo = detectStuckBubs(*fields,globalCounter,relArea = 0.2, relDist = 3)
+            #_,_ = detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbStoreAreas,fbStoreCentroids_old,fbStoreCentroids,fbStoreCulprits,globalCounter)
+            #frozenIDs,frozenIDsInfo = detectStuckBubs(jointRectParams,fbStoreRectParams,joinAreas,fbStoreAreas,jointCentroids,fbStoreCentroids,fbStoreCulprits,globalCounter)
+            # IDs are held in fbStoreCulprits (appended each time)
+            print(f'fbStoreCulprits:{fbStoreCulprits}')
             frozenIDs = []
+            #frozenIDsInfo = frozenIDsInfo + frozenIDsInfo2
             if  1 == 1:
                 strRavel = ["ID: ", ", rArea: ",", minDist: ",", hist: "]
                 formats = ["{:0.0f}", "{:.2f}", "{:.2f}","{:0.0f}"]
                 frozenIDsInfo = [[frmt.format(nbr) for nbr,frmt in zip(elem, formats)] for elem in frozenIDsInfo] if len(frozenIDsInfo)> 0 else []
                 peps = ["".join(np.ravel([strRavel,k], order='F')) for k in frozenIDsInfo] if len(frozenIDsInfo)> 0 else []
                 peps = "\n".join(peps) if len(frozenIDsInfo)> 0 else []
-                print(f'frozenIDsInfo:\n{peps}')
-
+                print(f'Detected Frozen bubbles:\n{peps}')
+            print(f'{globalCounter}:------------- Frozen bubbles detected ------------\n') if len(frozenIDsInfo) > 0 else print(f'{globalCounter}:------------- No frozen bubbles found ------------\n')
+        
+        
          # 1.1 ------------- GRAB RING BUBBLES RB ----------------------
         #for (cntPi,cntP) in enumerate(contours4[whereParentAreaFiltered]): #subset contours
         for (newID,cntP) in zip(whereParentAreaFiltered,contours4[whereParentAreaFiltered]):
@@ -758,14 +782,18 @@ def mainer(index):
 
         # -----  calculate centroid-centroid distance for old and new ring bubbles
         # -----  take only ones that satisfy criteria
+        
+        # intiate predictCentroidDiff values as initial guess
         timeZeroDistCritRing = 8
         timeZeroDistCritElse = 30
+        timeZeroStd = 3 
         for ID in list(ringBubCentroids_old.keys()):
-            if ID not in predictCentroidDiff: predictCentroidDiff[ID] = {globalCounter-1:[[0,0],timeZeroDistCritRing,timeZeroDistCritRing,0]} # [vec, val, mean, std]
+            if ID not in predictCentroidDiff: predictCentroidDiff[ID] = {globalCounter-1:[[0,0],timeZeroDistCritRing,timeZeroDistCritRing,timeZeroStd]} # [vec, val, mean, std]
         for ID in list(distanceBubCentroids_old.keys()):
             if ID not in predictCentroidDiff: predictCentroidDiff[ID] = {globalCounter-1:[[0,0],timeZeroDistCritElse,timeZeroDistCritElse,0]}
         
         tempDistListTest = list()
+        # -----------------recover old-new ring bubble relations--------------------------
         RBOldNewDist = np.empty((0,2), np.uint16)
         RBOldNewDist2 = RBOldNewDist.copy()
         if globalCounter >= 1: # << uses centroids as it goes, any changes due to back-tracking are not accounted.
@@ -780,19 +808,20 @@ def mainer(index):
                 pathLen = len(predictCentroidDiff[oldID])
                 for newID, newCentroid in list(ringBubCentoids.items()):
                     dist = np.linalg.norm(np.array(oldCentroid) - np.array(newCentroid)).astype(np.uint32)
-                    dist2 = np.linalg.norm(np.array(predictCentroid) - np.array(newCentroid)).astype(np.uint32);print(f'oldID:{oldID}; newID:{newID}, dist2:{dist2}')
+                    dist2 = np.linalg.norm(np.array(predictCentroid) - np.array(newCentroid)).astype(np.uint32)
                     tempDistListTest.append(tuple([oldID,newID,dist,np.uint16(distCheck)]))
                     oldArea = sum([fbStoreAreas_old[subOldID] for subOldID in ringOldNewIDs_old[oldID]])
                     newArea = fbStoreAreas[newID] # i hope new RB has only 1 contour
                     relArea = abs(oldArea - newArea)/oldArea
+                    print(f'oldID:{oldID}; newID:{newID}, dist2:{dist2:0.1f}, relArea:{relArea:0.2f}')
                     #if dist <= distCheck and relArea < 0.2:
                     #    RBOldNewDist = np.append(RBOldNewDist,[[oldID,newID]],axis=0)
                     if dist2 <= distCheck2 + 5*distCheck2Sigma and relArea < 0.2: #predictCentroidDiff may be missing if failed, probly resolved because ID gon be dropped and wont appear in next cycle
                         newMean, newStd = updateStat(pathLen, distCheck2, distCheck2Sigma, dist2)
                         predictCentroidDiff[oldID][globalCounter] = [predictCentroid, dist2, newMean, newStd]
-                        RBOldNewDist = np.append(RBOldNewDist2,[[oldID,newID]],axis=0)
+                        RBOldNewDist = np.append(RBOldNewDist,[[oldID,newID]],axis=0)
                     #fbStoreAreas  fbStoreAreas_old ringOldNewIDs_old
-            print(f'RBOldNewDist:{RBOldNewDist}, RBOldNewDist2:{RBOldNewDist2}')    
+            print(f'RBOldNewDist:{list(map(list,RBOldNewDist))}')    
             print('**analyzing new Ring and old Ring/Recover bubbles**')
             newFoundBubsRings = list(ringBubCentoids.keys())
             oldFoundRings = list(ringBubCentroids_old.keys())
@@ -812,14 +841,10 @@ def mainer(index):
             
             # 1.2 ------------- RECOVER old unresolved RB and recovred RB USING matchTemplate() -----------------------
             
-            if len(oldFoundRings)>0:    print(f'{globalCounter}:--------- Begin recovery of Ring bubbles ---------')
-            else:                       print(f'{globalCounter}:-------------- No RBubs to recover ---------------')
+            if len(oldFoundRings)>0:    print(f'{globalCounter}:--------- Begin recovery of Ring bubbles ---------\n')
+            else:                       print(f'{globalCounter}:-------------- No RBubs to recover ---------------\n')
 
             recoveredBubsRelation = {}
-            jointMasks = {**ringBubMasks_old, **distanceBubMasks_old}  # possibly no need for dist bubs here!
-            jointRectParams = {**ringBubRectParams_old, **distanceBubRectParams_old}
-            jointImages = {**ringBubImages_old, **distanceBubImages_old}
-            jointCentroids = {**ringBubCentroids_old,**distanceBubCentroids_old}
             gfx = 1 if debugOnlyGFX(12) else 0
             for i in oldFoundRings.copy(): # take unresolved R,rR old global IDs (i)
                 print(f'{globalCounter}:Trying to recover old ring {i}')
@@ -950,7 +975,7 @@ def mainer(index):
 
             # forzen bubs (FB) can be falsely joint for being too close. or it can be false positive FB
             
-            
+            #------------------------------------------------------------------------------- deal with  frozen bubbles!! ----------------------------------------------
             frozenSeparated = False
             for i,comb in enumerate(cc_unique.copy()):
                 for fID in frozenIDs:
@@ -1018,7 +1043,9 @@ def mainer(index):
                     print(f'oldID: {oldID}, distCheck: {distCheck}, distCheck2: {distCheck2}, distCheck2Sigma: {distCheck2Sigma}')
                     pathLen = len(predictCentroidDiff[oldID])
                     predVec_old = predictCentroidDiff[oldID][globalCounter-1][0]
-                    distStatPredictionVect2(cntrds, sigmasDeltas = sigmasDeltas[-1], numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  (oldID == 3), savePath = predictVectorPathFolder, predictvec_old = predVec_old, bubID = oldID, timestep = globalCounter, zerothDisp = [0,0])
+                    distStatPredictionVect2(cntrds, sigmasDeltas = sigmasDeltas[-1], sigmasDeltasHist = predictCentroidDiff[oldID],
+                                            numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  1, savePath = predictVectorPathFolder,
+                                            predictvec_old = predVec_old, bubID = oldID, timestep = globalCounter, zerothDisp = [-3,0])
                     #print(f'old vs new predict. predictCentroid:{predictCentroid}, oldCentroid:{oldCentroid}')
                     areaCheck = getContourHullArea([contours_old[subOldID] for subOldID in distanceOldNewIDs_old[oldID]])
                     for mainNewID, subNewIDs in jointNeighbors.items():
@@ -1067,8 +1094,8 @@ def mainer(index):
                             if len(permIDsol2)>0:
                                 print(f'\ndist 2. Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, permIDsol2: {permIDsol2}, permDist2: {permDist2}')
                                 newMean, newStd = updateStat(pathLen, distCheck2, distCheck2Sigma, permDist2)
-                                newCentroid, _ = getCentroidPosContours(bodyCntrs = [contours4[i] for i in permIDsol2], hullArea = 0)
-                                predictCentroidDiff[oldID][globalCounter] = [newCentroid, permDist2, newMean, newStd]
+                                #newCentroid, _ = getCentroidPosContours(bodyCntrs = [contours4[i] for i in permIDsol2], hullArea = 0)
+                                predictCentroidDiff[oldID][globalCounter] = [predictCentroid, permDist2, newMean, newStd]
                                 print(f'oldID:{oldID}; mainNewID:{mainNewID}, permDist2:{permDist2}, newMean: {newMean}, newStd: {newStd}')
                                 #predictCentroidDiff[oldID][globalCounter] = permDist2
                                 elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),dist,permRelArea2])

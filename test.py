@@ -62,10 +62,10 @@ import cv2
 #print(jn2)
 #print(jn3)
 #print(jn4)
-from scipy import interpolate
-from scipy.interpolate import BSpline
-traj0 = {0: (728, 624), 1: (717, 625), 2: (704, 626), 3: (691, 627), 4: (677, 627), 5: (662, 625)}
-traj0 = {0: (222, 565), 1: (212, 559), 2: (201, 555), 3: (190, 549), 4: (179, 541), 5: (169, 535)}
+#from scipy import interpolate
+#from scipy.interpolate import BSpline
+#traj0 = {0: (728, 624), 1: (717, 625), 2: (704, 626), 3: (691, 627), 4: (677, 627), 5: (662, 625)}
+#traj0 = {0: (222, 565), 1: (212, 559), 2: (201, 555), 3: (190, 549), 4: (179, 541), 5: (169, 535)}
 
 #num = 5
 #tmax = 5
@@ -90,8 +90,8 @@ traj0 = {0: (222, 565), 1: (212, 559), 2: (201, 555), 3: (190, 549), 4: (179, 54
 #fsy2 = interpolate.interp1d(t, y, kind = 'cubic', fill_value="extrapolate")
 #fx2 = fsx2(t1)
 #fy2 = fsy2(t1)
-import matplotlib.pyplot as plt
-from scipy.interpolate import BSpline
+#import matplotlib.pyplot as plt
+#from scipy.interpolate import BSpline
         
 #plt.plot(x2, y2, 'o', x, y, 'o')
 #plt.plot(t, x, 'o', t1, fx2,'o')
@@ -101,51 +101,51 @@ from scipy.interpolate import BSpline
 
 #plt.show()
 
-showDistDecay = True    
-def distStatPredictionVect(trajectory, zerothDisp, maxInterpSteps = 3, maxInterpOrder = 2, mode = 1,debug = 0, maxNumPlots = 4):
-    global showDistDecay
-    predictPoints = []
-    numPointsInTraj = len(trajectory)
-    numStepsInTraj = numPointsInTraj - 1 
-    if mode  ==  1:
-        numStepsFor = list(range(max(0,numPointsInTraj-maxNumPlots),len(trajectory)))
-    else:
-        numStepsFor = [numStepsInTraj]
-    numPlots = len(numStepsFor) if mode  ==  1 else 2
-    if debug == 1:
-        fig, axes = plt.subplots(1,numPlots , figsize=( numPlots*5,5), sharex=True, sharey=True)
-    for numSteps,numSteps2 in enumerate(numStepsFor):
-        numSteps = 1 if mode == 0  else numSteps
+#showDistDecay = True    
+#def distStatPredictionVect(trajectory, zerothDisp, maxInterpSteps = 3, maxInterpOrder = 2, mode = 1,debug = 0, maxNumPlots = 4):
+#    global showDistDecay
+#    predictPoints = []
+#    numPointsInTraj = len(trajectory)
+#    numStepsInTraj = numPointsInTraj - 1 
+#    if mode  ==  1:
+#        numStepsFor = list(range(max(0,numPointsInTraj-maxNumPlots),len(trajectory)))
+#    else:
+#        numStepsFor = [numStepsInTraj]
+#    numPlots = len(numStepsFor) if mode  ==  1 else 2
+#    if debug == 1:
+#        fig, axes = plt.subplots(1,numPlots , figsize=( numPlots*5,5), sharex=True, sharey=True)
+#    for numSteps,numSteps2 in enumerate(numStepsFor):
+#        numSteps = 1 if mode == 0  else numSteps
 
-        start = 0 if numSteps2 < maxInterpSteps else numSteps2-maxInterpSteps
-        x = np.array([a[0] for a in trajectory[start:numSteps2+1]])
-        y = np.array([a[1] for a in trajectory[start:numSteps2+1]])
-        t = np.arange(0,len(x),1)
-        t1 = np.arange(0,len(x)+1,1)
+#        start = 0 if numSteps2 < maxInterpSteps else numSteps2-maxInterpSteps
+#        x = np.array([a[0] for a in trajectory[start:numSteps2+1]])
+#        y = np.array([a[1] for a in trajectory[start:numSteps2+1]])
+#        t = np.arange(0,len(x),1)
+#        t1 = np.arange(0,len(x)+1,1)
         
-        if numSteps2 == 0:
-            predictPoints.append([trajectory[0][0]+zerothDisp[0],trajectory[0][1]+zerothDisp[1]])
-            if debug == 1:
-                axes[numSteps].plot(x, y, 'o',c='green', label = 'traj')
-                axes[numSteps].plot([x[0],predictPoints[0][0]], [y[0],predictPoints[0][1]], '--o', label = 'forecast')
-        if numSteps2 > 0:
-            k = min(numSteps2,maxInterpOrder); print(f' interpOrder = {k}') if debug == 1 else 0
-            spline, _ = interpolate.splprep([x, y], u=t, s=0,k=k)
-            new_points = interpolate.splev(t1, spline,ext=0)
-            if debug == 1:
-                axes[numSteps].plot(new_points[0][-2:],new_points[1][-2:], '--o', label = 'forecast')
-            if mode != 0:
-                if numSteps > 0 and debug == 1:
-                    axes[numSteps].plot([x[-2],predictPoints[-1][0]],[y[-2],predictPoints[-1][1]], '--o', label = 'prev forecast')
-                predictPoints.append([new_points[0][-1],new_points[1][-1]])
+#        if numSteps2 == 0:
+#            predictPoints.append([trajectory[0][0]+zerothDisp[0],trajectory[0][1]+zerothDisp[1]])
+#            if debug == 1:
+#                axes[numSteps].plot(x, y, 'o',c='green', label = 'traj')
+#                axes[numSteps].plot([x[0],predictPoints[0][0]], [y[0],predictPoints[0][1]], '--o', label = 'forecast')
+#        if numSteps2 > 0:
+#            k = min(numSteps2,maxInterpOrder); print(f' interpOrder = {k}') if debug == 1 else 0
+#            spline, _ = interpolate.splprep([x, y], u=t, s=0,k=k)
+#            new_points = interpolate.splev(t1, spline,ext=0)
+#            if debug == 1:
+#                axes[numSteps].plot(new_points[0][-2:],new_points[1][-2:], '--o', label = 'forecast')
+#            if mode != 0:
+#                if numSteps > 0 and debug == 1:
+#                    axes[numSteps].plot([x[-2],predictPoints[-1][0]],[y[-2],predictPoints[-1][1]], '--o', label = 'prev forecast')
+#                predictPoints.append([new_points[0][-1],new_points[1][-1]])
                 
-            else: predictPoints.append([new_points[0][-1],new_points[1][-1]])
-        if debug == 1: axes[numSteps].plot(x, y, '-o',c='green', label = 'traj')
+#            else: predictPoints.append([new_points[0][-1],new_points[1][-1]])
+#        if debug == 1: axes[numSteps].plot(x, y, '-o',c='green', label = 'traj')
 
-    if debug == 1:
-        plt.legend(loc=(1.1, 0.5))
-        plt.show()
-    return np.array(predictPoints[-1],np.uint32)
+#    if debug == 1:
+#        plt.legend(loc=(1.1, 0.5))
+#        plt.show()
+#    return np.array(predictPoints[-1],np.uint32)
 #print(distStatPredictionVect(list(traj0.values())[:], zerothDisp = [0,-7], maxInterpOrder = 1, mode = 1, debug = 1))
 #print([1,2][:0+1])
 #print(f'trajectory: {trajectory}')   
@@ -196,26 +196,26 @@ def distStatPredictionVect(trajectory, zerothDisp, maxInterpSteps = 3, maxInterp
 #        showDistDecay = False
 #        plt.show()
 
-def updateSTDEV(meanOld, stdevOld, setLengthOld, meanNew, elementNew):
-    stdevSqr = 1/setLengthOld * ((setLengthOld-1) * (stdevOld)**2 + (elementNew - meanNew)*(elementNew - meanOld))
-    return np.sqrt(stdevSqr)
+#def updateSTDEV(meanOld, stdevOld, setLengthOld, meanNew, elementNew):
+#    stdevSqr = 1/setLengthOld * ((setLengthOld-1) * (stdevOld)**2 + (elementNew - meanNew)*(elementNew - meanOld))
+#    return np.sqrt(stdevSqr)
 
 # For a new value newValue, compute the new count, new mean, the new M2.
 # mean accumulates the mean of the entire dataset
 # M2 aggregates the squared distance from the mean
 # count aggregates the number of samples seen so far
-def updateStat(count, mean, std, newValue):
-    M2 = count * std**2
-    count += 1
-    delta = newValue - mean
-    mean += delta / count
-    delta2 = newValue - mean
-    M2 += delta * delta2
-    if count < 2:
-        return float("nan")
-    else:
-        (mean, variance) = (mean, M2 / count)
-        return (mean, np.sqrt(variance))
+#def updateStat(count, mean, std, newValue):
+#    M2 = count * std**2
+#    count += 1
+#    delta = newValue - mean
+#    mean += delta / count
+#    delta2 = newValue - mean
+#    M2 += delta * delta2
+#    if count < 2:
+#        return float("nan")
+#    else:
+#        (mean, variance) = (mean, M2 / count)
+#        return (mean, np.sqrt(variance))
 
 
 # Retrieve the mean, variance and sample variance from an aggregate
@@ -239,6 +239,20 @@ def updateStat(count, mean, std, newValue):
 #aa = updateSTDEV(mean0,std0, len(set0), mean1, 6)
 #print(aggregate)
 #lst = [[1,2]]*3;print(lst)
-import os
-predictVectorPathFolder = r'./debugImages/predictVect'
-if not os.path.exists(predictVectorPathFolder): os.makedirs(predictVectorPathFolder)
+#import os
+#predictVectorPathFolder = r'./debugImages/predictVect'
+#if not os.path.exists(predictVectorPathFolder): os.makedirs(predictVectorPathFolder)
+#intersectingCombs_stage2 = [[1,1],["1",1],[3,1],[4,2],[5,2],[6,3]]
+#keysNew = [a[1] for a in intersectingCombs_stage2]
+#keysNewVals = np.array([a[0] for a in intersectingCombs_stage2],dtype=object)
+#values, counts = np.unique(keysNew, return_counts=True)
+#duplicates = [ a for a,b in zip(values, counts) if b>1]
+#duplicates2 = {a:np.argwhere(keysNew == a).reshape(-1).tolist() for a in duplicates}
+#dupVals = {ID:keysNewVals[lst] for ID,lst in duplicates2.items()}
+##keysNewUniq = set(keysNew)
+##whereduplicates = [i for i, x in enumerate(keysNew) if keysNew.count(x) > 1]
+##duplicates = [ newKey for newKey in set(keysNew) if keysNew.count(newKey) > 1]
+#intersectingCombs_stage22 = np.array(intersectingCombs_stage2,dtype=object)
+#print(intersectingCombs_stage22[:,0])
+#print(duplicates,duplicates2,dupVals)
+print(np.ravel([[1,2,3],[4,5,6]], order='F'))

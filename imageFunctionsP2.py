@@ -268,6 +268,30 @@ def centroidSumPermutations(IDsOfInterest, centroidDict, areaDict, refCentroid,d
     output = [permutations[index], sol] if sol < distCheck else []
     return output
 
+def doubleCritMinimum(setA,setB, mode = 0, debug = 0, printPrefix=''):
+    print(printPrefix) if len(printPrefix)>0 and debug == 1 else 0
+    
+    if mode == 0:
+        print('rescaling data to {0, max(set)}->{0, 1}') if debug == 1 else 0
+        weightedA = np.array(setA)/max(setA)
+        weightedB = np.array(setB)/max(setB)
+    else:
+        print('rescaling data to {min(set, max(set)}->{0, 1}') if debug == 1 else 0
+        weightedA = (np.array(setA)-min(setA))/(max(setA) - min(setA))
+        weightedB = (np.array(setB)-min(setB))/(max(setB) - min(setB))
+    
+    res = [np.mean([a,b]) for a,b in zip(weightedA,weightedB)]
+    
+    resIndex = np.argmin(res)
+    if debug == 1:
+        #print(f'setA: {[np.round(a, 2) for a in setA]}') 
+        #print(f'setB: {[np.round(a, 2) for a in setB]}') 
+        print(f'weightedA: {[np.round(a, 2) for a in weightedA]}') 
+        print(f'weightedB: {[np.round(a, 2) for a in weightedB]}') 
+        print(f'mean of weight pairs: {[np.round(a, 2) for a in res]}')
+        print(f'smallest index: {resIndex}')
+    return resIndex
+
 def centroidAreaSumPermutations(bodyCntrs, IDsOfInterest, centroidDict, areaDict, refCentroid, distCheck, refArea=10, relAreaCheck = 10000000, doHull = 1, debug = 0):
     #bodyCntrs is used only if doHull == 1. i dont use it for frozen bubs permutations
     permutations = sum([list(itertools.combinations(IDsOfInterest, r)) for r in range(1,len(IDsOfInterest)+1)],[])
@@ -297,25 +321,25 @@ def centroidAreaSumPermutations(bodyCntrs, IDsOfInterest, centroidDict, areaDict
 
         #distArgSort = np.argsort(remainingDistances)
         #relAreasArgSort = np.argsort(remainingRelAreas)
-         
-        A = remainingDistances
-        deltaA = max(A) - min(A)
-        print(f'A: (centroid diff  min pos) {A}') if debug == 1 else 0
-        print(f'A (deltas): {deltaA}') if debug == 1 else 0
-        B = remainingRelAreas
-        deltaB = max(B) - min(B)
-        print(f'B: (area ratio  min pos) {B}') if debug == 1 else 0 
-        print(f'B (deltas): {deltaB}') if debug == 1 else 0
-        if deltaB == 0 or deltaA == 0: # in detectStuckBubs() i pass both identical objects cluster and separate bubs : {"1":[1,2], 1:[1], 2:[2]}. so permutation "1"  = 1 + 2. hard to throw it out of function
-            deltaB = 1;deltaA = 1
-        weightedA = (np.array(A)-min(A))/deltaA;print(f'weightedA: {[np.round(a, 2) for a in weightedA]}') if debug == 1 else 0
-        weightedB = (np.array(B)-min(B))/deltaB;print(f'weightedB: {[np.round(a, 2) for a in weightedB]}') if debug == 1 else 0
-        sortedA = np.argsort(np.argsort(A));print(f'sortedA (position): {[np.round(a, 2) for a in sortedA]}') if debug == 1 else 0
-        sortedB = np.argsort(np.argsort(B));print(f'sortedB (position): {[np.round(a, 2) for a in sortedB]}') if debug == 1 else 0
-        rescaledArgSortA = np.matmul(np.diag(weightedA),sortedA);print(f'rescaledArgSortA (position): {[np.round(a, 2) for a in rescaledArgSortA]}') if debug == 1 else 0
-        rescaledArgSortB = np.matmul(np.diag(weightedB),sortedB);print(f'rescaledArgSortB (position): {[np.round(a, 2) for a in rescaledArgSortB]}') if debug == 1 else 0
-        res = [np.mean([a,b]) for a,b in zip(rescaledArgSortA,rescaledArgSortB)];print(f'mean rescaled positions :\n{[np.round(a, 2) for a in res]}') if debug == 1 else 0
-        resIndex = np.argmin(res);print(f'resIndex: {resIndex}') if debug == 1 else 0
+        resIndex = doubleCritMinimum(remainingDistances,remainingRelAreas, mode = 0, debug = debug, printPrefix='')
+        #A = remainingDistances
+        #deltaA = max(A) - min(A)
+        #print(f'A: (centroid diff  min pos) {A}') if debug == 1 else 0
+        #print(f'A (deltas): {deltaA}') if debug == 1 else 0
+        #B = remainingRelAreas
+        #deltaB = max(B) - min(B)
+        #print(f'B: (area ratio  min pos) {B}') if debug == 1 else 0 
+        #print(f'B (deltas): {deltaB}') if debug == 1 else 0
+        #if deltaB == 0 or deltaA == 0: # in detectStuckBubs() i pass both identical objects cluster and separate bubs : {"1":[1,2], 1:[1], 2:[2]}. so permutation "1"  = 1 + 2. hard to throw it out of function
+        #    deltaB = 1;deltaA = 1
+        #weightedA = (np.array(A)-min(A))/deltaA;print(f'weightedA: {[np.round(a, 2) for a in weightedA]}') if debug == 1 else 0
+        #weightedB = (np.array(B)-min(B))/deltaB;print(f'weightedB: {[np.round(a, 2) for a in weightedB]}') if debug == 1 else 0
+        #sortedA = np.argsort(np.argsort(A));print(f'sortedA (position): {[np.round(a, 2) for a in sortedA]}') if debug == 1 else 0
+        #sortedB = np.argsort(np.argsort(B));print(f'sortedB (position): {[np.round(a, 2) for a in sortedB]}') if debug == 1 else 0
+        #rescaledArgSortA = np.matmul(np.diag(weightedA),sortedA);print(f'rescaledArgSortA (position): {[np.round(a, 2) for a in rescaledArgSortA]}') if debug == 1 else 0
+        #rescaledArgSortB = np.matmul(np.diag(weightedB),sortedB);print(f'rescaledArgSortB (position): {[np.round(a, 2) for a in rescaledArgSortB]}') if debug == 1 else 0
+        #res = [np.mean([a,b]) for a,b in zip(rescaledArgSortA,rescaledArgSortB)];print(f'mean rescaled positions :\n{[np.round(a, 2) for a in res]}') if debug == 1 else 0
+        #resIndex = np.argmin(res);print(f'resIndex: {resIndex}') if debug == 1 else 0
         return list(remainingPermutations[resIndex]), remainingDistances[resIndex], remainingRelAreas[resIndex]
     else: 
         return [],-1,-1
@@ -686,59 +710,66 @@ def detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbS
                                      fbStoreCentroids[ID], relDist, fbStoreAreas[ID], relAreaCheck = 0.7, doHull = 0, debug = 0)
         print(f'pIDs: {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
         assert len(permIDsol2) < 2, f"detectStuckBubs-> centroidAreaSumPermutations  resulted in strange solution for new ID:{ID} - permIDsol2"
-        dupSubset.append([permIDsol2[0],ID,permRelArea2,permDist2])
+        dupSubset.append([permIDsol2[0],ID,permDist2,permRelArea2]) # 
         
     intersectingCombs_stage2 = [a for a in intersectingCombs_stage2 if a[1] not in dupWhereIndicies]
     intersectingCombs_stage2 = intersectingCombs_stage2 + dupSubset
-    #for ID, subIDs in    dupWhereIndicies.items():
         
     # compare these two-frame combinations with global list of stuck bubbles
-    compareToGlobal = []
-    for keyOld, keyNew, *_ in intersectingCombs_stage2:
-        searchCentroid = fbStoreCentroids_old[keyOld]
-        dists = {centroid:np.linalg.norm(np.diff([centroid,searchCentroid],axis=0),axis=1)[0] for centroid in fbStoreCulprits} # currently comparing only to initial centroid (key)
-        if len(dists)>0:
-            minKey = min(dists, key=dists.get) #min dist centroid
-            if dists[minKey] < 5:
-                compareToGlobal.append([keyOld, keyNew, minKey ])
-                fbStoreCulprits[minKey][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
-            else:
-                fbStoreCulprits[tuple(searchCentroid)] = {globalCounter-1:[keyOld,fbStoreAreas_old[keyOld]]}
-                fbStoreCulprits[tuple(searchCentroid)][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
-    
+    #compareToGlobal = []
+    #for keyOld, keyNew, *_ in intersectingCombs_stage2:
+    #    searchCentroid = fbStoreCentroids_old[keyOld]
+    #    dists = {centroid:np.linalg.norm(np.diff([centroid,searchCentroid],axis=0),axis=1)[0] for centroid in fbStoreCulprits} # currently comparing only to initial centroid (key)
+    #    if len(dists)>0:
+    #        minKey = min(dists, key=dists.get) #min dist centroid
+    #        if dists[minKey] < 5:
+    #            #compareToGlobal.append([keyOld, keyNew, minKey ])
+    #            fbStoreCulprits[minKey][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
+    #        else:
+    #            fbStoreCulprits[tuple(searchCentroid)] = {globalCounter-1:[keyOld,fbStoreAreas_old[keyOld]]}
+    #            fbStoreCulprits[tuple(searchCentroid)][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
+    returnInfo = []
     if len(fbStoreCulprits.copy()) == 0 and len(intersectingCombs_stage2) > 0 : #   
-        for keyOld, keyNew, *_ in intersectingCombs_stage2:
-            fbStoreCulprits[tuple(fbStoreCentroids_old[keyOld])] = {globalCounter-1:[keyOld,fbStoreAreas_old[keyOld]]}
-            fbStoreCulprits[tuple(fbStoreCentroids_old[keyOld])][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
-    if len(intersectingCombs_stage2) > 0 and len(fbStoreCulprits)>0:
+        for keyOld, keyNew, dist, relArea in intersectingCombs_stage2:
+            fbStoreCulprits[tuple(fbStoreCentroids_old[keyOld])] = {globalCounter-1:[-1,keyOld]}
+            fbStoreCulprits[tuple(fbStoreCentroids_old[keyOld])][globalCounter] = [keyOld,keyNew]
+            returnInfo.append([keyOld,keyNew, dist, relArea, fbStoreCentroids_old[keyOld]])
+    elif len(intersectingCombs_stage2) > 0 and len(fbStoreCulprits)>0:
         for keyOld, keyNew, *_ in intersectingCombs_stage2:
             searchCentroid = fbStoreCentroids_old[keyOld]
             dists = {centroid:np.linalg.norm(np.diff([centroid,searchCentroid],axis=0),axis=1)[0] for centroid in fbStoreCulprits}
             minKey = min(dists, key=dists.get) #min dist centroid
             if dists[minKey] < 5:
-                fbStoreCulprits[minKey][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
+                oldID = fbStoreCulprits[minKey][globalCounter-1][0]
+                fbStoreCulprits[minKey][globalCounter] = [oldID,keyNew]
+                returnInfo.append([keyOld,keyNew, dist, relArea, minKey])
             else:
-                fbStoreCulprits[tuple(searchCentroid)] = {globalCounter-1:[keyOld,fbStoreAreas_old[keyOld]]}
-                fbStoreCulprits[tuple(searchCentroid)][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
+                fbStoreCulprits[tuple(searchCentroid)] = {globalCounter-1:[-1, keyOld]}
+                fbStoreCulprits[tuple(searchCentroid)][globalCounter] = [keyOld, keyNew]
+                returnInfo.append([keyOld,keyNew, dist, relArea, tuple(searchCentroid)])
+            
     
-    storedCentroids = []
-    storedCentroidsInfo = []
-    if len(fbStoreCulprits) > 0:
-        for keyNew, centroid in fbStoreCentroids.items():
-            culpritCentroids = np.array(list(fbStoreCulprits.keys()))
-            dists = np.linalg.norm(culpritCentroids - centroid,axis = 1)
-            minDistArg = np.argmin(dists)
-            minDist = dists[minDistArg]
-            minCentroid = tuple(culpritCentroids[minDistArg])
-            data = fbStoreCulprits[minCentroid]
-            areas = [area for [_, area] in data.values()]
-            meanArea = np.mean(areas)
-            relativeAreaChange = abs(fbStoreAreas[keyNew]-meanArea)/fbStoreAreas[keyNew]
-            if relativeAreaChange < 0.15 and minDist < 5:
-                storedCentroids.append(keyNew)
-                storedCentroidsInfo.append([keyNew,relativeAreaChange,minDist,len(data)])
+    #returnIDs = []
+    #returnInfo = []
+    #if len(fbStoreCulprits) > 0:
+    #    for keyNew, centroid in fbStoreCentroids.items():
+    #        culpritCentroids = np.array(list(fbStoreCulprits.keys()))
+    #        dists = np.linalg.norm(culpritCentroids - centroid,axis = 1)
+    #        minDistArg = np.argmin(dists)
+    #        minDist = dists[minDistArg]
+    #        minCentroid = tuple(culpritCentroids[minDistArg])
+    #        data = fbStoreCulprits[minCentroid]
+    #        areas = [area for [_, area] in data.values()]
+    #        meanArea = np.mean(areas)
+    #        relativeAreaChange = abs(fbStoreAreas[keyNew]-meanArea)/fbStoreAreas[keyNew]
+    #        if relativeAreaChange < 0.15 and minDist < 5:
+    #            returnIDs.append(keyNew)
+    #            returnInfo.append([keyNew,relativeAreaChange,minDist,len(data)])
 
-    return storedCentroids, storedCentroidsInfo
+    #return returnIDs, returnInfo
+    returnInfo = np.array(returnInfo, dtype=object)
+    returnNewIDs = returnInfo[:,1]
+    return returnNewIDs, returnInfo
 
 def getMasksParams(contours,IDs,err,orig):
     contourSubset = [contours[k] for k in IDs]

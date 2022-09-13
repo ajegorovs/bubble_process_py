@@ -255,4 +255,66 @@ import cv2
 #intersectingCombs_stage22 = np.array(intersectingCombs_stage2,dtype=object)
 #print(intersectingCombs_stage22[:,0])
 #print(duplicates,duplicates2,dupVals)
-print(np.ravel([[1,2,3],[4,5,6]], order='F'))
+#debug = 1
+#A = [29.42787794,  6.32455532, 30, 5]
+#deltaA = max(A) - min(A)
+#print(f'A: (centroid diff  min pos) {A}') if debug == 1 else 0
+#print(f'A (deltas): {deltaA}') if debug == 1 else 0
+#B = [0.50992063, 0.5546398 , 0.2, 0.6]
+#deltaB = max(B) - min(B)
+#print(f'B: (area ratio  min pos) {B}') if debug == 1 else 0 
+#print(f'B (deltas): {deltaB}') if debug == 1 else 0
+#if deltaB == 0 or deltaA == 0: # in detectStuckBubs() i pass both identical objects cluster and separate bubs : {"1":[1,2], 1:[1], 2:[2]}. so permutation "1"  = 1 + 2. hard to throw it out of function
+#    deltaB = 1;deltaA = 1
+#weightedA = np.array(A)/max(A);print(f'weightedA: {[np.round(a, 2) for a in weightedA]}') if debug == 1 else 0
+#weightedB = np.array(B)/max(B);print(f'weightedB: {[np.round(a, 2) for a in weightedB]}') if debug == 1 else 0
+#sortedA = np.argsort(np.argsort(A));print(f'sortedA (position): {[np.round(a, 2) for a in sortedA]}') if debug == 1 else 0
+#sortedB = np.argsort(np.argsort(B));print(f'sortedB (position): {[np.round(a, 2) for a in sortedB]}') if debug == 1 else 0
+#rescaledArgSortA = np.matmul(np.diag(weightedA),sortedA);print(f'rescaledArgSortA (position): {[np.round(a, 2) for a in rescaledArgSortA]}') if debug == 1 else 0
+#rescaledArgSortB = np.matmul(np.diag(weightedB),sortedB);print(f'rescaledArgSortB (position): {[np.round(a, 2) for a in rescaledArgSortB]}') if debug == 1 else 0
+#res = [np.mean([a,b]) for a,b in zip(rescaledArgSortA,rescaledArgSortB)];print(f'mean rescaled positions :\n{[np.round(a, 2) for a in res]}') if debug == 1 else 0
+#resIndex = np.argmin(res);print(f'resIndex: {resIndex}') if debug == 1 else 0
+#print(f'v2: {[np.mean([a,b]) for a,b in zip(weightedA,weightedB)]}')
+
+def doubleCritMinimum(setA,setB, mode = 0, debug = 0, printPrefix=''):
+    print(printPrefix) if len(printPrefix)>0 and debug == 1 else 0
+    
+    if mode == 0:
+        print('rescaling data to {0, max(set)}->{0, 1}') if debug == 1 else 0
+        weightedA = np.array(setA)/max(setA)
+        weightedB = np.array(setB)/max(setB)
+    else:
+        print('rescaling data to {min(set, max(set)}->{0, 1}') if debug == 1 else 0
+        weightedA = (np.array(setA)-min(setA))/(max(setA) - min(setA))
+        weightedB = (np.array(setB)-min(setB))/(max(setB) - min(setB))
+    
+    res = [np.mean([a,b]) for a,b in zip(weightedA,weightedB)]
+    
+    resIndex = np.argmin(res)
+    if debug == 1:
+        print(f'setA: {[np.round(a, 2) for a in setA]}') 
+        print(f'setB: {[np.round(a, 2) for a in setB]}') 
+        print(f'weightedA: {[np.round(a, 2) for a in weightedA]}') 
+        print(f'weightedB: {[np.round(a, 2) for a in weightedB]}') 
+        print(f'mean of weight pairs: {[np.round(a, 2) for a in res]}')
+        print(f'smallest index: {resIndex}')
+    return resIndex
+
+#doubleCritMinimum(setA = [29.42787794,  6.32455532, 30, 5],setB = [0.50992063, 0.5546398 , 0.2, 0.6] , mode = 0, debug = 1, printPrefix='')
+
+#dic1 = {1:[1],2:[3,4]}
+#dic2 = {2:[3,4],1:[1]}
+#print(dic1==dic2)
+#jointSubIDs = {0: [11], 1: [16], 3: [24, 32], 4: [25], 5: [28], 6: [29], 7: [45]}
+#ie = [16,45]
+#gg = [{ii:ID for ID, vals in jointSubIDs.items() if ii in vals} for ii in ie]
+#gg2 = {};[gg2.update(elem) for elem in gg]
+#print(gg2)
+
+#print(map(**,gg))
+oldLocIDs = ['5'];print(type(oldLocIDs[0])== str)
+jointSubIDs = {}
+oldGlobIDs0 = [
+                                'str' if type(ii) == str else 'int'
+                               for ii in oldLocIDs ] 
+print(oldGlobIDs0)

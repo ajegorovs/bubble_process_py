@@ -373,6 +373,14 @@ import cv2
 #angleDeg = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))(*np.transpose(vs))
 #print(angleDeg)
 #plt.show()
+extrapolatedPointsDebug = np.array([[1. , 1.4, 1.8, 2.2, 2.6, 3. , 3.4, 3.8, 4.2, 4.6, 5. , 5.4, 5.8,
+        6.2, 6.6, 7. , 6.4, 5.8, 5.2, 4.6, 4. , 3.6, 3.2, 2.8, 2.4, 2. ,
+        2.2, 2.4, 2.6, 2.8, 3. , 3.2, 3.4, 3.6, 3.8, 4. ]])
+tDebug = np.array([0. , 0.2, 0.4, 0.6, 0.8, 1. , 1.2, 1.4, 1.6, 1.8, 2. , 2.2, 2.4,
+       2.6, 2.8, 3. , 3.2, 3.4, 3.6, 3.8, 4. , 4.2, 4.4, 4.6, 4.8, 5. ,
+       5.2, 5.4, 5.6, 5.8, 6. , 6.2, 6.4, 6.6, 6.8, 7. ])
+
+aa = np.vstack([extrapolatedPointsDebug[0],tDebug])
 from scipy import interpolate
 import matplotlib.pyplot as plt
 
@@ -391,34 +399,51 @@ import matplotlib.pyplot as plt
 #axes[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=3, fancybox=True, shadow=True)
 #axes[0].grid()
 #plt.show()
-def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2,zerothDisp=[],fixSharp = 0, angleLimit = 30):
+def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0, zerothDisp=[],fixSharp = 0, angleLimit = 30, debug = 0, pltString = ''):
     data = np.array(data).reshape(len(data),-1) #[1,2]->[[1],[2]]; [[11,12],[21,22]]-> itself
     numPointsInTraj = data.shape[0]
-    numStepsInTraj = numPointsInTraj - 1 ;print(f'numPointsInTraj:{numPointsInTraj}, numStepsInTraj:{numStepsInTraj}')
-    
+    numStepsInTraj = numPointsInTraj - 1 #;print(f'numPointsInTraj:{numPointsInTraj}, numStepsInTraj:{numStepsInTraj}')
+    numDims = data.shape[1]
     # start-> take last maxInterpSteps
     start = 0 if numStepsInTraj < maxInterpSteps else numStepsInTraj-maxInterpSteps
     if numStepsInTraj == 0:
         zeroth = [0]*numPointsInTraj if len(zerothDisp) == 0 else zerothDisp
         return data[:,-1]+ zeroth, []
     k = min(numStepsInTraj,maxInterpOrder)
-    splitSubsetComponents = data[start:].T
-    t = np.arange(0,numPointsInTraj-start,1)
-    #t1 = np.arange(0,numPointsInTraj+1,1)
+    splitSubsetComponents = data[start:].T#;print(data)
+    t = np.arange(0,numPointsInTraj-start,1)#;print(f't:{t},(numPointsInTraj-star):{numPointsInTraj-start}')
+    if debug == 1: tDebug = np.arange(0,numPointsInTraj-start+0.01,0.2)#;print(f'tDebug:{tDebug}')
+    sMod = numPointsInTraj+np.sqrt(2*numPointsInTraj) # max proper range from manual.
+    sMod *= smoothingScale
     if fixSharp == 1:
         failedAngleCrit = []
         for kMod in range(k,0,-1):
-            tSubFull = np.arange(0,numPointsInTraj - start + 1,1)
-            spline, _ = interpolate.splprep(splitSubsetComponents, u=t, s=0,k=kMod)
-            extrapolatedPoints = np.array(interpolate.splev(tSubFull, spline,ext=0))
+            tSubFull = np.arange(0,numPointsInTraj-start+1,1)#np.arange(0,numPointsInTraj - start + 1,1)
+            spline, _ = interpolate.splprep(splitSubsetComponents, u=t, s=sMod,k=kMod)
+            extrapolatedPoints = np.array(interpolate.splev(tSubFull, spline,ext=0))#;print(f'extrapolatedPoints: {extrapolatedPoints}')
+            if debug == 1:
+                extrapolatedPointsDebug = np.array(interpolate.splev(tDebug, spline,ext=0))#;print(f'extrapolatedPointsDebug: {extrapolatedPointsDebug}')
+                if numDims == 1: extrapolatedPointsDebug = np.vstack([tDebug,extrapolatedPointsDebug[0]])
+                plt.plot(*extrapolatedPointsDebug,'-o',label = f'order: {kMod}, smoothing: {smoothingScale:0.1f}*sMax',ms= 1.2, linewidth = 1)
             vs = extrapolatedPoints[:,-2:] - extrapolatedPoints[:,-3:-1] #deltas are displ components
             angleDeg = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))(*np.transpose(vs))
             if angleDeg<= angleLimit: break
             else: failedAngleCrit.append([extrapolatedPoints[:,-1],np.round(angleDeg,2),kMod])
+        if debug == 1:
+            plt.plot(*splitSubsetComponents,'o',label = 'orig',ms= 5)
+            plt.legend()
+            plt.title(pltString+"extrapolate() debug")
+            plt.show()
         return extrapolatedPoints[:,-1],np.array(failedAngleCrit,dtype=object)
 
-    spline, _ = interpolate.splprep(splitSubsetComponents, u=t, s=0,k=k)
+    spline, _ = interpolate.splprep(splitSubsetComponents, u=t, s=sMod,k=k)
     extrapolatedPoint = np.array(interpolate.splev(t[-1]+1, spline,ext=0))
+    if debug == 1:
+        extrapolatedPointsDebug = np.array(interpolate.splev(tDebug, spline,ext=0));print(f'tDebug:{tDebug}')
+        plt.plot(*extrapolatedPointsDebug,'-o',label = f'order: {kMod}, smoothing: {smoothingScale:0.1f}*sMax',ms= 3)
+        plt.legend()
+        plt.title(pltString+"extrapolate() debug")
+        plt.show()
     return extrapolatedPoint, []
 
     
@@ -426,27 +451,13 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2,zerothDisp=[],fixSh
     #splitSubsetComponents = [np.array([a[0] for a in data[start:]])
 
 #extrapolate([[11,21,31,41,51],[12,22,32,42,52]])
-data = np.array([[0,0],[1,0],[2,0],[3,0],[3,0.7]])
-pred,a = extrapolate(data,maxInterpOrder = 3,fixSharp = 1)
+data = np.array([[1,0],[2,0],[3,0],[3.3,0.7]])
+#data = np.array([1,3,5,7,4,2,3])
+#pred,a = extrapolate(data, smoothingScale = 1, maxInterpSteps = 15, maxInterpOrder = 3,fixSharp = 1,debug = 1)
 #a = np.array([[2, 82.14, np.array([2.46666667, 0.95      ])],[2, 82.14, np.array([3.46666667, 1.95      ])]], dtype=object)
-print(f'pred: {pred}, a:{a}')
-if len(a)>0:
-    a2 = np.array(list(a[:,0]),dtype=np.float32);print(f'a2: {a2},\na2.T:{a2.T}')
-    plt.plot(*(a2.T),'o')
-
-plt.plot(*data.T,'o')
-plt.plot(*(pred.reshape(2,-1)),'o')
-plt.show()
-last = [3,0.7]
-sol1 = [1. , 2.8]
-sol2 = [1.83333333, 2.21666667]
-#solf = [3.,  1.4]
-vOrig = [0,0.7]
-v1 = np.array(sol1) - last
-v2 = np.array(sol2) - last
-ang = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))
-print(ang(vOrig,v1))
-print(ang(vOrig,v2))
+#print(f'pred: {pred}, a:{a}')
+arr = np.array([[0,0],[1,1]])
+print(np.diff(arr).reshape(2))
 
 #extrapolate([1,2])
 #extrapolate([[1],[1]], zerothDisp = [1,1])

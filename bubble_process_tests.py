@@ -1037,7 +1037,7 @@ def mainer(index):
                     pathLen = len(predictCentroidDiff[oldID])
                     predVec_old = predictCentroidDiff[oldID][globalCounter-1][0]
                     predictCentroid = distStatPredictionVect2(trajectory, sigmasDeltas = sigmasDeltas[-1], sigmasDeltasHist = predictCentroidDiff[oldID],
-                                            numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  1, savePath = predictVectorPathFolder,
+                                            numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  0, savePath = predictVectorPathFolder,
                                             predictvec_old = predVec_old, bubID = oldID, timestep = globalCounter, zerothDisp = [-3,0])
                     #print(f'old vs new predict. predictCentroid:{predictCentroid}, oldCentroid:{oldCentroid}')
                     areaCheck = getContourHullArea([contours_old[subOldID] for subOldID in distanceOldNewIDs_old[oldID]])

@@ -616,9 +616,71 @@ def distStatPredictionVect(trajectory, zerothDisp, sigmasDeltas = [], numdeltas 
         plt.show()
     return np.array(predictPoints[-1],np.uint32)
 
+def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0, zerothDisp=[],fixSharp = 0, angleLimit = 30, debug = 0, pltString = ''):
+    data = np.array(data).reshape(len(data),-1) #[1,2]->[[1],[2]]; [[11,12],[21,22]]-> itself
+    numPointsInTraj = data.shape[0]
+    numStepsInTraj = numPointsInTraj - 1 #;print(f'numPointsInTraj:{numPointsInTraj}, numStepsInTraj:{numStepsInTraj}')
+    numDims = data.shape[1]
+    # start-> take last maxInterpSteps
+    start = 0 if numStepsInTraj < maxInterpSteps else numStepsInTraj-maxInterpSteps
+    if numStepsInTraj == 0:
+        zeroth = [0]*numPointsInTraj if len(zerothDisp) == 0 else zerothDisp
+        return data[:,-1]+ zeroth, []
+    k = min(numStepsInTraj,maxInterpOrder)
+    splitSubsetComponents = data[start:].T#;print(data)
+    t = np.arange(0,numPointsInTraj-start,1)#;print(f't:{t},(numPointsInTraj-star):{numPointsInTraj-start}')
+    if debug == 1: tDebug = np.arange(0,numPointsInTraj-start+0.01,0.2)#;print(f'tDebug:{tDebug}')
+    sMod = numPointsInTraj+np.sqrt(2*numPointsInTraj) # max proper range from manual.
+    sMod *= smoothingScale
+    #if fixSharp == 1:
+    #    failedAngleCrit = []
+    #    for kMod in range(k,0,-1):
+    #        tSubFull = np.arange(0,numPointsInTraj-start+1,1)#np.arange(0,numPointsInTraj - start + 1,1)
+    #        spline, _ = interpolate.splprep(splitSubsetComponents, u=t, s=sMod,k=kMod)
+    #        extrapolatedPoints = np.array(interpolate.splev(tSubFull, spline,ext=0))#;print(f'extrapolatedPoints: {extrapolatedPoints}')
+    #        if debug == 1:
+    #            extrapolatedPointsDebug = np.array(interpolate.splev(tDebug, spline,ext=0))#;print(f'extrapolatedPointsDebug: {extrapolatedPointsDebug}')
+    #            if numDims == 1: extrapolatedPointsDebug = np.vstack([tDebug,extrapolatedPointsDebug[0]])
+    #            plt.plot(*extrapolatedPointsDebug,'-o',label = f'order: {kMod}, smoothing: {smoothingScale:0.1f}*sMax',ms= 1.2, linewidth = 1)
+    #        vs = extrapolatedPoints[:,-2:] - extrapolatedPoints[:,-3:-1] #deltas are displ components
+    #        angleDeg = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))(*np.transpose(vs))
+    #        if angleDeg<= angleLimit: break
+    #        else: failedAngleCrit.append([extrapolatedPoints[:,-1],np.round(angleDeg,2),kMod])
+    #    if debug == 1:
+    #        plt.plot(*splitSubsetComponents,'o',label = 'orig',ms= 5)
+    #        plt.legend()
+    #        plt.title(pltString+"extrapolate() debug")
+    #        plt.show()
+    #    return extrapolatedPoints[:,-1],np.array(failedAngleCrit,dtype=object)
+
+    spline, _ = interpolate.splprep(splitSubsetComponents, u=t, s=sMod,k=k)
+    spline0, _ = interpolate.splprep(splitSubsetComponents, u=t, s=sMod,k=1)
+    extrapolatedPoint = np.array(interpolate.splev(t[-1]+1, spline,ext=0))
+    extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0))
+    dv0 = np.diff(extrapolatedPoint0).reshape(2)
+    z = np.polyfit(*splitSubsetComponents[:,-3:], 1);print(f'z:{z}')
+    x0,x1 = splitSubsetComponents[0,-min(numPointsInTraj,3)], splitSubsetComponents[0,-1]
+    p0,p1 = np.array([x0,np.dot([x0,1],z)]),np.array([x1,np.dot([x1,1],z)]) #[ x0,y(x0)], or use poly1d lol
+    dv = (lambda x: x/np.linalg.norm(x)) (p1-p0)*np.linalg.norm(dv0)
+    angleDeg = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))(dv0,dv)
+    if debug == 1:
+        #extrapolatedPointsDebug = np.array(interpolate.splev(tDebug, spline,ext=0))#;print(f'tDebug:{tDebug}')
+        extrapolatedPointsDebug2 = np.array(interpolate.splev(tDebug, spline0,ext=0))
+        #plt.plot(*extrapolatedPointsDebug,'-o',label = f'order: {k}, smoothing: {smoothingScale:0.1f}*sMax ({sMod:0.1f})',ms= 3)
+        plt.plot(*extrapolatedPointsDebug2,'-o',label = f'order: {1}, smoothing: {smoothingScale:0.1f}*sMax ({sMod:0.1f})',ms= 3)
+        plt.plot(*np.array([p0,p1]).T,'--',label = f'3 step linear fit (*)')
+        plt.plot([p0[0]+dv[0],p0[0],p0[0]+dv0[0]],[p0[1]+dv[1],p0[1],p0[1]+dv0[1]],'-',label = f'angleDeg between (*) and exterp:{angleDeg:0.1f}',lw=3)
+        
+        plt.plot(*splitSubsetComponents,'X',label = 'Original pts (subset)',ms= 7)
+        plt.legend()
+        plt.title(pltString+"extrapolate() debug")
+        plt.show()
+    return extrapolatedPoint, []
+
 def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [], numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug = 0, savePath = r'./', predictvec_old = [], bubID = 1, timestep = 0, zerothDisp = [0,0]):
-    global showDistDecay
+    #global showDistDecay
     returnVec = []
+    if timestep >= 1 and bubID == 3: extrapolate(trajectory, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = .1, zerothDisp=[],fixSharp = 0, angleLimit = 30, debug = 1, pltString = f'bubID:{bubID},timestep:{timestep}|')
     numPointsInTraj = len(trajectory)
     numStepsInTraj = numPointsInTraj - 1 
     start = 0 if numStepsInTraj < maxInterpSteps else numStepsInTraj-maxInterpSteps
@@ -639,7 +701,7 @@ def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [],
     if numStepsInTraj > 0:
         k = min(numStepsInTraj,maxInterpOrder)
         # reduce iterp order if prediction does sharp turns
-        (numPointsInTraj-np.sqrt(2*numPointsInTraj),numPointsInTraj+np.sqrt(2*numPointsInTraj))
+        #(numPointsInTraj-np.sqrt(2*numPointsInTraj),numPointsInTraj+np.sqrt(2*numPointsInTraj))
         for kMod in range(k,0,-1): # smoothing did not help on 3 point data, k=2 extepolation gives a 120 degree turn on one occasion
        # maxSmoothing = numPointsInTraj+np.sqrt(2*numPointsInTraj)
         #for sMod in np.arange(0,maxSmoothing+0.0001,maxSmoothing/5):

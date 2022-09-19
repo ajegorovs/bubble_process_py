@@ -6,6 +6,8 @@ import sqlite3
 import numpy as np
 import numpy
 import cv2
+
+#from bubble_process_tests import print01
 #dic1 = {1:1,2:2}
 #dic2 = {3:3,4:4}
 #print(list(dic1.keys()+dic2.keys()))
@@ -276,29 +278,29 @@ import cv2
 #resIndex = np.argmin(res);print(f'resIndex: {resIndex}') if debug == 1 else 0
 #print(f'v2: {[np.mean([a,b]) for a,b in zip(weightedA,weightedB)]}')
 
-def doubleCritMinimum(setA,setB, mode = 0, debug = 0, printPrefix=''):
-    print(printPrefix) if len(printPrefix)>0 and debug == 1 else 0
+#def doubleCritMinimum(setA,setB, mode = 0, debug = 0, printPrefix=''):
+#    print(printPrefix) if len(printPrefix)>0 and debug == 1 else 0
     
-    if mode == 0:
-        print('rescaling data to {0, max(set)}->{0, 1}') if debug == 1 else 0
-        weightedA = np.array(setA)/max(setA)
-        weightedB = np.array(setB)/max(setB)
-    else:
-        print('rescaling data to {min(set, max(set)}->{0, 1}') if debug == 1 else 0
-        weightedA = (np.array(setA)-min(setA))/(max(setA) - min(setA))
-        weightedB = (np.array(setB)-min(setB))/(max(setB) - min(setB))
+#    if mode == 0:
+#        print('rescaling data to {0, max(set)}->{0, 1}') if debug == 1 else 0
+#        weightedA = np.array(setA)/max(setA)
+#        weightedB = np.array(setB)/max(setB)
+#    else:
+#        print('rescaling data to {min(set, max(set)}->{0, 1}') if debug == 1 else 0
+#        weightedA = (np.array(setA)-min(setA))/(max(setA) - min(setA))
+#        weightedB = (np.array(setB)-min(setB))/(max(setB) - min(setB))
     
-    res = [np.mean([a,b]) for a,b in zip(weightedA,weightedB)]
+#    res = [np.mean([a,b]) for a,b in zip(weightedA,weightedB)]
     
-    resIndex = np.argmin(res)
-    if debug == 1:
-        print(f'setA: {[np.round(a, 2) for a in setA]}') 
-        print(f'setB: {[np.round(a, 2) for a in setB]}') 
-        print(f'weightedA: {[np.round(a, 2) for a in weightedA]}') 
-        print(f'weightedB: {[np.round(a, 2) for a in weightedB]}') 
-        print(f'mean of weight pairs: {[np.round(a, 2) for a in res]}')
-        print(f'smallest index: {resIndex}')
-    return resIndex
+#    resIndex = np.argmin(res)
+#    if debug == 1:
+#        print(f'setA: {[np.round(a, 2) for a in setA]}') 
+#        print(f'setB: {[np.round(a, 2) for a in setB]}') 
+#        print(f'weightedA: {[np.round(a, 2) for a in weightedA]}') 
+#        print(f'weightedB: {[np.round(a, 2) for a in weightedB]}') 
+#        print(f'mean of weight pairs: {[np.round(a, 2) for a in res]}')
+#        print(f'smallest index: {resIndex}')
+#    return resIndex
 
 #doubleCritMinimum(setA = [29.42787794,  6.32455532, 30, 5],setB = [0.50992063, 0.5546398 , 0.2, 0.6] , mode = 0, debug = 1, printPrefix='')
 
@@ -312,9 +314,204 @@ def doubleCritMinimum(setA,setB, mode = 0, debug = 0, printPrefix=''):
 #print(gg2)
 
 #print(map(**,gg))
-oldLocIDs = ['5'];print(type(oldLocIDs[0])== str)
-jointSubIDs = {}
-oldGlobIDs0 = [
-                                'str' if type(ii) == str else 'int'
-                               for ii in oldLocIDs ] 
-print(oldGlobIDs0)
+#oldLocIDs = ['5'];print(type(oldLocIDs[0])== str)
+#jointSubIDs = {}
+#oldGlobIDs0 = [
+#                                'str' if type(ii) == str else 'int'
+#                               for ii in oldLocIDs ] 
+#print(oldGlobIDs0)
+#tup = (1,1,3,4)
+#print(np.linalg.norm(tup[-2:]))
+#jointNeighbors = {32: [32, 39], 37: [37, 40], 22: [22, 30, 33], 35: [35, 38], 54: [54]}
+#frozenIDs = np.array([54, list([35, 38])], dtype=object)
+#[print(a) for a in jointNeighbors.values() if a in frozenIDs.tolist()]
+#frozenIDsInfo = np.array([[45, 54, 2.23606797749979, 0.2, (325, 48)],
+#       [28, list([35, 38]), 2.23606797749979, 0.2, (835, 445)]],
+#      dtype=object)
+#print(frozenIDsInfo[:,1])
+#print( np.array([a if type(a) != list else min(a) for a in frozenIDsInfo[:,1]]))
+#frozenIDsInfo[:,1] =  np.array([a if type(a) != list else min(a) for a in frozenIDsInfo[:,1]])
+#print(frozenIDsInfo)
+#print(1) if [1] in [[1],[2]] else 0
+
+#fID = np.array([39], dtype=np.int64).tolist()
+#comb = [24, 34, 39]
+#difference = np.setdiff1d(comb, fID);print(difference)
+#distanceOldNewIDs_old = {3: [29], 4: [24, 32], 5: [25], 6: [28], 8: [45]}
+#frozenIDs_old	= np.array([28,32], dtype=np.int64)
+#frozenIDs_old_glob = [oldGlobID for elem in frozenIDs_old for oldGlobID,oldLocIDs in  distanceOldNewIDs_old.items() if elem in oldLocIDs ]
+#print(frozenIDs_old_glob)
+#returnInfo = np.array([], dtype=object)
+#print(len(returnInfo))
+#print(
+#    (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))([1,-1],[1,1])
+#)
+#import matplotlib.pyplot as plt
+#new_points = [np.array([920., 906., 901., 905.]),np.array([476., 483., 482., 473.])]
+#new_points = [np.array([0,1,1]),np.array([0,0,1])]
+#new_points2 = np.array(new_points)
+#print(new_points2)
+#minxy = np.min(new_points2, axis=1)
+#print(minxy)
+#print(new_points2.T - minxy)
+#new_points3 = new_points2.T - new_points2[:,0]
+#new_points3 = np.transpose(new_points3)
+#plt.plot(*new_points3,'-o')
+
+##print(np.min(new_points2, axis=1))
+#vs = new_points2[:,-2:] - new_points2[:,-3:-1]
+##vs = vs.T
+#aa = np.ravel([[0,0],vs[:,0]], order='F')
+#bb = np.ravel([[0,0],vs[:,1]], order='F')
+#print(aa,bb)
+#plt.plot(aa,bb,'-o')
+##vs2 = np.ravel([vs,[[0,0],[0,0]], order='F');print(vs2)          
+##vs = vs.T
+
+#print(vs)
+
+#angleDeg = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))(*np.transpose(vs))
+#print(angleDeg)
+#plt.show()
+from scipy import interpolate
+import matplotlib.pyplot as plt
+
+#from bubble_process_tests import print01
+#x = np.array([920, 906, 901])
+#y = np.array([476, 483, 482])
+#t = np.array([0, 1, 2])
+#t1 = np.array([0, 1, 2, 3])
+#k = 2
+#sMod = 212
+#spline, _ = interpolate.splprep([x, y], u=t, s=sMod,k=k)
+#new_points = np.array(interpolate.splev(t1, spline,ext=0))
+#fig, axes = plt.subplots(1,2 , figsize=( 13,5), sharex=False, sharey=False)
+#axes[0].plot(x, y, '-o',c='green', label = 'traj')
+#axes[0].plot(new_points[0],new_points[1], '-o', label = f'forecast: s:{sMod:0.1f}, k:{k:0.1f}', ms= 2,linewidth = 1)
+#axes[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=3, fancybox=True, shadow=True)
+#axes[0].grid()
+#plt.show()
+def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2,zerothDisp=[],fixSharp = 0, angleLimit = 30):
+    data = np.array(data).reshape(len(data),-1) #[1,2]->[[1],[2]]; [[11,12],[21,22]]-> itself
+    numPointsInTraj = data.shape[0]
+    numStepsInTraj = numPointsInTraj - 1 ;print(f'numPointsInTraj:{numPointsInTraj}, numStepsInTraj:{numStepsInTraj}')
+    
+    # start-> take last maxInterpSteps
+    start = 0 if numStepsInTraj < maxInterpSteps else numStepsInTraj-maxInterpSteps
+    if numStepsInTraj == 0:
+        zeroth = [0]*numPointsInTraj if len(zerothDisp) == 0 else zerothDisp
+        return data[:,-1]+ zeroth, []
+    k = min(numStepsInTraj,maxInterpOrder)
+    splitSubsetComponents = data[start:].T
+    t = np.arange(0,numPointsInTraj-start,1)
+    #t1 = np.arange(0,numPointsInTraj+1,1)
+    if fixSharp == 1:
+        failedAngleCrit = []
+        for kMod in range(k,0,-1):
+            tSubFull = np.arange(0,numPointsInTraj - start + 1,1)
+            spline, _ = interpolate.splprep(splitSubsetComponents, u=t, s=0,k=kMod)
+            extrapolatedPoints = np.array(interpolate.splev(tSubFull, spline,ext=0))
+            vs = extrapolatedPoints[:,-2:] - extrapolatedPoints[:,-3:-1] #deltas are displ components
+            angleDeg = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))(*np.transpose(vs))
+            if angleDeg<= angleLimit: break
+            else: failedAngleCrit.append([extrapolatedPoints[:,-1],np.round(angleDeg,2),kMod])
+        return extrapolatedPoints[:,-1],np.array(failedAngleCrit,dtype=object)
+
+    spline, _ = interpolate.splprep(splitSubsetComponents, u=t, s=0,k=k)
+    extrapolatedPoint = np.array(interpolate.splev(t[-1]+1, spline,ext=0))
+    return extrapolatedPoint, []
+
+    
+        #returnVec = np.array([x[0]+zerothDisp[0],y[0]+zerothDisp[1]])
+    #splitSubsetComponents = [np.array([a[0] for a in data[start:]])
+
+#extrapolate([[11,21,31,41,51],[12,22,32,42,52]])
+data = np.array([[0,0],[1,0],[2,0],[3,0],[3,0.7]])
+pred,a = extrapolate(data,maxInterpOrder = 3,fixSharp = 1)
+#a = np.array([[2, 82.14, np.array([2.46666667, 0.95      ])],[2, 82.14, np.array([3.46666667, 1.95      ])]], dtype=object)
+print(f'pred: {pred}, a:{a}')
+if len(a)>0:
+    a2 = np.array(list(a[:,0]),dtype=np.float32);print(f'a2: {a2},\na2.T:{a2.T}')
+    plt.plot(*(a2.T),'o')
+
+plt.plot(*data.T,'o')
+plt.plot(*(pred.reshape(2,-1)),'o')
+plt.show()
+last = [3,0.7]
+sol1 = [1. , 2.8]
+sol2 = [1.83333333, 2.21666667]
+#solf = [3.,  1.4]
+vOrig = [0,0.7]
+v1 = np.array(sol1) - last
+v2 = np.array(sol2) - last
+ang = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))
+print(ang(vOrig,v1))
+print(ang(vOrig,v2))
+
+#extrapolate([1,2])
+#extrapolate([[1],[1]], zerothDisp = [1,1])
+#def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [], numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug = 0, savePath = r'./', predictvec_old = [], bubID = 1, timestep = 0, zerothDisp = [0,0]):
+#    returnVec = []
+#    numPointsInTraj = len(trajectory)
+#    numStepsInTraj = numPointsInTraj - 1 
+#    start = 0 if numStepsInTraj < maxInterpSteps else numStepsInTraj-maxInterpSteps
+#    x = np.array([a[0] for a in trajectory[start:]])
+#    y = np.array([a[1] for a in trajectory[start:]])
+#    t = np.arange(0,len(x),1)
+#    t1 = np.arange(0,len(x)+1,1)
+#    if debug == 1:
+#        fig, axes = plt.subplots(1,2 , figsize=( 13,5), sharex=False, sharey=False)
+#        axes[0].plot(x, y, '-o',c='green', label = 'traj')
+            
+#    if numStepsInTraj == 0:
+#        returnVec = np.array([x[0]+zerothDisp[0],y[0]+zerothDisp[1]])
+#        if debug == 1:
+#            axes[0].plot([x[0],x[0]+zerothDisp[0]], [y[0],y[0]+zerothDisp[1]], '--o', label = 'forecast', ms= 3)
+#            axes[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=3, fancybox=True, shadow=True)
+                
+#    if numStepsInTraj > 0:
+#        k = min(numStepsInTraj,maxInterpOrder)
+#        # reduce iterp order if prediction does sharp turns
+#        (numPointsInTraj-np.sqrt(2*numPointsInTraj),numPointsInTraj+np.sqrt(2*numPointsInTraj))
+#        for kMod in range(k,0,-1): # smoothing did not help on 3 point data, k=2 extepolation gives a 120 degree turn on one occasion
+#       # maxSmoothing = numPointsInTraj+np.sqrt(2*numPointsInTraj)
+#        #for sMod in np.arange(0,maxSmoothing+0.0001,maxSmoothing/5):
+#            sMod = 0
+#            spline, _ = interpolate.splprep([x, y], u=t, s=sMod,k=kMod)
+#            new_points = np.array(interpolate.splev(t1, spline,ext=0))
+#            #v1,v2 = zip(new_points[0][-2:],new_points[1][-2:])
+#            vs = new_points[:,-2:] - new_points[:,-3:-1] #deltas are displ components
+#            angleDeg = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))(*np.transpose(vs))
+#            print(f' interpOrder = {k},smoothing = {sMod}, angle = {angleDeg}') if debug == 1 else 0
+            
+#            if angleDeg<= 30: break
+#            else:
+#                if debug == 1: axes[0].plot(new_points[0],new_points[1], '-o', label = f'forecast (failed): s:{sMod:0.1f},k:{kMod:0.1f}', ms= 2,linewidth = 1)
+#        if debug == 1:
+#            axes[0].plot(new_points[0,-2:],new_points[1,-2:], '--o', label = 'forecast', ms= 3)
+#            axes[0].plot([x[-2],predictvec_old[0]],[y[-2],predictvec_old[1]], '--o', label = 'prev forecast')
+#            if len(sigmasDeltas)>0:
+#                circleMean = Circle(tuple(predictvec_old), sigmasDeltas[0] , alpha=0.1) 
+#                circleNStd = Circle(tuple(predictvec_old), sigmasDeltas[1]*numdeltas , alpha=0.1,fill=False) 
+#                axes[0].add_patch(circleMean)
+#                axes[0].add_patch(circleNStd)
+#                axes[0].text(*predictvec_old, s = f'm: {sigmasDeltas[0]:0.2f}, s:{sigmasDeltas[1]:0.1f}')
+#                axes[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=3, fancybox=True, shadow=True)
+#        returnVec = np.array([new_points[0,-1],new_points[1,-1]])
+
+#    if debug == 1:
+#        if len(sigmasDeltasHist)>0:
+#            sigmasDeltasHistNP = np.array([v[1:] for v in sigmasDeltasHist.values()])
+#            timeSteps = list(sigmasDeltasHist.keys())
+#            axes[1].plot(timeSteps,sigmasDeltasHistNP[:,0], '--o', label = 'vals')
+#            axes[1].plot(timeSteps,sigmasDeltasHistNP[:,1], '--o', label = 'running mean')
+#            axes[1].plot(timeSteps,sigmasDeltasHistNP[:,2], '--o', label = 'running stdev')
+#            axes[1].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=3, fancybox=True, shadow=True)
+#            axes[1].grid()
+#        #plt.legend(loc=(1.1, 0.5))
+        
+#        filename = os.path.join(savePath, f"ID_{str(bubID).zfill(3)}_t_{str(timestep).zfill(3)}.png")
+#        plt.savefig(filename)
+#        #plt.suptitle( f"ID_{str(bubID).zfill(3)}_t_{str(timestep).zfill(3)}")
+#        #plt.show()
+#    return returnVec

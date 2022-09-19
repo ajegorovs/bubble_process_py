@@ -565,8 +565,8 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart = 57#46
-dataNum = 3
+dataStart = 56#46
+dataNum = 9
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -591,7 +591,7 @@ globalCounter = 0
 # debug section numbers: 11- RB IDs, 12- RB recovery, 21- Else IDs, 22- else recovery, 31- merge
 # debug on specific steps- empty list, do all steps, or time steps in list
 debugSections = [11,21,12,22,31]
-debugSteps = [1]
+debugSteps = [7]
 def debugOnly(section):
     global globalCounter, debugSections, debugSteps
     if debugSections[0] == -1 or debugSteps[0] == 0:
@@ -633,14 +633,14 @@ distanceBubMasks, distanceBubImages, distanceBubRectParams,  distanceBubCentroid
 distanceOldNewIDs = {}
 contoursAll, contours_old, frozenBubs, frozenBubsTimes, bubTypesLocal, bubTypesLocal_old, bubTypesLocal = {}, {}, {}, {}, {}, {} ,[]
 fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits = {}, {}, {}, {}, {}
-predictCentroidDiff = {}
+predictCentroidDiff,predictHullArea  = {}, {}; frozenIDs, frozenIDs_old  = [],[]
 def mainer(index):
     global shareData, globalCounter, contoursAll, contours_old, frozenBubs, frozenBubsTimes, fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits, contours_old
     global ringBubMasks_old, ringBubImages_old, ringBubRectParams_old, ringBubCentroids_old, ringCntrIDs, ringOldNewIDs_old
     global distanceBubMasks_old, distanceBubImages_old, distanceBubRectParams_old,  distanceBubCentroids_old, distanceOldNewIDs_old
     global distanceBubMasks, distanceBubImages, distanceBubRectParams,  distanceBubCentroids, distanceOldNewIDs
     global centroidsByID2,recParamsByID,areasByID,masksByID,imagesByID,cntrIDsByIDs,bubTypesByID,bubTypesLocal,bubTypesLocal_old,cntrChildrenIDsByIDs
-    global predictCentroidDiff
+    global predictCentroidDiff, predictHullArea, frozenIDs, frozenIDs_old
     orig0 = X_data[index]
     if 1==12:
         # orig = cv2.circle(orig.copy() * 0, (300,500), 250, 255, -1)
@@ -726,8 +726,8 @@ def mainer(index):
             stuckCentroids = {**fbStoreCentroids_old,**{str(key):val for key,val in jointCentroids.items()}}
             #joinAreas2 = {oldID: np.sum(mask)/255 for oldID, mask in jointMasks.items()}
             # I want to join old singles and clusters , check them vs new singles. see if there are multiple singles/+cluster point at new single, select most viable, compare to global fb storage and add to old or new
-            fields = [stuckRectParams,fbStoreRectParams,stuckAreas,fbStoreAreas,stuckCentroids,fbStoreCentroids,fbStoreCulprits]
-            frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, globalCounter, relArea = 0.2, relDist = 5)
+            fields = [stuckRectParams,fbStoreRectParams,stuckAreas,fbStoreAreas,stuckCentroids,fbStoreCentroids,fbStoreCulprits,frozenIDs_old]
+            frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, globalCounter, relArea = 0.2, relDist = 3) # TODO breaks on higher relDist, probly not being split correctly
             #_,_ = detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbStoreAreas,fbStoreCentroids_old,fbStoreCentroids,fbStoreCulprits,globalCounter)
             #frozenIDs,frozenIDsInfo = detectStuckBubs(jointRectParams,fbStoreRectParams,joinAreas,fbStoreAreas,jointCentroids,fbStoreCentroids,fbStoreCulprits,globalCounter)
             # IDs are held in fbStoreCulprits (appended each time)
@@ -798,12 +798,12 @@ def mainer(index):
         RBOldNewDist2 = RBOldNewDist.copy()
         if globalCounter >= 1: # << uses centroids as it goes, any changes due to back-tracking are not accounted.
             for oldID, oldCentroid in ringBubCentroids_old.items(): 
-                cntrds = np.array(list(centroidsByID2[oldID].values()))
+                trajectory = np.array(list(centroidsByID2[oldID].values()))
                 _,_, distCheck2, distCheck2Sigma  = predictCentroidDiff[oldID][globalCounter-1]
                 sigmasDeltas = [a[2:] for a in predictCentroidDiff[oldID].values()]
                 predVec_old = predictCentroidDiff[oldID][globalCounter-1][0]
-                predictCentroid = distStatPredictionVect2(cntrds, sigmasDeltas = sigmasDeltas[-1], sigmasDeltasHist = predictCentroidDiff[oldID],
-                                            numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  1, savePath = predictVectorPathFolder,
+                predictCentroid = distStatPredictionVect2(trajectory, sigmasDeltas = sigmasDeltas[-1], sigmasDeltasHist = predictCentroidDiff[oldID],
+                                            numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  0, savePath = predictVectorPathFolder,
                                             predictvec_old = predVec_old, bubID = oldID, timestep = globalCounter, zerothDisp = [-3,0])
                 print(f'oldID: {oldID}, distCheck2: {distCheck2}, distCheck2Sigma: {distCheck2Sigma}')
                 pathLen = len(predictCentroidDiff[oldID])
@@ -891,7 +891,8 @@ def mainer(index):
                         # if i in oldFoundRings: oldFoundRings.remove(i)
                         # <<<<< i dont expect to recover multiple new from one old, but in case check this block! (*EDIT: IDK IF RELEVANT)
                         newRBinTemp = [A for A in newFoundBubsRings if A in overlapingContourIDList]
-                        if len(newRBinTemp) > 1: print('<<<<<<<<<<<<len(newRBinTemp) > 1 !!!!!!!!!!!!!!!!!!!!!!!')
+                        assert len(newRBinTemp)<=1, '<<<<<<<<<<<<len(newRBinTemp) > 1 !!!!!!!!!!!!!!!!!!!!!!!'
+                        #if len(newRBinTemp) > 1: print('<<<<<<<<<<<<len(newRBinTemp) > 1 !!!!!!!!!!!!!!!!!!!!!!!')
                         if len(newRBinTemp) > 0:
                             recoveredBubsRelation[i] = newRBinTemp[0] # storage is mapped global key->global key instead of local-> global. this to recover index
                             newFoundBubsRings = [ ID for  ID in newFoundBubsRings if ID not in newRBinTemp]
@@ -962,11 +963,21 @@ def mainer(index):
             frozenSeparated = False
             for i,comb in enumerate(cc_unique.copy()):
                 for fID in frozenIDs:
-                    if fID in comb:
-                        cc_unique[i].remove(fID)
-                        cc_unique.append([fID])
+                    if type(fID) != list: fID = [fID]
+                    #fID = np.array(fID)
+                    intersection = np.intersect1d(fID, comb) # kind of fID, but part may be lost. if everything is clustered nicely - should be fine
+                    difference = np.setdiff1d(comb, fID)     # rest. order matters
+                    if len(intersection)>0:
+                        assert len(intersection) == len(fID), f"intersection: {intersection}, fID: {fID}, comb: {comb}"
+                        if len(difference)>0:
+                            cc_unique.remove(comb)
+                            cc_unique.append(intersection.tolist())
+                            cc_unique.append(difference.tolist())
                         frozenSeparated = True
-                        
+            frozenIDs = np.array([a if type(a) != list else min(a) for a in frozenIDs])
+
+            if len(frozenIDs)>0: frozenIDsInfo[:,1] = np.array([a if type(a) != list else min(a) for a in frozenIDsInfo[:,1]])
+            #frozenIDsInfo = np.array([a if type(a[1]) != list else [a[0]]+[min(a[1])]+[a[2:]] for a in frozenIDsInfo])
 
             jointNeighbors = {min(elem): elem for elem in cc_unique if len(elem)>0}
             clusterMsg = 'Cluster groups: ' if frozenSeparated == False else 'Cluster groups (frozenIDs detected): '
@@ -1012,17 +1023,20 @@ def mainer(index):
                 elseOldNewDist = []
                 jointNeighborsWoFrozen = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items() if mainNewID not in frozenIDs}
                 jointNeighborsOnlyFrozen = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items() if mainNewID in frozenIDs}
-                    
-                for oldID, oldCentroid in distanceBubCentroids_old.items():
-                    cntrds = list(centroidsByID2[oldID].values())
-                    distCheck = distStatPrediction(trajectory = cntrds,startAmp0 = 30, expAmp = 10, halfLife = 2, numsigmas = 2, plot=0,extraStr = f'E:ID {oldID} ')
+                # frozenIDs_old_glob-> double for. grab ID from local old IDS, and for loop check if its in oldLocIDs of some old global IDs
+                frozenIDs_old_glob = [oldGlobID for frID in frozenIDs_old for oldGlobID,oldLocIDs in  distanceOldNewIDs_old.items() if frID in oldLocIDs ]
+                # drop frozen bubs from prev frame
+                oldDistanceCentroidsWoFrozen = {key:val for key,val in distanceBubCentroids_old.items() if key not in frozenIDs_old_glob}
+                for oldID, oldCentroid in oldDistanceCentroidsWoFrozen.items():
+                    trajectory = list(centroidsByID2[oldID].values())
+                    #distCheck = distStatPrediction(trajectory = trajectory,startAmp0 = 30, expAmp = 10, halfLife = 2, numsigmas = 2, plot=0,extraStr = f'E:ID {oldID} ')
                     _,_, distCheck2, distCheck2Sigma  = predictCentroidDiff[oldID][globalCounter-1]
                     sigmasDeltas = [a[2:] for a in predictCentroidDiff[oldID].values()]
-                    #predictCentroid = distStatPredictionVect(cntrds, zerothDisp = [-1,0], sigmasDeltas = sigmasDeltas, numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 1, mode = 1,debug = testPred, maxNumPlots = 4)
-                    print(f'oldID: {oldID}, distCheck: {distCheck}, distCheck2: {distCheck2}, distCheck2Sigma: {distCheck2Sigma}')
+                    #predictCentroid = distStatPredictionVect(trajectory, zerothDisp = [-1,0], sigmasDeltas = sigmasDeltas, numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 1, mode = 1,debug = testPred, maxNumPlots = 4)
+                    print(f'oldID: {oldID}, distCheck2: {distCheck2}, distCheck2Sigma: {distCheck2Sigma}')
                     pathLen = len(predictCentroidDiff[oldID])
                     predVec_old = predictCentroidDiff[oldID][globalCounter-1][0]
-                    predictCentroid = distStatPredictionVect2(cntrds, sigmasDeltas = sigmasDeltas[-1], sigmasDeltasHist = predictCentroidDiff[oldID],
+                    predictCentroid = distStatPredictionVect2(trajectory, sigmasDeltas = sigmasDeltas[-1], sigmasDeltasHist = predictCentroidDiff[oldID],
                                             numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  1, savePath = predictVectorPathFolder,
                                             predictvec_old = predVec_old, bubID = oldID, timestep = globalCounter, zerothDisp = [-3,0])
                     #print(f'old vs new predict. predictCentroid:{predictCentroid}, oldCentroid:{oldCentroid}')
@@ -1035,9 +1049,9 @@ def mainer(index):
                         dist = np.linalg.norm(np.array(newCentroid) - np.array(oldCentroid)).astype(np.uint32)
                         dist2 = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid)).astype(np.uint32)
                         #print(f'old vs new dist. dist:{dist}, dist2:{dist2}')
-                        if dist <= distCheck:
-                            #print(tuple([oldID,mainNewID,dist,relArea]))
-                            elseOldNewDist.append([oldID,mainNewID])
+                        #if dist <= distCheck:
+                        #    #print(tuple([oldID,mainNewID,dist,relArea]))
+                        #    elseOldNewDist.append([oldID,mainNewID])
                         
                         if dist2 <= distCheck2 + 5*distCheck2Sigma and relArea <= 0.1:
                             print(f'\ndist 2. Perfect match: {oldID} <-> mainNewID: {mainNewID}, dist2: {dist2:0.1f}, relArea: {relArea:0.1f}')
@@ -1099,7 +1113,7 @@ def mainer(index):
                 jointNeighbors = {**{min(vals):vals for vals in jointNeighborsDelSubIDs if len(vals) > 0},**elseOldNewDoubleCriteriumSubIDs}
                 jointNeighbors = {**jointNeighbors, **jointNeighborsOnlyFrozen}
                 # forozen bubs offer only old local IDs. find local-global relation in jointSubIDs and relpace them.
-                oldLocIDs = frozenIDsInfo[:,0]
+                oldLocIDs = frozenIDsInfo[:,0] if len(frozenIDsInfo)>0 else np.array([])
                 asd = list(map(type,oldLocIDs));print(f'asd:{asd}')
                 oldGlobIDs0 = [
                                 {ii:ID for ID, vals in jointSubIDs.items() if ii in vals} if type(ii) != str else {ii:int(ii)} 
@@ -1555,6 +1569,7 @@ def mainer(index):
         fbStoreCentroids_old = fbStoreCentroids
         fbStoreRectParams_old = fbStoreRectParams
         contours_old = contours4
+        frozenIDs_old = frozenIDs
         
         if globalCounter >= 1231231:
             investigateBubIDs = []

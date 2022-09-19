@@ -637,11 +637,25 @@ def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [],
             axes[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=3, fancybox=True, shadow=True)
                 
     if numStepsInTraj > 0:
-        k = min(numStepsInTraj,maxInterpOrder); print(f' interpOrder = {k}') if debug == 1 else 0
-        spline, _ = interpolate.splprep([x, y], u=t, s=0,k=k)
-        new_points = interpolate.splev(t1, spline,ext=0)
+        k = min(numStepsInTraj,maxInterpOrder)
+        # reduce iterp order if prediction does sharp turns
+        (numPointsInTraj-np.sqrt(2*numPointsInTraj),numPointsInTraj+np.sqrt(2*numPointsInTraj))
+        for kMod in range(k,0,-1): # smoothing did not help on 3 point data, k=2 extepolation gives a 120 degree turn on one occasion
+       # maxSmoothing = numPointsInTraj+np.sqrt(2*numPointsInTraj)
+        #for sMod in np.arange(0,maxSmoothing+0.0001,maxSmoothing/5):
+            sMod = 0
+            spline, _ = interpolate.splprep([x, y], u=t, s=sMod,k=kMod)
+            new_points = np.array(interpolate.splev(t1, spline,ext=0))
+            #v1,v2 = zip(new_points[0][-2:],new_points[1][-2:])
+            vs = new_points[:,-2:] - new_points[:,-3:-1] #deltas are displ components
+            angleDeg = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))(*np.transpose(vs))
+            print(f' interpOrder = {k},smoothing = {sMod}, angle = {angleDeg}') if debug == 1 else 0
+            
+            if angleDeg<= 30: break
+            else:
+                if debug == 1: axes[0].plot(new_points[0],new_points[1], '-o', label = f'forecast (failed): s:{sMod:0.1f},k:{kMod:0.1f}', ms= 2,linewidth = 1)
         if debug == 1:
-            axes[0].plot(new_points[0][-2:],new_points[1][-2:], '--o', label = 'forecast', ms= 3)
+            axes[0].plot(new_points[0,-2:],new_points[1,-2:], '--o', label = 'forecast', ms= 3)
             axes[0].plot([x[-2],predictvec_old[0]],[y[-2],predictvec_old[1]], '--o', label = 'prev forecast')
             if len(sigmasDeltas)>0:
                 circleMean = Circle(tuple(predictvec_old), sigmasDeltas[0] , alpha=0.1) 
@@ -650,7 +664,7 @@ def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [],
                 axes[0].add_patch(circleNStd)
                 axes[0].text(*predictvec_old, s = f'm: {sigmasDeltas[0]:0.2f}, s:{sigmasDeltas[1]:0.1f}')
                 axes[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=3, fancybox=True, shadow=True)
-        returnVec = np.array([new_points[0][-1],new_points[1][-1]])
+        returnVec = np.array([new_points[0,-1],new_points[1,-1]])
 
     if debug == 1:
         if len(sigmasDeltasHist)>0:
@@ -669,7 +683,7 @@ def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [],
         #plt.show()
     return returnVec
 
-def detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbStoreAreas,fbStoreCentroids_old,fbStoreCentroids,fbStoreCulprits,globalCounter,relArea,relDist):
+def detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbStoreAreas,fbStoreCentroids_old,fbStoreCentroids,fbStoreCulprits,frozenIDs_old,globalCounter,relArea,relDist):
     # analyze current and previous frame: old controur-new contour, old cluster-> new contour
     # search rough neighbors combination by detecting overlapping bounding rectangles
     allCombs = list(itertools.product(fbStoreRectParams_old, fbStoreRectParams))#;print(f'allCombs,{allCombs}')
@@ -686,21 +700,24 @@ def detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbS
     # fiter these combinations based on centroid dist and relative area change
     intersectingCombs_stage2 = []
     for (keyOld,keyNew) in intersectingCombs:
+        if keyOld in frozenIDs_old: relArea2 = 1; relDist2 = np.linalg.norm(fbStoreRectParams_old[keyOld][-2:]) # in case of FB split, weaken contrains 
+        else: relArea2 = relArea; relDist2 = relDist
         areaOld, areaNew = fbStoreAreas_old[keyOld], fbStoreAreas[keyNew]
         relativeAreaChange = abs(areaOld-areaNew)/areaOld
         centroidOld,centroidNew = fbStoreCentroids_old[keyOld], fbStoreCentroids[keyNew]
         dist = np.linalg.norm(np.diff([centroidOld,centroidNew],axis=0),axis=1)[0]
-        if  relativeAreaChange < relArea and dist < relDist:#
+        if  relativeAreaChange < relArea2 and dist < relDist2:#
               intersectingCombs_stage2.append([keyOld,keyNew,relativeAreaChange,dist]) # these objects did not move or change area in-between last time steps
     #print(f'intersectingCombs_stage2,{intersectingCombs_stage2}')
     # if constraints are weak single new contour will be related to multiple old cntrs/clusters.
     # find these duplicate combinations. must be very rare case. can check it by setting high rel area and dist
-    duplicates = {keyNew:[a[1] for a in intersectingCombs_stage2].count(keyNew)}
+    # ====== MERGE =======
+    #dupMerge = {keyNew:[a[1] for a in intersectingCombs_stage2].count(keyNew)}
     keysNew = [a[1] for a in intersectingCombs_stage2]
     keysNewVals = np.array([a[0] for a in intersectingCombs_stage2],dtype=object)
     values, counts = np.unique(keysNew, return_counts=True)
-    duplicates = [ a for a,b in zip(values, counts) if b>1]
-    dupWhereIndicies = {a:np.argwhere(keysNew == a).reshape(-1).tolist() for a in duplicates}
+    dupMerge = [ a for a,b in zip(values, counts) if b>1]
+    dupWhereIndicies = {a:np.argwhere(keysNew == a).reshape(-1).tolist() for a in dupMerge}
     dupVals = {ID:keysNewVals[lst] for ID,lst in dupWhereIndicies.items()}
     print(f'dupVals:{dupVals}')
     # perform two-criteria  (dist/area) minimization task
@@ -712,30 +729,39 @@ def detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbS
         assert len(permIDsol2) < 2, f"detectStuckBubs-> centroidAreaSumPermutations  resulted in strange solution for new ID:{ID} - permIDsol2"
         dupSubset.append([permIDsol2[0],ID,permDist2,permRelArea2]) # 
         
-    intersectingCombs_stage2 = [a for a in intersectingCombs_stage2 if a[1] not in dupWhereIndicies]
-    intersectingCombs_stage2 = intersectingCombs_stage2 + dupSubset
+    intersectingCombs_stage2 = [a for a in intersectingCombs_stage2 if a[1] not in dupWhereIndicies]    # drop duplicates altogether
+    intersectingCombs_stage2 = intersectingCombs_stage2 + dupSubset                                     # add solution
+
+
+    #dupSplit = {keyNew:[a[0] for a in intersectingCombs_stage2].count(keyNew)}
+    keysOld = [a[0] for a in intersectingCombs_stage2]
+    keysOldVals = np.array([a[1] for a in intersectingCombs_stage2],dtype=object)
+    values, counts = np.unique(keysOld, return_counts=True)
+    dupSplit = [ a for a,b in zip(values, counts) if b>1]
+    dupWhereIndicies = {a:np.argwhere(keysOld == a).reshape(-1).tolist() for a in dupSplit}
+    dupVals = {ID:keysOldVals[lst] for ID,lst in dupWhereIndicies.items()}
+    print(f'dupVals:{dupVals}')
+    # perform two-criteria  (dist/area) minimization task
+    dupSubset = []
+    for ID, subIDs in dupVals.items():
+        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations([], subIDs, fbStoreCentroids, fbStoreAreas,
+                                     fbStoreCentroids_old[ID], relDist, fbStoreAreas_old[ID], relAreaCheck = 2, doHull = 0, debug = 0) # !! new and _old swapped palces , relArea  should be around 1 !!
+        print(f'pIDs: {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
+        if  permRelArea2 > 1 - relArea and permRelArea2 < 1 + relArea and permDist2 < relDist:
+            dupSubset.append([ID, permIDsol2, permDist2,permRelArea2]) # 
         
+    intersectingCombs_stage2 = [a for a in intersectingCombs_stage2 if a[0] not in dupWhereIndicies]
+    intersectingCombs_stage2 = intersectingCombs_stage2 + dupSubset        
     # compare these two-frame combinations with global list of stuck bubbles
-    #compareToGlobal = []
-    #for keyOld, keyNew, *_ in intersectingCombs_stage2:
-    #    searchCentroid = fbStoreCentroids_old[keyOld]
-    #    dists = {centroid:np.linalg.norm(np.diff([centroid,searchCentroid],axis=0),axis=1)[0] for centroid in fbStoreCulprits} # currently comparing only to initial centroid (key)
-    #    if len(dists)>0:
-    #        minKey = min(dists, key=dists.get) #min dist centroid
-    #        if dists[minKey] < 5:
-    #            #compareToGlobal.append([keyOld, keyNew, minKey ])
-    #            fbStoreCulprits[minKey][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
-    #        else:
-    #            fbStoreCulprits[tuple(searchCentroid)] = {globalCounter-1:[keyOld,fbStoreAreas_old[keyOld]]}
-    #            fbStoreCulprits[tuple(searchCentroid)][globalCounter] = [keyNew,fbStoreAreas[keyNew]]
+
     returnInfo = []
     if len(fbStoreCulprits.copy()) == 0 and len(intersectingCombs_stage2) > 0 : #   
-        for keyOld, keyNew, dist, relArea in intersectingCombs_stage2:
+        for keyOld, keyNew, relArea, dist  in intersectingCombs_stage2:
             fbStoreCulprits[tuple(fbStoreCentroids_old[keyOld])] = {globalCounter-1:[-1,keyOld]}
             fbStoreCulprits[tuple(fbStoreCentroids_old[keyOld])][globalCounter] = [keyOld,keyNew]
             returnInfo.append([keyOld,keyNew, dist, relArea, fbStoreCentroids_old[keyOld]])
     elif len(intersectingCombs_stage2) > 0 and len(fbStoreCulprits)>0:
-        for keyOld, keyNew, *_ in intersectingCombs_stage2:
+        for keyOld, keyNew, relArea, dist in intersectingCombs_stage2:
             searchCentroid = fbStoreCentroids_old[keyOld]
             dists = {centroid:np.linalg.norm(np.diff([centroid,searchCentroid],axis=0),axis=1)[0] for centroid in fbStoreCulprits}
             minKey = min(dists, key=dists.get) #min dist centroid
@@ -747,28 +773,13 @@ def detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbS
                 fbStoreCulprits[tuple(searchCentroid)] = {globalCounter-1:[-1, keyOld]}
                 fbStoreCulprits[tuple(searchCentroid)][globalCounter] = [keyOld, keyNew]
                 returnInfo.append([keyOld,keyNew, dist, relArea, tuple(searchCentroid)])
-            
-    
-    #returnIDs = []
-    #returnInfo = []
-    #if len(fbStoreCulprits) > 0:
-    #    for keyNew, centroid in fbStoreCentroids.items():
-    #        culpritCentroids = np.array(list(fbStoreCulprits.keys()))
-    #        dists = np.linalg.norm(culpritCentroids - centroid,axis = 1)
-    #        minDistArg = np.argmin(dists)
-    #        minDist = dists[minDistArg]
-    #        minCentroid = tuple(culpritCentroids[minDistArg])
-    #        data = fbStoreCulprits[minCentroid]
-    #        areas = [area for [_, area] in data.values()]
-    #        meanArea = np.mean(areas)
-    #        relativeAreaChange = abs(fbStoreAreas[keyNew]-meanArea)/fbStoreAreas[keyNew]
-    #        if relativeAreaChange < 0.15 and minDist < 5:
-    #            returnIDs.append(keyNew)
-    #            returnInfo.append([keyNew,relativeAreaChange,minDist,len(data)])
+    # search frozen bubbles that had split. take fbStoreCulprits and make intersercting permutation with new contours
+    # problem: this wont catch bubbles E->split E. because they are not in fbStoreCulprits yet
 
-    #return returnIDs, returnInfo
+    
+
     returnInfo = np.array(returnInfo, dtype=object)
-    returnNewIDs = returnInfo[:,1]
+    returnNewIDs = returnInfo[:,1] if len(returnInfo)>0 else np.array([])
     return returnNewIDs, returnInfo
 
 def getMasksParams(contours,IDs,err,orig):

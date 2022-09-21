@@ -664,7 +664,7 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
         if fixSharp == 1:
             axes.plot(*np.array([p0,p1]).T,'--',label = f'3 step linear fit (*)')
             axes.plot([p0[0]+dv[0],p0[0],p0[0]+dv0[0]],[p0[1]+dv[1],p0[1],p0[1]+dv0[1]],'-',label = f'angleDeg between (*) and exterp:{angleDeg:0.1f}',lw=3)
-        axes.plot(*splitSubsetComponents,'X',label = 'Original pts (subset)',ms= 7)
+        axes.plot(*splitSubsetComponents,'x',label = 'Original pts (subset)',ms= 13);print(f'splitSubsetComponents:{splitSubsetComponents}')
         axes.legend(prop={'size': 6})
         axes.set_title(pltString+"extrapolate() debug")
         #plt.show()
@@ -676,10 +676,11 @@ def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [],
     #debug = 1 if timestep >= 0 and bubID == 5 else 0
     if debug == 1: _, axes = plt.subplots(1,2 , figsize=( 13,5), sharex=False, sharey=False) # a = x if else y-> does not work for some reason
     else: _, axes = 1,[1]
-    returnVec = extrapolate(trajectory, maxInterpSteps = 3, maxInterpOrder = 1, smoothingScale = .3, zerothDisp = zerothDisp, fixSharp = 1, angleLimit = 10, debug = debug,axes = axes[0], pltString = f'bubID:{bubID},timestep:{timestep}|')
+    returnVec = extrapolate(trajectory, maxInterpSteps = maxInterpSteps, maxInterpOrder = 1, smoothingScale = .3, zerothDisp = zerothDisp, fixSharp = 1, angleLimit = 10, debug = debug,axes = axes[0], pltString = f'bubID:{bubID},timestep:{timestep}|')
+    trajectory = trajectory[-1*maxInterpSteps:] #may redo to -min something
     if debug == 1:
         axes[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=3, fancybox=True, shadow=True)
-        if len(trajectory)>1: axes[0].plot([trajectory[-2][0],predictvec_old[0]],[trajectory[-2][1],predictvec_old[1]], '--o', label = 'prev forecast')
+        if len(trajectory)>1: axes[0].plot([trajectory[-1][0],predictvec_old[0]],[trajectory[-1][1],predictvec_old[1]], '--o', label = 'pC-C dist')
         if len(sigmasDeltas)>0:
             circleMean = Circle(tuple(predictvec_old), sigmasDeltas[0] , alpha=0.1) 
             circleNStd = Circle(tuple(predictvec_old), sigmasDeltas[1]*numdeltas , alpha=0.1,fill=False) 

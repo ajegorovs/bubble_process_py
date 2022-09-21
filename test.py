@@ -467,7 +467,23 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
 #a = np.array([[2, 82.14, np.array([2.46666667, 0.95      ])],[2, 82.14, np.array([3.46666667, 1.95      ])]], dtype=object)
 #print(f'pred: {pred}, a:{a}')
 
-debug = 1
-if debug == 1: _, axes = plt.subplots(1,2 , figsize=( 13,5), sharex=False, sharey=False)
-else: _, axes = 1,[1]
-1+1
+#def updateStat(count, mean, std, newValue):
+#    M2 = count * std**2
+#    count += 1
+#    delta = newValue - mean
+#    mean += delta / count
+#    delta2 = newValue - mean
+#    M2 += delta * delta2
+#    if count < 2:
+#        return float("nan")
+#    else:
+#        (mean, variance) = (mean, M2 / count)
+#        return (mean, np.sqrt(variance))
+#ss = []
+##print(updateStat(len(ss), np.mean(ss), np.std(ss), 1))
+
+#if 1==1 and type('a') == str and 1 + 1 == 2 and 1/0 == 0: print('great success!')
+#else: print('fail!')
+ars = {0: [18285, 18285, 3657.0], 1: [18382, 18333.5, 48.5], 2: [18395, 18354.0, 49.07816894166557]}
+vls = [a[0] for a in ars.values()]
+print(np.mean(vls), np.std(vls))

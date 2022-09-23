@@ -310,10 +310,10 @@ def centroidAreaSumPermutations(bodyCntrs, IDsOfInterest, centroidDict, areaDict
     if len(passBothIndices)>0:
         if len(passBothIndices) == 1:
             print(f'only 1 comb after stage 1: {list(permutations[passBothIndices[0]])}') if debug == 1 else 0 
-            return list(permutations[passBothIndices[0]]), relAreas[passBothIndices[0]], distances[passBothIndices[0]]
+            return list(permutations[passBothIndices[0]]), distances[passBothIndices[0]], relAreas[passBothIndices[0]]
         remainingPermutations = np.array(permutations, dtype=object)[passBothIndices]
         print(f'remainingPermutations: {remainingPermutations}') if debug == 1 else 0
-
+        #remainingCentroids = np.array(cntrds2)[passBothIndices]
         remainingDistances = np.array(distances)[passBothIndices]
         remainingRelAreas = np.array(relAreas)[passBothIndices]
         print(f'remainingDistances: {remainingDistances}') if debug == 1 else 0
@@ -340,9 +340,9 @@ def centroidAreaSumPermutations(bodyCntrs, IDsOfInterest, centroidDict, areaDict
         #rescaledArgSortB = np.matmul(np.diag(weightedB),sortedB);print(f'rescaledArgSortB (position): {[np.round(a, 2) for a in rescaledArgSortB]}') if debug == 1 else 0
         #res = [np.mean([a,b]) for a,b in zip(rescaledArgSortA,rescaledArgSortB)];print(f'mean rescaled positions :\n{[np.round(a, 2) for a in res]}') if debug == 1 else 0
         #resIndex = np.argmin(res);print(f'resIndex: {resIndex}') if debug == 1 else 0
-        return list(remainingPermutations[resIndex]), remainingDistances[resIndex], remainingRelAreas[resIndex]
+        return list(remainingPermutations[resIndex]), remainingDistances[resIndex], remainingRelAreas[resIndex]#,  remainingCentroids[resIndex]
     else: 
-        return [],-1,-1
+        return [],-1,-1#,[]
 
 
 def centroidSumPermutationsMOD(oldNewRelationArray, centroidDict, areaDict, refCentroidsDict,distCheck):
@@ -690,6 +690,7 @@ def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [],
             axes[0].add_patch(circleNStd)
             axes[0].text(*predictvec_old, s = f'm: {sigmasDeltas[0]:0.2f}, s:{sigmasDeltas[1]:0.1f}')
             axes[0].legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, fancybox=True, shadow=True)
+            axes[0].set_aspect('equal')
         if len(sigmasDeltasHist)>0:
             sigmasDeltasHistNP = np.array([v[1:] for v in sigmasDeltasHist.values()])
             timeSteps = list(sigmasDeltasHist.keys())
@@ -829,7 +830,8 @@ def detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbS
         permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations([], subIDs, fbStoreCentroids, fbStoreAreas,
                                      fbStoreCentroids_old[ID], relDist, fbStoreAreas_old[ID], relAreaCheck = 2, doHull = 0, debug = 0) # !! new and _old swapped palces , relArea  should be around 1 !!
         print(f'pIDs: {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
-        if  permRelArea2 > 1 - relArea and permRelArea2 < 1 + relArea and permDist2 < relDist:
+        #if  permRelArea2 > 1 - relArea and permRelArea2 < 1 + relArea and permDist2 < relDist:
+        if  permRelArea2 <  relArea and permDist2 < relDist:
             dupSubset.append([ID, permIDsol2, permDist2,permRelArea2]) # 
         
     intersectingCombs_stage2 = [a for a in intersectingCombs_stage2 if a[0] not in dupWhereIndicies]

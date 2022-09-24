@@ -484,6 +484,17 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
 
 #if 1==1 and type('a') == str and 1 + 1 == 2 and 1/0 == 0: print('great success!')
 #else: print('fail!')
-ars = {0: [18285, 18285, 3657.0], 1: [18382, 18333.5, 48.5], 2: [18395, 18354.0, 49.07816894166557]}
-vls = [a[0] for a in ars.values()]
-print(np.mean(vls), np.std(vls))
+#timeLibs = {0: [-1, '6'], 1: ['6', 28]}
+#print((max(timeLibs, key=timeLibs.get)))
+#dicc = {1:1,2:2,3:3}
+#dicc2 = {11:11,21:21,31:31}
+#drop = [1,3,21]
+#dropKeys = lambda x: {key:val for key,val in x.items() if key not in drop}
+#print(dicc,dicc2)
+#print(f'drop: {drop}')
+#[dicc,dicc2] = list(map(dropKeys,[dicc,dicc2]))
+#print(dicc,dicc2)
+a = 6
+print(1<=a<= 5)
+
+

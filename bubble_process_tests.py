@@ -566,7 +566,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart = 56#46
-dataNum = 9
+dataNum = 16
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -591,8 +591,8 @@ globalCounter = 0
 # debug section numbers: 11- RB IDs, 12- RB recovery, 21- Else IDs, 22- else recovery, 31- merge
 # debug on specific steps- empty list, do all steps, or time steps in list
 debugSections = [11,21,12,22,31]
-debugSteps = [1]
-debugVecPredict = 1
+debugSteps = [15]
+debugVecPredict = 0
 def debugOnly(section):
     global globalCounter, debugSections, debugSteps
     if debugSections[0] == -1 or debugSteps[0] == 0:
@@ -649,7 +649,7 @@ def mainer(index):
         # orig = cv2.circle(orig.copy() , (700,359), 30, 255, -1)
         # orig0 = orig.copy()
         # cv2.imshow('orig',orig)
-    origRGB = convertGray2RGB(orig0)
+    #origRGB = convertGray2RGB(orig0)
     if 1==1:
         global orig
         orig = orig0 -cv2.blur(mean, (5,5),cv2.BORDER_REFLECT)
@@ -684,7 +684,7 @@ def mainer(index):
     else: gfx = 0
     if workBigArray == 0: gfx = 1
 
-    global contours4, mergeCandidates, bubTypesLocal, bubTypesLocal_old, debugVecPredict
+    global contours4, mergeCandidates, bubTypesLocal, bubTypesLocal_old, debugVecPredict,contoursFilter_RectParams_dropIDs_old
     mergeCandidates,mergeCandidatesSubcontourIDs = {},{}
     recoveredMaskElse, recoveredImgElse, recoverRectParamsElse,recoverCentroidsElse, recoverOldNewIDsElse, recoverBubHullAreas = {}, {}, {}, {}, {}, {}
     bubTypesLocal, bubTypesLocal, bubTypesLocal_old = {}, {}, {}
@@ -714,20 +714,51 @@ def mainer(index):
     jointSubIDs = {**ringOldNewIDs_old,**distanceOldNewIDs_old}
            
 
-    fbStoreAreas = {key: area for key, area in fbStoreAreas.items() if area > minArea}
+    fbStoreAreas = {key: area for key, area in fbStoreAreas.items()} # if area > minArea
     fbStoreRectParams = {key: val for key, val in contoursFilter_RectParams.items() if key in fbStoreAreas}
     fbStoreCentroids = {key: getCentroidPosContours(bodyCntrs = [contours4[key]])[0] for key in fbStoreRectParams}
     frozenIDs = []
     if globalCounter >= 1:
         print(f'{globalCounter}:-------- Begin search for frozen bubbles ---------')
-        
+        # dicts below do not hold info about frozen bubbles !!!
         joinAreas = {oldID: sum([fbStoreAreas_old[subID] for subID in subIDs]) for oldID, subIDs in jointSubIDs.items()}# no children- bigger area for rings, no hull- fails if type changes
         stuckRectParams = {**fbStoreRectParams_old,**{str(key):val for key,val in jointRectParams.items()}}
         stuckAreas = {**fbStoreAreas_old,**{str(key):val for key,val in joinAreas.items()}}
         stuckCentroids = {**fbStoreCentroids_old,**{str(key):val for key,val in jointCentroids.items()}}
+        
+        dropKeysOld = lambda x: {key:val for key,val in x.items() if key not in contoursFilter_RectParams_dropIDs_old}
+        dropKeysNew = lambda x: {key:val for key,val in x.items() if key not in contoursFilter_RectParams_dropIDs}
+        [stuckRectParams,stuckAreas,stuckCentroids] = list(map(dropKeysOld,[stuckRectParams,stuckAreas,stuckCentroids] ))
+        [fbStoreRectParams2,fbStoreAreas2,fbStoreCentroids2] = list(map(dropKeysNew,[fbStoreRectParams,fbStoreAreas,fbStoreCentroids] ))
+
+        allLastFrozenIDs = {centroidID: (lambda x: [x,timeLibs[x][1]])(max(timeLibs)) for centroidID, timeLibs in fbStoreCulprits.items()} # if max(timeLibs)<globalCounter -1
+        print(f'allLastFrozenIDs:{allLastFrozenIDs}')
+        allLastFrozenIDs = {centroidID: [timeStep,IDs] for centroidID, [timeStep,IDs] in allLastFrozenIDs.items() if 1 < timeStep < globalCounter -1}
+        
+        # ... grab all IDs that have specific time step. find which ID has subIDs that we search
+        allLastFrozenParamsIDs0 = [{centroidID: str([key for key,cIDs in {ID: vals[timeStep] for ID,vals in cntrIDsByIDs.items() if timeStep in vals}.items() if cIDs == IDs][0]) if type(IDs[0]) != str else IDs[0]} for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()]
+        allLastFrozenParamsIDs = {};[allLastFrozenParamsIDs.update(elem) for elem in allLastFrozenParamsIDs0]
+        #print(f'allLastFrozenIDs2:{allLastFrozenIDs2}')
+        frozenKeys = {int(globalIDstr): allLastFrozenIDs[centroidID][0] for centroidID,globalIDstr in allLastFrozenParamsIDs.items()}
+        calcMoments = lambda contourList, contourIDs: getCentroidPosContours(bodyCntrs = contourList[contourIDs], hullArea = 0)
+
+        #contoursAll #cntrIDsByIDs[timeStep]
+        #contourSubset = [contoursAll[timeStep][k] for k in IDs] #
+        #contourStack = np.vstack([contoursAll[timeStep][k] for k in IDs])#IDs if type(IDs[0]) != str else cntrIDsByIDs[timeStep][int(IDs[0])]
+        print(f'allLastFrozenIDs:{allLastFrozenIDs}')
+        # change str 'globalID' into localID of that step. not likely to happen. 
+        allLastFrozenIDs = {centroidID: [timeStep, IDs if type(IDs[0]) != str else cntrIDsByIDs[timeStep][int(IDs[0])]]  for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()}
+        print(f'allLastFrozenIDs:{allLastFrozenIDs}')
+        allLastFrozenParams1 = {centroidID: calcMoments(contoursAll[timeStep],IDs) for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()}
+        allLastFrozenParams2 = {centroidID: cv2.boundingRect(np.vstack([contoursAll[timeStep][k] for k in IDs])) for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()}
+        # old #allLastFrozenParamsIDs = {centroidID: IDs  for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()}
+        #allLastFrozenAreas = {centroidID: calcMoments(contoursAll[timeStep],IDs if type(IDs[0]) != str else cntrIDsByIDs[timeStep][int(IDs[0])]) for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()}
+        stuckRectParams = {**stuckRectParams, **allLastFrozenParams2}
+        stuckAreas = {**stuckAreas,**{centroidID: area for centroidID, [_,area] in allLastFrozenParams1.items()}}
+        stuckCentroids  = {**stuckCentroids,**{centroidID: centroidLatest for centroidID, [centroidLatest,_] in allLastFrozenParams1.items()}}
         #joinAreas2 = {oldID: np.sum(mask)/255 for oldID, mask in jointMasks.items()}
         # I want to join old singles and clusters , check them vs new singles. see if there are multiple singles/+cluster point at new single, select most viable, compare to global fb storage and add to old or new
-        fields = [stuckRectParams,fbStoreRectParams,stuckAreas,fbStoreAreas,stuckCentroids,fbStoreCentroids,fbStoreCulprits,frozenIDs_old]
+        fields = [stuckRectParams,fbStoreRectParams2,stuckAreas,fbStoreAreas2,stuckCentroids,fbStoreCentroids2,fbStoreCulprits,frozenIDs_old,allLastFrozenParamsIDs]
         frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, globalCounter, relArea = 0.2, relDist = 3) # TODO breaks on higher relDist, probly not being split correctly
         #_,_ = detectStuckBubs(fbStoreRectParams_old,fbStoreRectParams,fbStoreAreas_old,fbStoreAreas,fbStoreCentroids_old,fbStoreCentroids,fbStoreCulprits,globalCounter)
         #frozenIDs,frozenIDsInfo = detectStuckBubs(jointRectParams,fbStoreRectParams,joinAreas,fbStoreAreas,jointCentroids,fbStoreCentroids,fbStoreCulprits,globalCounter)
@@ -744,7 +775,7 @@ def mainer(index):
             print(f'Detected Frozen bubbles:\n{peps}')
         print(f'{globalCounter}:------------- Frozen bubbles detected ------------\n') if len(frozenIDsInfo) > 0 else print(f'{globalCounter}:------------- No frozen bubbles found ------------\n')
         
-        
+    contoursFilter_RectParams_dropIDs_old = contoursFilter_RectParams_dropIDs # prepare/store for next time step    
         # 1.1 ------------- GRAB RING BUBBLES RB ----------------------
     #for (cntPi,cntP) in enumerate(contours4[whereParentAreaFiltered]): #subset contours
     for (newID,cntP) in zip(whereParentAreaFiltered,contours4[whereParentAreaFiltered]):
@@ -1079,20 +1110,21 @@ def mainer(index):
                             predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), np.around(permDist2,2)]
                             elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),dist,permRelArea2])
                             elseOldNewDoubleCriteriumSubIDs[min(permIDsol2)] = permIDsol2
-
+                
                 #----------------- looking for new rings related to old else bubs ---------------------
                 for unresNewRBID in newFoundBubsRings:
-                    assert 11<0, "going into untested code!!!!! (for unresNewRBID in newFoundBubsRings)"
+                    #assert 11<0, "going into untested code!!!!! (for unresNewRBID in newFoundBubsRings)"
                     subNewIDs = unresNewRBID#jointSubIDs[]
                     newCentroid, newArea = getCentroidPosContours(bodyCntrs = [contours4[unresNewRBID]], hullArea = 1)
                     #relArea = abs(areaCheck - newArea)/areaCheck
                     dist2 = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid)).astype(np.uint32)
                     areaCrit = np.abs(newArea-oldMeanArea)/ oldAreaStd
                     if dist2 <= distCheck2 + 5*distCheck2Sigma and  areaCrit < 3:
-                        print(f'\ndist 2. Perfect match: {oldID} <-> mainNewID: {mainNewID}, dist2: {dist2:0.1f}, areaCrit: {areaCrit:0.1f}')
+                        print(f'\ndist 2. Perfect match: {oldID} <-> unresNewRBID: {unresNewRBID}, dist2: {dist2:0.1f}, areaCrit: {areaCrit:0.1f}')
                         predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), dist2]
-                        elseOldNewDoubleCriterium.append([oldID,mainNewID,dist,areaCrit])
-                        elseOldNewDoubleCriteriumSubIDs[mainNewID] = subNewIDs
+                        elseOldNewDoubleCriterium.append([oldID,unresNewRBID,dist,areaCrit])
+                        elseOldNewDoubleCriteriumSubIDs[unresNewRBID] = [subNewIDs]
+                        newFoundBubsRings.remove(unresNewRBID)
                     elif dist2 > 70 or areaCrit > 15:
                         0#;print('dist 2. soft break')
                     else:
@@ -1104,7 +1136,13 @@ def mainer(index):
                             predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), permDist2]
                             elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),dist,permRelArea2])
                             elseOldNewDoubleCriteriumSubIDs[min(permIDsol2)] = permIDsol2
-
+                            newFoundBubsRings.remove(unresNewRBID)
+            #if globalCounter == 15:
+            #    blank  = np.full(err.shape,128, np.uint8)
+            #    blank = convertGray2RGB(blank)
+            #    [cv2.drawContours( blank, contours4, i, (0,0,0), -1) for i in [23]]
+            #    [[cv2.drawContours( blank, contoursAll[globalCounter-1], i, (16,125,112), -1) for i in distanceOldNewIDs_old[k]] for k in [3]]
+            #    cv2.imshow('asd', blank)
             print(f'elseOldNewDoubleCriterium: {[listFormat(data, formatList = ["{:.0f}", "{:0.0f}", "{:.2f}","{:0.2f}"], outType = float) for data in elseOldNewDoubleCriterium]}')
             print(f'elseOldNewDoubleCriteriumSubIDs: {elseOldNewDoubleCriteriumSubIDs}')
                 
@@ -1124,8 +1162,13 @@ def mainer(index):
             print(f'oldGlobIDs0: {oldGlobIDs0}')
             oldGlobIDs = {};[oldGlobIDs.update(elem) for elem in oldGlobIDs0]
             for oldLocID, newLocID, dist, rArea, centroid in frozenIDsInfo:
-                oldID = oldGlobIDs[oldLocID]
-                _,_, distCheck2, distCheck2Sigma  = predictCentroidDiff2[oldID][globalCounter-1]
+                # in case this FB is from latest active FBs, it needs different latest time
+                if oldLocID in allLastFrozenParamsIDs.values():
+                    timeStep = frozenKeys[int(oldLocID)]#allLastFrozenIDs[centroid][0]
+                    _,_, distCheck2, distCheck2Sigma  = predictCentroidDiff2[oldID][timeStep]
+                else:
+                    oldID = oldGlobIDs[oldLocID]
+                    _,_, distCheck2, distCheck2Sigma  = predictCentroidDiff2[oldID][globalCounter-1]
                 predictCentroidDiff_local[oldID] = [tuple(map(int,centroid)), dist]
                 elseOldNewDoubleCriterium.append([oldGlobIDs[oldLocID], newLocID, dist, rArea])
             #[elseOldNewDoubleCriterium.append([oldGlobIDs[oldLocID], newLocID, dist, rArea]) for oldLocID, newLocID, dist, rArea, *_ in frozenIDsInfo]
@@ -1571,8 +1614,9 @@ def mainer(index):
                 hullAreaMean = np.mean(prevVals)
                 hullAreaStd = np.std(prevVals)
             else:
-                prevMean = predictHullArea[key][globalCounter-1][1]
-                prevStd = predictHullArea[key][globalCounter-1][2]
+                timeStep = globalCounter-1 if key not in frozenKeys else frozenKeys[key]
+                prevMean = predictHullArea[key][timeStep][1]
+                prevStd = predictHullArea[key][timeStep][2]
                 hullAreaMean, hullAreaStd = updateStat(historyLen, prevMean, prevStd, updateValue) # just fancy way of updating mean and sdtev w/o recalc whole path data. most likely does not impact anything
             predictHullArea[key][globalCounter] = [updateValue, hullAreaMean, hullAreaStd]
         # == if there is no entry in predictCentroidDiff2 and guess ==

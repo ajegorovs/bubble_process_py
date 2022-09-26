@@ -552,6 +552,9 @@ def cyclicColor(index):
     # np.random.shuffle(colors)
     return colors[index % len(colors)].tolist()
 
+
+toList = lambda x: [x] if type(x) != list else x
+
 thresh0             = 1
 thresh1             = 15
 
@@ -565,8 +568,8 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart = 56#46
-dataNum = 16
+dataStart           = 56#46
+dataNum             = 24
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -591,7 +594,7 @@ globalCounter = 0
 # debug section numbers: 11- RB IDs, 12- RB recovery, 21- Else IDs, 22- else recovery, 31- merge
 # debug on specific steps- empty list, do all steps, or time steps in list
 debugSections = [11,21,12,22,31]
-debugSteps = [15]
+debugSteps = [23]
 debugVecPredict = 0
 def debugOnly(section):
     global globalCounter, debugSections, debugSteps
@@ -603,8 +606,8 @@ def debugOnly(section):
         return False
 
 #  21- distance lines, 22- colored neighbors, 23 - match template & overlap contours, 31 - merge stuff
-debugSectionsGFX = [12, 21, 22, 23, 31]
-debugStepsGFX = [-1]
+debugSectionsGFX = [ 31] #12, 21, 22, 23,
+debugStepsGFX = [23]
 def debugOnlyGFX(section):
     global globalCounter, debugSections, debugSteps
     if debugSectionsGFX[0] == -1 or debugStepsGFX[0] == 0:
@@ -1129,7 +1132,7 @@ def mainer(index):
                         0#;print('dist 2. soft break')
                     else:
                         debug = 1 if (globalCounter == 1123123 and oldID == 3) else 0
-                        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(contours4, subNewIDs, fbStoreCentroids, fbStoreAreas,
+                        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(contours4, toList(subNewIDs), fbStoreCentroids, fbStoreAreas,
                                                     predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = debug)
                         if len(permIDsol2)>0:
                             print(f'\ndist 2. Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, permIDsol2: {permIDsol2}, permDist2: {permDist2}')
@@ -1166,10 +1169,13 @@ def mainer(index):
                 if oldLocID in allLastFrozenParamsIDs.values():
                     timeStep = frozenKeys[int(oldLocID)]#allLastFrozenIDs[centroid][0]
                     _,_, distCheck2, distCheck2Sigma  = predictCentroidDiff2[oldID][timeStep]
+                    predictCentroidDiff_local[int(oldLocID)] = [tuple(map(int,centroid)), dist]
+                
                 else:
                     oldID = oldGlobIDs[oldLocID]
                     _,_, distCheck2, distCheck2Sigma  = predictCentroidDiff2[oldID][globalCounter-1]
-                predictCentroidDiff_local[oldID] = [tuple(map(int,centroid)), dist]
+                    predictCentroidDiff_local[oldID] = [tuple(map(int,centroid)), dist]
+                
                 elseOldNewDoubleCriterium.append([oldGlobIDs[oldLocID], newLocID, dist, rArea])
             #[elseOldNewDoubleCriterium.append([oldGlobIDs[oldLocID], newLocID, dist, rArea]) for oldLocID, newLocID, dist, rArea, *_ in frozenIDsInfo]
             print(f'Cluster groups (updated): {jointNeighbors}') if jointNeighbors != jointNeighbors_old else print('Cluster groups unchanged')
@@ -1289,7 +1295,7 @@ def mainer(index):
                         
     
                     oldFoundElse.remove(i)
-
+                    [[newFoundBubsRings.remove(ii) for ii in toList(inter)] for inter in np.intersect1d(overlapingContourIDList,newFoundBubsRings) if len(toList(inter))>0]
                     # print('overlapingContourIDList',overlapingContourIDList)
                     # resolveElseIDs - get main local cluster IDs which own contours in overlapingContourIDList
                     resolveElseIDs = set(sum([[ID for ID,subIDs in jointNeighbors.items() if foundID in subIDs] for foundID in overlapingContourIDList],[]))
@@ -1632,13 +1638,14 @@ def mainer(index):
             pCentroid = predictCentroidDiff_local[key][0]
             updateValue = predictCentroidDiff_local[key][1]
             historyLen = len(predictCentroidDiff2[key])
+            timeStep = globalCounter-1 if key not in frozenKeys else frozenKeys[key]
             if historyLen == 1:
                 prevVals = [predictCentroidDiff2[key][globalCounter-1][1],updateValue]
                 pc2CMean = np.mean(prevVals)
                 pc2CStd = np.std(prevVals)
             else:
-                prevMean = predictCentroidDiff2[key][globalCounter-1][2]
-                prevStd = predictCentroidDiff2[key][globalCounter-1][3]
+                prevMean = predictCentroidDiff2[key][timeStep][2]
+                prevStd = predictCentroidDiff2[key][timeStep][3]
                 pc2CMean, pc2CStd = updateStat(historyLen, prevMean, prevStd, updateValue)
             predictCentroidDiff2[key][globalCounter] = [pCentroid, np.around(updateValue,2), np.around(pc2CMean,2), np.around(pc2CStd,2)]
 

@@ -494,12 +494,19 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
 #print(f'drop: {drop}')
 #[dicc,dicc2] = list(map(dropKeys,[dicc,dicc2]))
 #print(dicc,dicc2)
-toList = lambda x: [x] if type(x) != list else x
-overlapingContourIDList = [22, 26, 28]
-newFoundBubsRings = [21,22]
-[
-    [newFoundBubsRings.remove(ii) for ii in toList(inter)]
-   for inter in np.intersect1d(overlapingContourIDList,newFoundBubsRings) if len(toList(inter))>0]
-print(newFoundBubsRings)
+#toList = lambda x: [x] if type(x) != list else x
+#overlapingContourIDList = [22, 26, 28]
+#newFoundBubsRings = [21,22]
+#[
+#    [newFoundBubsRings.remove(ii) for ii in toList(inter)]
+#   for inter in np.intersect1d(overlapingContourIDList,newFoundBubsRings) if len(toList(inter))>0]
+#print(newFoundBubsRings)
+
+aa = [1,1,3,5,6,6,7]
+u, c = np.unique(aa, return_counts=True)
+
+dup = u[c > 1]
+print(1)
+
 
 

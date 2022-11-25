@@ -51,7 +51,8 @@ from imageFunctionsP2 import (initImport, init, bubbleTypeCheck,
                               checkMoments,closes_point_contours, distStatPrediction,detectStuckBubs
                               ,getMasksParams,getCentroidPosCentroidsAndAreas,centroidSumPermutationsMOD,
                               getContourHullArea, centroidAreaSumPermutations, listFormat,
-                              distStatPredictionVect,distStatPredictionVect2,updateStat)
+                              distStatPredictionVect,distStatPredictionVect2,updateStat,overlappingRotatedRectangles,
+                              multiContourBoundingRect)
 def resizeImage(img,frac):
     width = int(img.shape[1] * frac)
     height = int(img.shape[0] * frac)
@@ -568,8 +569,8 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart           = 56#46
-dataNum             = 24
+dataStart           = 51#56#46
+dataNum             = 2   #24
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -588,13 +589,17 @@ pickleSingleCaseSave= 1
 drawFileName        = 1
 # workSingleCase      = 0
 
+markFirstMaskManually = 1
+markFirstExport = 1 # see exportFirstFrame() lower after X_data import
+
+
 
 globalCounter = 0
 
 # debug section numbers: 11- RB IDs, 12- RB recovery, 21- Else IDs, 22- else recovery, 31- merge
 # debug on specific steps- empty list, do all steps, or time steps in list
 debugSections = [11,21,12,22,31]
-debugSteps = [23]
+debugSteps = [0]
 debugVecPredict = 0
 def debugOnly(section):
     global globalCounter, debugSections, debugSteps
@@ -606,8 +611,8 @@ def debugOnly(section):
         return False
 
 #  21- distance lines, 22- colored neighbors, 23 - match template & overlap contours, 31 - merge stuff
-debugSectionsGFX = [ 31] #12, 21, 22, 23,
-debugStepsGFX = [23]
+debugSectionsGFX = [12, 21, 22, 23, 31]
+debugStepsGFX = [0]
 def debugOnlyGFX(section):
     global globalCounter, debugSections, debugSteps
     if debugSectionsGFX[0] == -1 or debugStepsGFX[0] == 0:
@@ -625,7 +630,33 @@ init(imageMainFolder,imgNum)
 
 X_data, mean, imageLinks = initImport(mode,workBigArray,recalcMean,readSingleFromArray,pickleNewDataLoad,pickleNewDataSave,pickleSingleCaseSave)
 
+def exportFirstFrame(markFirstExport,dataStart):
+    if markFirstExport == 1:
+        if not os.path.exists(r'./manualMask'):
+            os.mkdir(r'./manualMask')
+        
+        orig0 = X_data[dataStart]
+        orig = orig0 -cv2.blur(mean, (5,5),cv2.BORDER_REFLECT)
+    
+        orig[orig < 0] = 0                  # if orig0 > mean
+        orig = orig.astype(np.uint8)
+        cv2.imwrite("./manualMask/frame"+str(dataStart).zfill(4)+".png" ,orig)
+        return 1
+    else: return 0
 
+def extractManualMask(): # either draw red masks over or using Paint, set bg color to red and freehand select and delete areas.
+    manualMask = cv2.imread("./manualMask/frame"+str(dataStart).zfill(4)+" - Copy.png",1)
+    manualMask = np.uint8(manualMask[:,:,2])
+    _,manualMask = cv2.threshold(manualMask,230,255,cv2.THRESH_BINARY)
+    #cv2.imshow('manualMask',manualMask)
+    contours = cv2.findContours(manualMask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)[0]
+    params = [cv2.boundingRect(c) for c in contours]
+    #for x,y,w,h in params:
+    #   cv2.rectangle(manualMask,(x,y),(x+w,y+h),128,3)
+    #cv2.drawContours(manualMask, contours, -1, 128, 5)
+    #cv2.imshow('manualMask',manualMask)
+    IDs = np.arange(0,len(params))
+    return contours,{ID:param for ID,param in enumerate(params)}
 typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge = np.int8(0),np.int8(1),np.int8(2),np.int8(3), np.int8(4), np.int8(5), np.int8(6)
 centroidsByID2,recParamsByID, areasByID, masksByID,imagesByID,cntrIDsByIDs,bubTypesByID = {},{},{},{},{},{},{}
 cntrChildrenIDsByIDs = {}
@@ -1029,6 +1060,11 @@ def mainer(index):
             blank = convertGray2RGB(blank)                                                              # IMSHOW
             distanceBubMasks, distanceBubImages, distanceBubRectParams, distanceBubCentroids, distanceOldNewIDs, distanceBubHullAreas = {},{},{},{},{},{}
     
+            # TODO:
+            # place if  markFirstMaskManually == 1 here
+            # remove dropResolvedRingIDs from it
+            # modify jointNeighbors, so code can transition to part below
+            # great success
             for key, cntrIDlist in jointNeighbors.items():
                 #[cv2.drawContours( blank, contours4, ID, cyclicColor(key), -1) for ID in cntrIDlist]    # IMSHOW
                 distCntrSubset = np.vstack([contours4[ID] for ID in cntrIDlist])#;print(distCntrSubset.shape)
@@ -1054,7 +1090,54 @@ def mainer(index):
                 
             #print('distanceBubCentroids',distanceBubCentroids)
             #cv2.imshow('gfx debug 22: jointNeighbors',blank) if debugOnlyGFX(22) else 0
+            if  markFirstMaskManually == 1 and globalCounter == 0:
+                cntrRemainingIDsMOD = [cID for cID in whereParentOriginal if cID not in contoursFilter_RectParams_dropIDs ]
+                cntrRemainingMOD = {ID:contours4[ID] for ID in cntrRemainingIDsMOD}
 
+                contoursMain, group1Params = extractManualMask()
+                group2Params = {ID:cv2.boundingRect(c) for ID,c in cntrRemainingMOD.items()}
+                blank = orig.copy()
+                #for x,y,w,h in group1Params.values():
+                #   cv2.rectangle(blank,(x,y),(x+w,y+h),65,4)
+                #for x,y,w,h in group2Params.values():
+                #   cv2.rectangle(blank,(x,y),(x+w,y+h),156,3)
+                #   cv2.imshow('asd',blank)
+                # First approximation. group objects by their bounding box intersection.
+                #its fast way to discard combinations that are far away
+                combos = np.array(overlappingRotatedRectangles(group1Params,group2Params))
+                mainIDs = combos[:,0]
+                mainUniques = np.unique(mainIDs, return_counts=False)
+                # group in library by main ID : {1:[0,1],2:[2,3,4],3:[5]}
+                # THIS DOES WORKS ONLY ONE WAY. MAIN-> Secondary. copies may be expected. but should be ok for only first frame.
+                groupedByMain = {singleUniq:[b for a,b in combos if a == singleUniq] for singleUniq in mainUniques}
+                print(groupedByMain)
+                # Second appox, more refined. check if secondary contour enters main contour. 
+                for mainID in mainUniques:
+                    x,y,w,h = group1Params[mainID]
+                    mainMask = np.zeros((h,w),np.uint8)
+                    cv2.drawContours( mainMask, contoursMain, mainID, 255, -1, offset = (-x,-y))
+                    #cv2.imshow('asd',mainMask)
+                    secondaryCntrs = groupedByMain[mainID]
+                    (tempMask, [xt,yt,wt,ht], overlapingContourIDList) = \
+                    overlapingContours(contours4, secondaryCntrs, mainMask,
+                                       (x,y,w,h), 0, prefix = f'{mainID}')
+                    
+                    hull = cv2.convexHull(np.vstack(contours4[overlapingContourIDList]))
+                    cv2.drawContours(  tempMask,   [hull], -1, 160, 2, offset = (-xt,-yt))
+                    cv2.imshow(f'{mainID}',tempMask)
+                print(1)
+                dropResolvedRingIDs
+            #    for tempID, newKey in enumerate(ringBubMasks): # by keys
+            #ringBubMasks_old[tempID]        = ringBubMasks[newKey]
+            #ringBubImages_old[tempID]       = ringBubImages[newKey]
+            #ringBubRectParams_old[tempID]   = ringBubRectParam[newKey]
+            #ringBubCentroids_old[tempID]    = ringBubCentoids[newKey]
+            #ringOldNewIDs_old[tempID]       = [newKey]
+            #bubTypesLocal[tempID]           = typeRing
+            #bubTypesByID[tempID]            = {}
+            #bubTypesByID[tempID][0]         = typeRing
+            #ringBubHullAreas_old[tempID]    = ringBubHullAreas[newKey]
+                    
                 
         # -------------- RECOVER UNRESOLVED BUBS VIA DISTANCE CLUSTERING ---------------------   
         # -------------- join with newFoundBubsRings and search relations ----------------- 
@@ -1476,7 +1559,7 @@ def mainer(index):
             ringBubMasks_old[tempID]        = ringBubMasks[newKey]
             ringBubImages_old[tempID]       = ringBubImages[newKey]
             ringBubRectParams_old[tempID]   = ringBubRectParam[newKey]
-            ringBubCentroids_old[tempID]   = ringBubCentoids[newKey]
+            ringBubCentroids_old[tempID]    = ringBubCentoids[newKey]
             ringOldNewIDs_old[tempID]       = [newKey]
             bubTypesLocal[tempID]           = typeRing
             bubTypesByID[tempID]            = {}
@@ -1935,7 +2018,7 @@ def mainer(index):
 
 # import fil_finder  as fil
 
-    
+exportFirstFrame(markFirstExport,dataStart)    
 
 cntr = 0
 if mode == 1:
@@ -2274,3 +2357,20 @@ if k == 27:  # close on ESC key
 
 
 # %timeit -r 4 -n 1000  fuu(d,1)
+#print(X_data[1] == X_data[2])
+#dataStart = 1
+#dataNum = 51
+#cntr = 1
+#for i in range(dataStart,dataStart+dataNum,1):
+#            #print(f'\n==============================================')
+#            print(f'Time step ID: {cntr} max ID: {dataNum-1}. i: {i}')
+#            orig0 = X_data[i]
+#            if cntr >= 1  and cntr <= 25:
+#                cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\"+str(dataStart+cntr).zfill(4)+".png" ,orig0)
+#                #print('cntr > 1  and cntr <= 10')
+#            orig = orig0 -cv2.blur(mean, (5,5),cv2.BORDER_REFLECT)
+#            orig[orig < 0] = 0                  # if orig0 > mean
+#            orig = orig.astype(np.uint8)
+#            if cntr > 25  and cntr <= 50:
+#                cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\"+str(dataStart+cntr).zfill(4)+".png" ,orig)
+#            cntr += 1

@@ -766,6 +766,21 @@ def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [],
     #    #plt.show()
     return returnVec
 
+def overlappingRotatedRectangles(group1Params,group2Params):
+    group1IDs, group2IDs = list(group1Params.keys()),list(group2Params.keys())
+    allCombs = list(itertools.product(group1IDs, group2IDs))#;print(f'allCombs,{allCombs}')
+    intersectingCombs = []
+    for (keyOld,keyNew) in allCombs:
+        x1,y1,w1,h1 = group2Params[keyNew]
+        rotatedRectangle_new = ((x1+w1/2, y1+h1/2), (w1, h1), 0)
+        x2,y2,w2,h2 = group1Params[keyOld]
+        rotatedRectangle_old = ((x2+w2/2, y2+h2/2), (w2, h2), 0)
+        interType,_ = cv2.rotatedRectangleIntersection(rotatedRectangle_new, rotatedRectangle_old)
+        if interType > 0:
+            intersectingCombs.append([keyOld,keyNew]) # rough neighbors combinations
+    return intersectingCombs
+
+
 def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,centroids,fbStoreCulprits,frozenIDs_old,allLatestIDs,globalCounter,relArea,relDist):
     # analyze current and previous frame: old controur-new contour, old cluster-> new contour
     # search rough neighbors combination by detecting overlapping bounding rectangles
@@ -867,6 +882,11 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
     returnNewIDs = returnInfo[:,1] if len(returnInfo)>0 else np.array([])
     return returnNewIDs, returnInfo
 
+def multiContourBoundingRect(contours):
+    tempCntrJoin = np.vstack(contours)
+    xt,yt,wt,ht = cv2.boundingRect(tempCntrJoin)
+    return xt,yt,wt,ht
+
 def getMasksParams(contours,IDs,err,orig):
     contourSubset = [contours[k] for k in IDs]
     contourStack = np.vstack(contourSubset)   
@@ -901,3 +921,4 @@ def updateStat(count, mean, std, newValue):
     else:
         (mean, variance) = (mean, M2 / count)
         return (mean, np.sqrt(variance))
+

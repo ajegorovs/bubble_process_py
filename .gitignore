@@ -10,3 +10,4 @@
 /.vs
 /__pycache__
 /debugImages/predictVect
+/manualMask

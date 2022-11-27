@@ -502,11 +502,14 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
 #   for inter in np.intersect1d(overlapingContourIDList,newFoundBubsRings) if len(toList(inter))>0]
 #print(newFoundBubsRings)
 
-aa = [1,1,3,5,6,6,7]
-u, c = np.unique(aa, return_counts=True)
+#aa = [1,1,3,5,6,6,7]
+#u, c = np.unique(aa, return_counts=True)
 
-dup = u[c > 1]
-print(1)
+#dup = u[c > 1]
+#print(1)
 
+m1 = np.array([[1,12],[3,4]])
+m2 = np.array([[11,2],[13,14]])
+print(np.maximum.reduce([m1,m2]))
 
 

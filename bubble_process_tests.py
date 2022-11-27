@@ -570,7 +570,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 51#56#46
-dataNum             = 2   #24
+dataNum             = 5   #24
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -590,7 +590,7 @@ drawFileName        = 1
 # workSingleCase      = 0
 
 markFirstMaskManually = 1
-markFirstExport = 1 # see exportFirstFrame() lower after X_data import
+markFirstExport = 0 # see exportFirstFrame() lower after X_data import
 
 
 
@@ -639,8 +639,14 @@ def exportFirstFrame(markFirstExport,dataStart):
         orig = orig0 -cv2.blur(mean, (5,5),cv2.BORDER_REFLECT)
     
         orig[orig < 0] = 0                  # if orig0 > mean
-        orig = orig.astype(np.uint8)
-        cv2.imwrite("./manualMask/frame"+str(dataStart).zfill(4)+".png" ,orig)
+        orig = np.array(orig, dtype = np.uint8)
+        origTH = np.array(cv2.threshold(orig,thresh0,255,cv2.THRESH_BINARY)[1], dtype = np.uint8)
+        err = cv2.morphologyEx(origTH.copy(), cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
+        #exp = np.maximum.reduce([orig,origTH]) # element wise max() for two matrices. kind of useless
+        #cv2.imshow('orig',orig)
+        #cv2.imshow('origTH',origTH)
+        #cv2.imshow('exp',exp)
+        cv2.imwrite("./manualMask/frame"+str(dataStart).zfill(4)+".png" ,err)
         return 1
     else: return 0
 
@@ -983,38 +989,20 @@ def mainer(index):
         # whereParentOriginal all non-child contours 
         cntrRemainingIDs = [cID for cID in whereParentOriginal if cID not in dropResolvedRingIDs + contoursFilter_RectParams_dropIDs ]
         cntrRemaining = {ID:contours4[ID] for ID in cntrRemainingIDs}
-            # calculate centroid to neighbor contour distance and filter by some asumptions
-        strgD_anis_IDs = []
-        edges = []
-        selfCombs = list(itertools.combinations(cntrRemaining,2))
-        charBubSize =  100
-        x_weight, y_weight = 4, 1 # elongates vectors in x direction. horizontal vecs fail more.
-        smx = np.array( [[x_weight,0],[0,y_weight]])
-        for i,j in selfCombs:
-            vec, dist, p1, p2 = closes_point_contours(cntrRemaining[i],cntrRemaining[j])
-            vec_scaled = np.matmul(smx,np.array(vec))
-            dist_scaled = np.linalg.norm(vec_scaled)
-            strgD_anis_IDs.append([vec_scaled, dist_scaled, i, j, p1, p2])
-            if dist_scaled < charBubSize : edges.append(tuple([i,j]))
-        # ------- draw distance bubbles with connections ---------
-        if debugOnlyGFX(21):
-            blank  = np.zeros(err.shape,np.uint8)
-            blank = convertGray2RGB(blank)
-            [cv2.drawContours( blank, contours4, i, (125,125,220), -1) for i in cntrRemaining]
-            [cv2.polylines(blank, [np.array([p1,p2])],0, (0,255,255), 2) for _, dist_scaled, _, _, p1, p2 in strgD_anis_IDs if dist_scaled < charBubSize]
-            [cv2.polylines(blank, [np.array([p1,p2])],0, (0,0,255), 2) for _, dist_scaled, _, _, p1, p2 in strgD_anis_IDs if dist_scaled > charBubSize]
-            frac = 0.7                                                                                  # IMSHOW
-            dims = (np.array(err.shape)*frac).astype(np.uint16)#;print(dims)
-            cv2.imshow(f'32 {globalCounter}',cv2.resize(blank,tuple((1*dims[1],1*dims[0])), interpolation= cv2.INTER_LINEAR) )    
-            
-        # make A graph of contours connections specified by anisatropic distance.
-                        
+        
+        distContours = {ID:contoursFilter_RectParams[ID] for ID in cntrRemainingIDs}
+
+        combosSelf = np.sort(np.array(overlappingRotatedRectangles(distContours,distContours)))
+        combosSelf = np.unique(combosSelf, axis = 0)
+        combosSelf = np.array([[a,b] for a,b in combosSelf if a != b])
+
         H = nx.Graph()
-        H.add_nodes_from(cntrRemaining)
-        H.add_edges_from(edges)
+        H.add_nodes_from(cntrRemainingIDs)
+        H.add_edges_from(combosSelf)
         # ----- visualize  netrworkx graph with background contrours
-        if globalCounter == 123120: 
-            pos = {i:getCentroidPos(inp = vec, offset = (0,0), mode=0, mask=[]) for i, vec in cntrRemaining.items()}
+        if globalCounter == 41110: 
+            #pos = {i:getCentroidPos(inp = vec, offset = (0,0), mode=0, mask=[]) for i, vec in cntrRemaining.items()}
+            pos = {ID:fbStoreCentroids[ID] for ID in cntrRemainingIDs}
             for n, p in pos.items():
                     H.nodes[n]['pos'] = p
             plt.figure(1)
@@ -1022,6 +1010,46 @@ def mainer(index):
                 [x,y] = np.array(cntr).reshape(-1,2).T
                 plt.plot(x,y)
             nx.draw(H, pos)
+            plt.show()
+            # calculate centroid to neighbor contour distance and filter by some asumptions
+        #strgD_anis_IDs = []
+        #edges = []
+        #selfCombs = list(itertools.combinations(cntrRemaining,2))
+        #charBubSize =  100
+        #x_weight, y_weight = 4, 1 # elongates vectors in x direction. horizontal vecs fail more.
+        #smx = np.array( [[x_weight,0],[0,y_weight]])
+        #for i,j in selfCombs:
+        #    vec, dist, p1, p2 = closes_point_contours(cntrRemaining[i],cntrRemaining[j])
+        #    vec_scaled = np.matmul(smx,np.array(vec))
+        #    dist_scaled = np.linalg.norm(vec_scaled)
+        #    strgD_anis_IDs.append([vec_scaled, dist_scaled, i, j, p1, p2])
+        #    if dist_scaled < charBubSize : edges.append(tuple([i,j]))
+        ## ------- draw distance bubbles with connections ---------
+        #if debugOnlyGFX(21):
+        #    blank  = np.zeros(err.shape,np.uint8)
+        #    blank = convertGray2RGB(blank)
+        #    [cv2.drawContours( blank, contours4, i, (125,125,220), -1) for i in cntrRemaining]
+        #    [cv2.polylines(blank, [np.array([p1,p2])],0, (0,255,255), 2) for _, dist_scaled, _, _, p1, p2 in strgD_anis_IDs if dist_scaled < charBubSize]
+        #    [cv2.polylines(blank, [np.array([p1,p2])],0, (0,0,255), 2) for _, dist_scaled, _, _, p1, p2 in strgD_anis_IDs if dist_scaled > charBubSize]
+        #    frac = 0.7                                                                                  # IMSHOW
+        #    dims = (np.array(err.shape)*frac).astype(np.uint16)#;print(dims)
+        #    cv2.imshow(f'32 {globalCounter}',cv2.resize(blank,tuple((1*dims[1],1*dims[0])), interpolation= cv2.INTER_LINEAR) )    
+            
+        ## make A graph of contours connections specified by anisatropic distance.
+                        
+        #H = nx.Graph()
+        #H.add_nodes_from(cntrRemaining)
+        #H.add_edges_from(edges)
+        ## ----- visualize  netrworkx graph with background contrours
+        #if globalCounter == 123120: 
+        #    pos = {i:getCentroidPos(inp = vec, offset = (0,0), mode=0, mask=[]) for i, vec in cntrRemaining.items()}
+        #    for n, p in pos.items():
+        #            H.nodes[n]['pos'] = p
+        #    plt.figure(1)
+        #    for cntr in list(cntrRemaining.values()):
+        #        [x,y] = np.array(cntr).reshape(-1,2).T
+        #        plt.plot(x,y)
+        #    nx.draw(H, pos)
             
         # extract clusters that are connected (undirected)    
         cnctd_comp = [list(sorted(nx.node_connected_component(H, key))) for key in cntrRemaining]
@@ -1061,47 +1089,19 @@ def mainer(index):
             distanceBubMasks, distanceBubImages, distanceBubRectParams, distanceBubCentroids, distanceOldNewIDs, distanceBubHullAreas = {},{},{},{},{},{}
     
             # TODO:
-            # place if  markFirstMaskManually == 1 here
-            # remove dropResolvedRingIDs from it
+            # place if  markFirstMaskManually == 1 here DONE
+            # remove dropResolvedRingIDs from it REMOVED AT START
             # modify jointNeighbors, so code can transition to part below
-            # great success
-            for key, cntrIDlist in jointNeighbors.items():
-                #[cv2.drawContours( blank, contours4, ID, cyclicColor(key), -1) for ID in cntrIDlist]    # IMSHOW
-                distCntrSubset = np.vstack([contours4[ID] for ID in cntrIDlist])#;print(distCntrSubset.shape)
-                x,y,w,h = cv2.boundingRect(distCntrSubset)#;print([x,y,w,h])
-                tempID = min(cntrIDlist)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
-                
-                baseSubMask,baseSubImage = err.copy()[y:y+h, x:x+w], orig.copy()[y:y+h, x:x+w]
-                subSubMask = np.zeros((h,w),np.uint8)
-                [cv2.drawContours( subSubMask, contours4, ID, 255, -1, offset = (-x,-y)) for ID in cntrIDlist]
-    
-                baseSubMask[subSubMask == 0] = 0
-                
-                baseSubImage[subSubMask == 0] = 0
-                
-                distanceBubMasks[tempID] = baseSubMask
-                distanceBubImages[tempID] = baseSubImage
-                distanceOldNewIDs[tempID] = cntrIDlist
-                distanceBubRectParams[tempID] = ([x,y,w,h])
-                _, hullArea = getCentroidPosContours(bodyCntrs = [contours4[k] for k in cntrIDlist], hullArea = 1)
-                distanceBubCentroids[tempID] = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
-                distanceBubHullAreas[tempID] = hullArea
-                
-                
-            #print('distanceBubCentroids',distanceBubCentroids)
-            #cv2.imshow('gfx debug 22: jointNeighbors',blank) if debugOnlyGFX(22) else 0
-            if  markFirstMaskManually == 1 and globalCounter == 0:
-                cntrRemainingIDsMOD = [cID for cID in whereParentOriginal if cID not in contoursFilter_RectParams_dropIDs ]
+            # great success cv2.imread("./manualMask/frame"+str(dataStart).zfill(4)+" - Copy.png",1)
+            if  markFirstMaskManually == 1 and os.path.exists("./manualMask/frame"+str(dataStart).zfill(4)+" - Copy.png"):
+                # i am dropping RBs out of search, assuming they behave well. i do it to avoid doing it after.
+                cntrRemainingIDsMOD = [cID for cID in whereParentOriginal if cID not in dropResolvedRingIDs + contoursFilter_RectParams_dropIDs ]
                 cntrRemainingMOD = {ID:contours4[ID] for ID in cntrRemainingIDsMOD}
 
                 contoursMain, group1Params = extractManualMask()
                 group2Params = {ID:cv2.boundingRect(c) for ID,c in cntrRemainingMOD.items()}
                 blank = orig.copy()
-                #for x,y,w,h in group1Params.values():
-                #   cv2.rectangle(blank,(x,y),(x+w,y+h),65,4)
-                #for x,y,w,h in group2Params.values():
-                #   cv2.rectangle(blank,(x,y),(x+w,y+h),156,3)
-                #   cv2.imshow('asd',blank)
+
                 # First approximation. group objects by their bounding box intersection.
                 #its fast way to discard combinations that are far away
                 combos = np.array(overlappingRotatedRectangles(group1Params,group2Params))
@@ -1112,6 +1112,7 @@ def mainer(index):
                 groupedByMain = {singleUniq:[b for a,b in combos if a == singleUniq] for singleUniq in mainUniques}
                 print(groupedByMain)
                 # Second appox, more refined. check if secondary contour enters main contour. 
+
                 for mainID in mainUniques:
                     x,y,w,h = group1Params[mainID]
                     mainMask = np.zeros((h,w),np.uint8)
@@ -1124,19 +1125,50 @@ def mainer(index):
                     
                     hull = cv2.convexHull(np.vstack(contours4[overlapingContourIDList]))
                     cv2.drawContours(  tempMask,   [hull], -1, 160, 2, offset = (-xt,-yt))
-                    cv2.imshow(f'{mainID}',tempMask)
+                    
+                    baseSubMask,baseSubImage = err.copy()[yt:yt+ht, xt:xt+wt], orig.copy()[yt:yt+ht, xt:xt+wt]
+                    subSubMask = np.zeros((ht,wt),np.uint8)
+                    
+                    [cv2.drawContours( subSubMask, contours4, ID, 255, -1, offset = (-xt,-yt)) for ID in overlapingContourIDList]
+                    baseSubMask[subSubMask == 0] = 0
+                    baseSubImage[subSubMask == 0] = 0
+
+                    #cv2.imshow(f'{mainID}',subSubMask)
+                    tempID = min(overlapingContourIDList)
+                    distanceBubMasks[tempID] = baseSubMask
+                    distanceBubImages[tempID] = baseSubImage
+                    distanceOldNewIDs[tempID] = overlapingContourIDList
+                    distanceBubRectParams[tempID] = ([xt,yt,wt,ht])
+                    _, hullArea = getCentroidPosContours(bodyCntrs = [contours4[k] for k in overlapingContourIDList], hullArea = 1)
+                    distanceBubCentroids[tempID] = getCentroidPos(inp = baseSubMask, offset = (xt,yt), mode=0, mask=[])
+                    distanceBubHullAreas[tempID] = hullArea
+                
                 print(1)
                 dropResolvedRingIDs
-            #    for tempID, newKey in enumerate(ringBubMasks): # by keys
-            #ringBubMasks_old[tempID]        = ringBubMasks[newKey]
-            #ringBubImages_old[tempID]       = ringBubImages[newKey]
-            #ringBubRectParams_old[tempID]   = ringBubRectParam[newKey]
-            #ringBubCentroids_old[tempID]    = ringBubCentoids[newKey]
-            #ringOldNewIDs_old[tempID]       = [newKey]
-            #bubTypesLocal[tempID]           = typeRing
-            #bubTypesByID[tempID]            = {}
-            #bubTypesByID[tempID][0]         = typeRing
-            #ringBubHullAreas_old[tempID]    = ringBubHullAreas[newKey]
+            else:
+                for key, cntrIDlist in jointNeighbors.items():
+                    #[cv2.drawContours( blank, contours4, ID, cyclicColor(key), -1) for ID in cntrIDlist]    # IMSHOW
+                    distCntrSubset = np.vstack([contours4[ID] for ID in cntrIDlist])#;print(distCntrSubset.shape)
+                    x,y,w,h = cv2.boundingRect(distCntrSubset)#;print([x,y,w,h])
+                    tempID = min(cntrIDlist)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
+                
+                    baseSubMask,baseSubImage = err.copy()[y:y+h, x:x+w], orig.copy()[y:y+h, x:x+w]
+                    subSubMask = np.zeros((h,w),np.uint8)
+                    [cv2.drawContours( subSubMask, contours4, ID, 255, -1, offset = (-x,-y)) for ID in cntrIDlist]
+    
+                    baseSubMask[subSubMask == 0] = 0
+                
+                    baseSubImage[subSubMask == 0] = 0
+                
+                    distanceBubMasks[tempID] = baseSubMask
+                    distanceBubImages[tempID] = baseSubImage
+                    distanceOldNewIDs[tempID] = cntrIDlist
+                    distanceBubRectParams[tempID] = ([x,y,w,h])
+                    _, hullArea = getCentroidPosContours(bodyCntrs = [contours4[k] for k in cntrIDlist], hullArea = 1)
+                    distanceBubCentroids[tempID] = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
+                    distanceBubHullAreas[tempID] = hullArea
+                    #cv2.imshow(f'2, {key}',subSubMask)
+                
                     
                 
         # -------------- RECOVER UNRESOLVED BUBS VIA DISTANCE CLUSTERING ---------------------   
@@ -1212,7 +1244,7 @@ def mainer(index):
                         elseOldNewDoubleCriteriumSubIDs[unresNewRBID] = [subNewIDs]
                         newFoundBubsRings.remove(unresNewRBID)
                     elif dist2 > 70 or areaCrit > 15:
-                        0#;print('dist 2. soft break')
+                        0#;print('dist 2. soft break') # if values are completely wack, dont try to do permutations
                     else:
                         debug = 1 if (globalCounter == 1123123 and oldID == 3) else 0
                         permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(contours4, toList(subNewIDs), fbStoreCentroids, fbStoreAreas,

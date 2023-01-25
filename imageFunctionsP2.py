@@ -292,6 +292,28 @@ def doubleCritMinimum(setA,setB, mode = 0, debug = 0, printPrefix=''):
         print(f'smallest index: {resIndex}')
     return resIndex
 
+def dropDoubleCritCopies(elseOldNewDoubleCriterium):
+    IDs = [a[0] for a in elseOldNewDoubleCriterium]
+    u, c = np.unique(IDs, return_counts=True);#print(f'c',c)
+    if(len(c[c>1])>0): # which have more than 1 copy? if there is one or more, do code below
+        dropCopies = []
+        for ID, cnt in zip(u,c):    # select first uniq ID
+            if cnt > 1:             # if it has morethan one copy do stuff
+                where = np.argwhere(IDs==ID).flatten()
+                #print(f'ID:{ID} where',where)
+                # select dist and rel area sets for double crit check
+                setA = [elseOldNewDoubleCriterium[here][2] for here in where]
+                setB = [elseOldNewDoubleCriterium[here][3] for here in where]
+                here = doubleCritMinimum(setA ,setB, mode = 0, debug = 0, printPrefix='')
+                #print(f'ID:{ID} good index',here)
+                deleteThese = [a for a in where if a not in [where[here]]] # drop these array IDs
+                #print(f'ID:{ID} del these',deleteThese)
+                dropCopies = dropCopies + deleteThese
+        #print(dropCopies)
+        return [entry for ID,entry in enumerate(elseOldNewDoubleCriterium) if ID not in dropCopies] # keep only useful
+    else:
+        return elseOldNewDoubleCriterium
+
 def centroidAreaSumPermutations(bodyCntrs, IDsOfInterest, centroidDict, areaDict, refCentroid, distCheck, refArea=10, relAreaCheck = 10000000, doHull = 1, debug = 0):
     #bodyCntrs is used only if doHull == 1. i dont use it for frozen bubs permutations
     permutations = sum([list(itertools.combinations(IDsOfInterest, r)) for r in range(1,len(IDsOfInterest)+1)],[])
@@ -641,7 +663,7 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
 
             extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0))
             dv0 = np.diff(extrapolatedPoint0).reshape(max(2,numDims))
-            z = np.polyfit(*splitSubsetComponents[:,-3:], 1);print(f'z:{z}')
+            z = np.polyfit(*splitSubsetComponents[:,-3:], 1);#print(f'z:{z}')
             x0,x1 = splitSubsetComponents[0,-min(numPointsInTraj,3)], splitSubsetComponents[0,-1]
             p0,p1 = np.array([x0,np.dot([x0,1],z)]),np.array([x1,np.dot([x1,1],z)]) #[ x0,y(x0)], or use poly1d lol
             dv = (lambda x: x/np.linalg.norm(x)) (p1-p0)*np.linalg.norm(dv0)
@@ -656,7 +678,7 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
         spline0, _ = interpolate.splprep(splitSubsetComponents, u = t, s = sMod2, k = k)
         extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0))
         returnVec = extrapolatedPoint0[:,-1]
-    1+1
+
     if debug == 1:
         tDebug = np.arange(0,numPointsInTraj-start+0.01,0.2)
         extrapolatedPointsDebug2 = np.array(interpolate.splev(tDebug, spline0,ext=0))
@@ -834,7 +856,10 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
     #dupSplit = {keyNew:[a[0] for a in intersectingCombs_stage2].count(keyNew)}
     keysOld = [a[0] for a in intersectingCombs_stage2]
     keysOldVals = np.array([a[1] for a in intersectingCombs_stage2],dtype=object)
-    values, counts = np.unique(keysOld, return_counts=True)
+    
+    values = list(set(keysOld))
+    counts = [keysOld.count(a) for a in values]
+    #values, counts = np.unique(keysOld, return_counts=True) # unique does not want to deal with mixed type
     dupSplit = [ a for a,b in zip(values, counts) if b>1]
     dupWhereIndicies = {a:np.argwhere(keysOld == a).reshape(-1).tolist() for a in dupSplit}
     dupVals = {ID:keysOldVals[lst] for ID,lst in dupWhereIndicies.items()}
@@ -881,6 +906,12 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
     returnInfo = np.array(returnInfo, dtype=object)
     returnNewIDs = returnInfo[:,1] if len(returnInfo)>0 else np.array([])
     return returnNewIDs, returnInfo
+
+def stuckBubHelp(fbStoreCulprits,searchCentroid):
+
+    dists = {centroid:np.linalg.norm(np.diff([centroid,searchCentroid],axis=0),axis=1)[0] for centroid in fbStoreCulprits}
+    minKey = min(dists, key=dists.get)
+    return minKey
 
 def multiContourBoundingRect(contours):
     tempCntrJoin = np.vstack(contours)

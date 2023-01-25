@@ -52,7 +52,7 @@ from imageFunctionsP2 import (initImport, init, bubbleTypeCheck,
                               ,getMasksParams,getCentroidPosCentroidsAndAreas,centroidSumPermutationsMOD,
                               getContourHullArea, centroidAreaSumPermutations, listFormat,
                               distStatPredictionVect,distStatPredictionVect2,updateStat,overlappingRotatedRectangles,
-                              multiContourBoundingRect)
+                              multiContourBoundingRect,stuckBubHelp,doubleCritMinimum,dropDoubleCritCopies)
 def resizeImage(img,frac):
     width = int(img.shape[1] * frac)
     height = int(img.shape[0] * frac)
@@ -569,8 +569,8 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart           = 51#56#46
-dataNum             = 5   #24
+dataStart           = 171#56#46
+dataNum             = 23   #24
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -589,7 +589,7 @@ pickleSingleCaseSave= 1
 drawFileName        = 1
 # workSingleCase      = 0
 
-markFirstMaskManually = 1
+markFirstMaskManually = 0
 markFirstExport = 0 # see exportFirstFrame() lower after X_data import
 
 
@@ -663,7 +663,7 @@ def extractManualMask(): # either draw red masks over or using Paint, set bg col
     #cv2.imshow('manualMask',manualMask)
     IDs = np.arange(0,len(params))
     return contours,{ID:param for ID,param in enumerate(params)}
-typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge = np.int8(0),np.int8(1),np.int8(2),np.int8(3), np.int8(4), np.int8(5), np.int8(6)
+typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge,typeRecoveredFrozen = np.int8(0),np.int8(1),np.int8(2),np.int8(3), np.int8(4), np.int8(5), np.int8(6), np.int8(7)
 centroidsByID2,recParamsByID, areasByID, masksByID,imagesByID,cntrIDsByIDs,bubTypesByID = {},{},{},{},{},{},{}
 cntrChildrenIDsByIDs = {}
 ringBubMasks_old, ringBubImages_old, ringBubRectParams_old, ringBubCentroids_old, ringBubHullAreas_old, ringCntrIDs = {}, {}, {}, {}, {}, {}
@@ -672,7 +672,7 @@ distanceBubMasks_old, distanceBubImages_old, distanceBubRectParams_old, distance
 distanceOldNewIDs_old = {}
 #distanceBubMasks, distanceBubImages, distanceBubRectParams,  distanceBubCentroids, distanceBubHullAreas_old = {},{},{},{},{}
 #distanceOldNewIDs = {}
-contoursAll, contours_old, frozenBubs, frozenBubsTimes, bubTypesLocal, bubTypesLocal_old, bubTypesLocal = {}, {}, {}, {}, {}, {} ,[]
+contoursAll, contours_old, frozenBubs, frozenBubsTimes, bubTypesLocal, bubTypesLocal_old = {}, {}, {}, {}, {}, {}
 fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits = {}, {}, {}, {}, {}
 predictCentroidDiff,predictCentroidDiff2,predictHullArea  = {}, {}, {}; frozenIDs, frozenIDs_old  = [],[]
 def mainer(index):
@@ -706,7 +706,7 @@ def mainer(index):
         _,err = cv2.threshold(orig.copy(),thresh0,255,cv2.THRESH_BINARY)
         err = cv2.morphologyEx(err.copy(), cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
         # err = removeBorderComponents(err,2,10)    
-        
+        cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\msk_"+str(dataStart+globalCounter).zfill(4)+".png" ,err)
         
     # if globalCounter>0:
         # global orig_prev, err_prev
@@ -727,7 +727,7 @@ def mainer(index):
     global contours4, mergeCandidates, bubTypesLocal, bubTypesLocal_old, debugVecPredict,contoursFilter_RectParams_dropIDs_old
     mergeCandidates,mergeCandidatesSubcontourIDs = {},{}
     recoveredMaskElse, recoveredImgElse, recoverRectParamsElse,recoverCentroidsElse, recoverOldNewIDsElse, recoverBubHullAreas = {}, {}, {}, {}, {}, {}
-    bubTypesLocal, bubTypesLocal, bubTypesLocal_old = {}, {}, {}
+    #bubTypesLocal, bubTypesLocal, bubTypesLocal_old = {}, {}, {}
     ringBubMasks, ringBubImages, ringBubRectParam, ringBubCentoids, ringBubHullAreas, ringOldNewIDs = {}, {}, {}, {}, {}, {} # temp placeholders, redefined in the end
     recoveredMaskRB, recoveredImgRB, recoverRectParamsRB,recoveredCentroidsRB, recoverOldNewIDsRB, recoverBubHullAreasRB = {} , {} , {} , {} , {}, {} # moved A copy for sake of globalCounter > 0
     predictCentroidDiff_local = {}
@@ -815,6 +815,8 @@ def mainer(index):
             print(f'Detected Frozen bubbles:\n{peps}')
         print(f'{globalCounter}:------------- Frozen bubbles detected ------------\n') if len(frozenIDsInfo) > 0 else print(f'{globalCounter}:------------- No frozen bubbles found ------------\n')
         
+        for IDS in [bID for bID,bType in bubTypesLocal_old.items() if bType == typeFrozen]:
+            predictCentroidDiff_local[IDS] = [tuple(map(int,stuckCentroids[str(IDS)])), -1]
     contoursFilter_RectParams_dropIDs_old = contoursFilter_RectParams_dropIDs # prepare/store for next time step    
         # 1.1 ------------- GRAB RING BUBBLES RB ----------------------
     #for (cntPi,cntP) in enumerate(contours4[whereParentAreaFiltered]): #subset contours
@@ -923,14 +925,18 @@ def mainer(index):
         recoveredBubsRelation = {}
         gfx = 1 if debugOnlyGFX(12) else 0
         for i in oldFoundRings.copy(): # take unresolved R,rR old global IDs (i)
+            #if (globalCounter == 10 and i == 0): gfx = 1
             print(f'{globalCounter}:Trying to recover old ring {i}')
             (x,y,w,h) = matchTemplateBub(err,jointMasks[i],jointRectParams[i],graphics=gfx,prefix = f'MT: Time: {globalCounter}, RB_old_ID: {i} ')
             (tempMask, [xt,yt,wt,ht], overlapingContourIDList) = \
                 overlapingContours(contours4, whereParentOriginal, jointMasks[i], (x,y,w,h), gfx, prefix = f'OC: Time: {globalCounter}, RB_old_ID: {i} ')
             
+
             overlapingContourIDList = [ID for ID in overlapingContourIDList if ID not in contoursFilter_RectParams_dropIDs]
+
+
             if len(overlapingContourIDList)>0:
-                assert len(overlapingContourIDList) == 1, "ring bubble restored with multiple parent contours!!!"   
+                #assert len(overlapingContourIDList) == 1, "ring bubble restored with multiple parent contours!!!"   
                 mergeCandidatesSubcontourIDs[i] = overlapingContourIDList
                 for ID in overlapingContourIDList:
                     if ID not in mergeCandidates: mergeCandidates[ID]  = []
@@ -955,7 +961,7 @@ def mainer(index):
                     bubTypesByID[i][globalCounter] = typeRecoveredRing
                     # centroidsByID2[i][globalCounter] = tempC
 
-                    oldC = jointCentroids[i];print(f'**** oldC:{oldC}, tempC:{tempC}')
+                    oldC = jointCentroids[i];#print(f'**** oldC:{oldC}, tempC:{tempC}')
                     _,_, distCheck2, distCheck2Sigma  = predictCentroidDiff2[i][globalCounter-1]
                     print(f'i: {i}, distCheck2: {distCheck2}, distCheck2Sigma: {distCheck2Sigma}')
                     dist = np.linalg.norm(np.diff([tempC,oldC],axis=0),axis=1)[0]
@@ -1212,7 +1218,7 @@ def mainer(index):
                     areaCrit = np.abs(newArea-oldMeanArea)/ oldAreaStd
                         
                     if dist2 <= distCheck2 + 5*distCheck2Sigma and areaCrit < 3:
-                        print(f'\ndist 2. Perfect match: {oldID} <-> mainNewID: {mainNewID}, dist2: {dist2:0.1f}, areaCrit: {areaCrit:0.1f}')
+                        print(f'dist 2. Perfect match: {oldID} <-> mainNewID: {mainNewID}, dist2: {dist2:0.1f}, areaCrit: {areaCrit:0.1f}')
                         predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), np.around(dist2,2)]
                         elseOldNewDoubleCriterium.append([oldID,mainNewID,dist,areaCrit])
                         elseOldNewDoubleCriteriumSubIDs[mainNewID] = subNewIDs
@@ -1255,6 +1261,14 @@ def mainer(index):
                             elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),dist,permRelArea2])
                             elseOldNewDoubleCriteriumSubIDs[min(permIDsol2)] = permIDsol2
                             newFoundBubsRings.remove(unresNewRBID)
+            # in case elseOldNewDoubleCriterium  has multiple options, select most likely
+            print(elseOldNewDoubleCriterium)
+            if len(elseOldNewDoubleCriterium)>0:
+                print(dropDoubleCritCopies(elseOldNewDoubleCriterium))
+                elseOldNewDoubleCriterium = dropDoubleCritCopies(elseOldNewDoubleCriterium)
+
+                
+            #doubleCritMinimum
             #if globalCounter == 15:
             #    blank  = np.full(err.shape,128, np.uint8)
             #    blank = convertGray2RGB(blank)
@@ -1321,7 +1335,8 @@ def mainer(index):
             #cv2.imshow('gfx debug 22: jointNeighbors',blank) if debugOnlyGFX(22) else 0
                 
             #elseOldNewDist = np.array(elseOldNewDist);
-            elseOldNewDist = np.array(elseOldNewDoubleCriterium,np.uint32)[:,:2]#;print(f'elseOldNewDist2: {elseOldNewDist2}')
+            #elseOldNewDist = np.array(elseOldNewDoubleCriterium,np.uint32)[:,:2]#;print(f'elseOldNewDist2: {elseOldNewDist2}')
+            elseOldNewDist = np.array([arr[:2] for arr in elseOldNewDoubleCriterium],np.uint32)#;print(f'elseOldNewDist2: {elseOldNewDist2}')
             # IN CASE there are duplicates!!
             #if len(np.unique(elseOldNewDist[:,0]))!=len(np.unique(elseOldNewDist[:,1])):
             #    sol = centroidSumPermutationsMOD(elseOldNewDist, fbStoreCentroids, fbStoreAreas, distanceBubCentroids_old, 15)
@@ -1363,7 +1378,7 @@ def mainer(index):
             gfx = 1 if debugOnlyGFX(23) else 0
             for i in oldFoundElse.copy(): 
                 print(f'Trying to recover old else {i}')
-
+                gfx = 1 if globalCounter == 22 and i == 26 else 0
                 (x,y,w,h) = matchTemplateBub(err,jointMasks[i],jointRectParams[i],graphics=gfx,prefix = f'MT: Time: {globalCounter}, E_old_ID: {i} ')
                 (tempMask, [xt,yt,wt,ht], overlapingContourIDList) = \
                     overlapingContours(contours4, whereParentOriginal, jointMasks[i], (x,y,w,h), gfx, prefix = f'OC: Time: {globalCounter}, RB_old_ID: {i} ')
@@ -1394,9 +1409,19 @@ def mainer(index):
                     recoverRectParamsElse[i]    = [xt,yt,wt,ht]
                     recoverCentroidsElse[i]     = tempC
                     recoverOldNewIDsElse[i]     = overlapingContourIDList
-                    # bubTypesLocal[i]            = typeRecoveredElse
+                    
                     recoverBubHullAreas[i]      = getCentroidPosContours(bodyCntrs = [contours4[k] for k in overlapingContourIDList], hullArea = 1)[1]
-                    bubTypesByID[i][globalCounter] = typeRecoveredElse
+                    # since there is chance to recover frozen with else, change type to recoveredFrozen instead.
+                    if bubTypesLocal_old[i] not in [typeFrozen, typeRecoveredFrozen]:
+                        bubTypesByID[i][globalCounter] = typeRecoveredElse
+                        bubTypesLocal[i]            = typeRecoveredElse
+                    else:
+                        bubTypesByID[i][globalCounter] = typeRecoveredFrozen
+                        bubTypesLocal[i]            = typeRecoveredFrozen
+                        frCentroid = stuckBubHelp(fbStoreCulprits,tempC)
+                        fbStoreCulprits[frCentroid][globalCounter] = [ [str(i)], toList(overlapingContourIDList)]
+                    
+                    
                     # centroidsByID2[i][globalCounter] = tempC
                     oldC = jointCentroids[i];print(f'**** oldC:{oldC}, tempC:{tempC}')
                     _,_, distCheck2, distCheck2Sigma  = predictCentroidDiff2[i][globalCounter-1]
@@ -1438,7 +1463,7 @@ def mainer(index):
                 newFoundBubsElse = newFoundBubsElse + [elem for elem in list(jointNeighbors.keys()) if elem not in newFoundBubsElse]
                         
             print('mergeCandidates',mergeCandidates) if debugOnly(22) else 0
-        
+    print('mergeCandidates',mergeCandidates)
     print(f'{globalCounter}:--------- Begin merge detection/processing --------\n')
         
     # ------------------- detect merges by inspecting shared contours ----------------------
@@ -1638,7 +1663,7 @@ def mainer(index):
             distanceBubCentroids_old[key]   = recoverCentroidsElse[key] 
             distanceOldNewIDs_old[key]      = recoverOldNewIDsElse[key]
             distanceBubHullAreas_old[key]   = recoverBubHullAreas[key]
-            bubTypesLocal[key]              = typeRecoveredElse
+            #bubTypesLocal[key]              = typeRecoveredElse
                 
         ringBubMasks_old, ringBubImages_old, ringBubRectParams_old, ringBubCentroids_old, ringOldNewIDs_old = {},{},{},{},{}
             
@@ -1661,7 +1686,7 @@ def mainer(index):
             ringBubCentroids_old[key]   = recoveredCentroidsRB[key]
             ringOldNewIDs_old[key]      = recoverOldNewIDsRB[key]
             ringBubHullAreas_old[key]   = recoverBubHullAreasRB[key]
-            bubTypesLocal[key]          = typeRecoveredRing
+            #bubTypesLocal[key]          = typeRecoveredRing
                 
         if globalCounter == 1222:
             [cv2.imshow(f'c {globalCounter}, i: {i}', img) for i, img in list(ringBubMasks_old.items())]
@@ -2075,9 +2100,10 @@ for globalCounter in range(globalCounter):
     
     activeIDs = [ID for ID, timeDict in bubTypesByID.items() if globalCounter in timeDict]#;print(f'globalCounter: {globalCounter} activeIDs: {activeIDs}')
     blank = X_data[dataStart+globalCounter] * 1
+    #ori = blank.copy()
     blank = cv2.subtract(np.uint8(blank), np.uint8(mean))
     blank = convertGray2RGB(blank)
-    typeStrings = ["N","RB", "rRB", "E", "F","rE","pm"]
+    typeStrings = ["N","RB", "rRB", "E", "F","rE","pm","rF"]
     splitStrings =  {}
     for ID in activeIDs:
         temp = [0,len(cntrIDsByIDs[ID][globalCounter])]
@@ -2106,8 +2132,8 @@ for globalCounter in range(globalCounter):
             if globalCounter in cntrChildrenIDsByIDs[ID]:
                 [cv2.drawContours(  blank,   contoursAll[globalCounter], cid, (0,255,0), 1) for cid in cntrChildrenIDsByIDs[ID][globalCounter]]
         # aa = [cid for cid in cntrChildrenIDsByIDs[ID][globalCounter] if globalCounter in cntrChildrenIDsByIDs[ID]]
-        colorSet = [(),(0,0,255),(0,100,190),(255,0,0),(125,0,125),(255,0,125),(0,255,0)]
-        thcSet = [(), 2, 1, 2, 2,2,2]
+        colorSet = [(),(0,0,255),(0,100,190),(255,0,0),(125,0,125),(255,0,125),(0,255,0),(125,0,125)]
+        thcSet = [(), 2, 1, 2, 2,2,2,2]
         clr = colorSet[currentType]
         thc = thcSet[currentType]
         [cv2.drawContours(  blank,   contoursAll[globalCounter], cid, clr, thc) for cid in currentCntrIds]
@@ -2171,7 +2197,7 @@ for globalCounter in range(globalCounter):
     
     #--------------- trajectories ---------------------------------
     for i,times in centroidsByID2.items(): # key IDs and IDS-> times
-        useTimes = [t for t in times.keys() if t <= globalCounter and t>globalCounter - 12]
+        useTimes = [t for t in times.keys() if t <= globalCounter ]#and t>globalCounter - 20
         pts = np.array([times[t] for t in useTimes]).reshape(-1, 1, 2)
         if pts.shape[0]>1:
             cv2.polylines(blank, [pts] ,0, cyclicColor(i), 1)
@@ -2180,6 +2206,7 @@ for globalCounter in range(globalCounter):
             
     cv2.putText(blank, str(globalCounter), (25,25), font, 0.9, (255,220,195),2, cv2.LINE_AA)
     cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\"+str(dataStart+globalCounter).zfill(4)+".png" ,blank)
+    #cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\orig_"+str(dataStart+globalCounter).zfill(4)+".png" ,ori)
     # cv2.imshow(f'{globalCounter}', resizeToMaxHW(blank))
     
     #==============================================================================================

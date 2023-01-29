@@ -517,51 +517,56 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
 #unq = list(set(arr))
 #cnt = [arr.count(a) for a in unq]
 #print(cnt)
-def doubleCritMinimum(setA,setB, mode = 0, debug = 0, printPrefix=''):
-    print(printPrefix) if len(printPrefix)>0 and debug == 1 else 0
+#def doubleCritMinimum(setA,setB, mode = 0, debug = 0, printPrefix=''):
+#    print(printPrefix) if len(printPrefix)>0 and debug == 1 else 0
     
-    if mode == 0:
-        print('rescaling data to {0, max(set)}->{0, 1}') if debug == 1 else 0
-        weightedA = np.array(setA)/max(setA)
-        weightedB = np.array(setB)/max(setB)
-    else:
-        print('rescaling data to {min(set, max(set)}->{0, 1}') if debug == 1 else 0
-        weightedA = (np.array(setA)-min(setA))/(max(setA) - min(setA))
-        weightedB = (np.array(setB)-min(setB))/(max(setB) - min(setB))
+#    if mode == 0:
+#        print('rescaling data to {0, max(set)}->{0, 1}') if debug == 1 else 0
+#        weightedA = np.array(setA)/max(setA)
+#        weightedB = np.array(setB)/max(setB)
+#    else:
+#        print('rescaling data to {min(set, max(set)}->{0, 1}') if debug == 1 else 0
+#        weightedA = (np.array(setA)-min(setA))/(max(setA) - min(setA))
+#        weightedB = (np.array(setB)-min(setB))/(max(setB) - min(setB))
     
-    res = [np.mean([a,b]) for a,b in zip(weightedA,weightedB)]
+#    res = [np.mean([a,b]) for a,b in zip(weightedA,weightedB)]
     
-    resIndex = np.argmin(res)
-    if debug == 1:
-        #print(f'setA: {[np.round(a, 2) for a in setA]}') 
-        #print(f'setB: {[np.round(a, 2) for a in setB]}') 
-        print(f'weightedA: {[np.round(a, 2) for a in weightedA]}') 
-        print(f'weightedB: {[np.round(a, 2) for a in weightedB]}') 
-        print(f'mean of weight pairs: {[np.round(a, 2) for a in res]}')
-        print(f'smallest index: {resIndex}')
-    return resIndex
+#    resIndex = np.argmin(res)
+#    if debug == 1:
+#        #print(f'setA: {[np.round(a, 2) for a in setA]}') 
+#        #print(f'setB: {[np.round(a, 2) for a in setB]}') 
+#        print(f'weightedA: {[np.round(a, 2) for a in weightedA]}') 
+#        print(f'weightedB: {[np.round(a, 2) for a in weightedB]}') 
+#        print(f'mean of weight pairs: {[np.round(a, 2) for a in res]}')
+#        print(f'smallest index: {resIndex}')
+#    return resIndex
 
-elseOldNewDoubleCriterium = [[8, 39, 15.033296378372908, 1.6082997301997093], [3,3,3,3],[8, 42, 116.40017182117903, 1.1947117842512815], [9, 12, 116.40017182117903, 1.1947117842512815], [9, 22, 16.40017182117903, 5.1947117842512815]]
-print(elseOldNewDoubleCriterium)
+#elseOldNewDoubleCriterium = [[8, 39, 15.033296378372908, 1.6082997301997093], [3,3,3,3],[8, 42, 116.40017182117903, 1.1947117842512815], [9, 12, 116.40017182117903, 1.1947117842512815], [9, 22, 16.40017182117903, 5.1947117842512815]]
+#print(elseOldNewDoubleCriterium)
 
-if len(elseOldNewDoubleCriterium)>0:
-    IDs = [a[0] for a in elseOldNewDoubleCriterium]
-    u, c = np.unique(IDs, return_counts=True)
-    if(len(c[c>1])>0):
-        dropCopies = []
-        for ID, cnt in zip(u,c):
-            if cnt > 1:
-                where = np.argwhere(IDs==ID).flatten()
-                print(f'ID:{ID} where',where)
-                setA = [elseOldNewDoubleCriterium[here][2] for here in where]
-                setB = [elseOldNewDoubleCriterium[here][3] for here in where]
-                hehe = doubleCritMinimum(setA ,setB, mode = 0, debug = 0, printPrefix='')
-                print(f'ID:{ID} good index',hehe)
-                deleteThese = [a for a in where if a not in [where[hehe]]]
-                print(f'ID:{ID} del these',deleteThese)
-                dropCopies = dropCopies + deleteThese
-        print(dropCopies)
-        elseOldNewDoubleCriterium = [entry for ID,entry in enumerate(elseOldNewDoubleCriterium) if ID not in dropCopies]
-print(elseOldNewDoubleCriterium)
+#if len(elseOldNewDoubleCriterium)>0:
+#    IDs = [a[0] for a in elseOldNewDoubleCriterium]
+#    u, c = np.unique(IDs, return_counts=True)
+#    if(len(c[c>1])>0):
+#        dropCopies = []
+#        for ID, cnt in zip(u,c):
+#            if cnt > 1:
+#                where = np.argwhere(IDs==ID).flatten()
+#                print(f'ID:{ID} where',where)
+#                setA = [elseOldNewDoubleCriterium[here][2] for here in where]
+#                setB = [elseOldNewDoubleCriterium[here][3] for here in where]
+#                hehe = doubleCritMinimum(setA ,setB, mode = 0, debug = 0, printPrefix='')
+#                print(f'ID:{ID} good index',hehe)
+#                deleteThese = [a for a in where if a not in [where[hehe]]]
+#                print(f'ID:{ID} del these',deleteThese)
+#                dropCopies = dropCopies + deleteThese
+#        print(dropCopies)
+#        elseOldNewDoubleCriterium = [entry for ID,entry in enumerate(elseOldNewDoubleCriterium) if ID not in dropCopies]
+#print(elseOldNewDoubleCriterium)
+
+arr = np.array([[12, 16]])
+arr0 = np.empty((0,2))
+arr1 = np.vstack((arr0,arr))
+print(arr1)
 
     

@@ -866,6 +866,7 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
     print(f'dupVals:{dupVals}')
     # perform two-criteria  (dist/area) minimization task
     dupSubset = []
+    #dbg = 1 if globalCounter == 12 else 0
     for ID, subIDs in dupVals.items():
         permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations([], subIDs, centroids, areas,
                                      centroids_Old[ID], relDist, areas_Old[ID], relAreaCheck = 2, doHull = 0, debug = 0) # !! new and _old swapped palces , relArea  should be around 1 !!

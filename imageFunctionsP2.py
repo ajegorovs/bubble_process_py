@@ -803,7 +803,7 @@ def overlappingRotatedRectangles(group1Params,group2Params):
     return intersectingCombs
 
 
-def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,centroids,fbStoreCulprits,frozenIDs_old,allLatestIDs,globalCounter,relArea,relDist):
+def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,centroids,fbStoreCulprits,frozenIDs_old,allLatestIDs,globalCounter,temp,relArea,relDist):
     # analyze current and previous frame: old controur-new contour, old cluster-> new contour
     # search rough neighbors combination by detecting overlapping bounding rectangles
     allCombs = list(itertools.product(rectParams_Old, rectParams))#;print(f'allCombs,{allCombs}')
@@ -818,6 +818,7 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
             intersectingCombs.append([keyOld,keyNew]) # rough neighbors combinations
     #print(f'intersectingCombs,{intersectingCombs}')
     # fiter these combinations based on centroid dist and relative area change
+    # !!!! for some reason '6' = 32 jhas different centroid coordinates (here by 1 pixel) !!! should be the same 'cause same object !!!!
     intersectingCombs_stage2 = []
     for (keyOld,keyNew) in intersectingCombs:
         if keyOld in frozenIDs_old: relArea2 = 1; relDist2 = np.linalg.norm(rectParams_Old[keyOld][-2:]) # in case of FB split, weaken contrains 
@@ -842,15 +843,28 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
     print(f'dupVals:{dupVals}')
     # perform two-criteria  (dist/area) minimization task
     dupSubset = []
+    onlyOldIDs = [aa for aa in rectParams_Old if type(aa) == str ]
     for ID, subIDs in dupVals.items():
-        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations([], subIDs, centroids_Old, areas_Old,
-                                     centroids[ID], relDist, areas[ID], relAreaCheck = 0.7, doHull = 0, debug = 0)
-        print(f'pIDs: {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
-        assert len(permIDsol2) < 2, f"detectStuckBubs-> centroidAreaSumPermutations  resulted in strange solution for new ID:{ID} - permIDsol2"
-        dupSubset.append([permIDsol2[0],ID,permDist2,permRelArea2]) # 
+        # in cases when duplicates consist of global and local ID of same object, give prio to global ID. havent seen yet otherwise cases- else permutations.
+        simpleCopy = False
         
-    intersectingCombs_stage2 = [a for a in intersectingCombs_stage2 if a[1] not in dupWhereIndicies]    # drop duplicates altogether
-    intersectingCombs_stage2 = intersectingCombs_stage2 + dupSubset                                     # add solution
+        for aa in subIDs:
+            if len(subIDs) == 2 and aa in onlyOldIDs:
+                tempCombs = [bb for bb in intersectingCombs_stage2 if bb[0] == aa]
+                intersectingCombs_stage2 = [a for a in intersectingCombs_stage2 if a[1] not in [ID]]    # drop duplicates altogether
+                intersectingCombs_stage2 = intersectingCombs_stage2 + tempCombs                                     # add solution
+                simpleCopy = True
+
+        if simpleCopy == False:
+            assert 2 == 3, "dupVals consists of more than 2 elements- global and local IDs, but some other object "
+            permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations([], subIDs, centroids_Old, areas_Old,
+                                         centroids[ID], relDist, areas[ID], relAreaCheck = 0.7, doHull = 0, debug = 0)
+            print(f'pIDs: {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
+            assert len(permIDsol2) < 2, f"detectStuckBubs-> centroidAreaSumPermutations  resulted in strange solution for new ID:{ID} - permIDsol2"
+            dupSubset.append([permIDsol2[0],ID,permDist2,permRelArea2]) # 
+            
+            intersectingCombs_stage2 = [a for a in intersectingCombs_stage2 if a[1] not in dupWhereIndicies]    # drop duplicates altogether
+            intersectingCombs_stage2 = intersectingCombs_stage2 + dupSubset                                     # add solution
 
 
     #dupSplit = {keyNew:[a[0] for a in intersectingCombs_stage2].count(keyNew)}
@@ -880,11 +894,15 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
     # compare these two-frame combinations with global list of stuck bubbles
     toList = lambda x: [x] if type(x) != list else x
     returnInfo = []
-    if len(fbStoreCulprits.copy()) == 0 and len(intersectingCombs_stage2) > 0 : #   
+    if globalCounter not in temp: temp[globalCounter] = {}
+
+    if len(fbStoreCulprits.copy()) == 0 and len(intersectingCombs_stage2) > 0 : #  if list of global frozen bubbles is clear but current frame has it/them 
         for keyOld, keyNew, relArea, dist  in intersectingCombs_stage2:
             fbStoreCulprits[tuple(centroids_Old[keyOld])] = {globalCounter-1:[ [-1], toList(keyOld)]}
             fbStoreCulprits[tuple(centroids_Old[keyOld])][globalCounter] = [ toList(keyOld), toList(keyNew)]
             returnInfo.append([keyOld,keyNew, dist, relArea, centroids_Old[keyOld]])
+            temp[globalCounter][keyOld] = [keyNew, dist, relArea, centroids_Old[keyOld]]
+
     elif len(intersectingCombs_stage2) > 0 and len(fbStoreCulprits)>0:
         for keyOld, keyNew, relArea, dist in intersectingCombs_stage2:
             searchCentroid = centroids_Old[keyOld]
@@ -897,7 +915,8 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
                 if dists[minKey] < 5:
                     oldID = fbStoreCulprits[minKey][globalCounter-1][0]
                     fbStoreCulprits[minKey][globalCounter] = [ toList(oldID), toList(keyNew)]
-                    returnInfo.append([keyOld,keyNew, dist, relArea, minKey])
+                    returnInfo.append([keyOld,keyNew, dists[minKey], relArea, minKey]) # maybe fixed dist -> dists[minKey] !!!
+                    temp[globalCounter][keyOld] = [keyNew, dists[minKey], relArea, minKey]
                 else:
                     fbStoreCulprits[tuple(searchCentroid)] = {globalCounter-1:[[-1],  toList(keyOld)]}
                     fbStoreCulprits[tuple(searchCentroid)][globalCounter] = [ toList(keyOld),  toList(keyNew)]

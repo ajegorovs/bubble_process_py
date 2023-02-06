@@ -569,8 +569,8 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart           = 154   #     260
-dataNum             = 45    #11 
+dataStart           = 58 #154   #     260
+dataNum             =  5 #8    #11 
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -663,76 +663,49 @@ def extractManualMask(): # either draw red masks over or using Paint, set bg col
     #cv2.imshow('manualMask',manualMask)
     IDs = np.arange(0,len(params))
     return contours,{ID:param for ID,param in enumerate(params)}
+
 typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge,typeRecoveredFrozen = np.int8(0),np.int8(1),np.int8(2),np.int8(3), np.int8(4), np.int8(5), np.int8(6), np.int8(7)
+
 centroidsByID2,recParamsByID, areasByID, masksByID,imagesByID,cntrIDsByIDs,bubTypesByID = {},{},{},{},{},{},{}
 cntrChildrenIDsByIDs = {}
 ringBubMasks_old, ringBubImages_old, ringBubRectParams_old, ringBubCentroids_old, ringBubHullAreas_old, ringCntrIDs = {}, {}, {}, {}, {}, {}
 ringOldNewIDs_old = {}
 distanceBubMasks_old, distanceBubImages_old, distanceBubRectParams_old, distanceBubCentroids_old, distanceBubHullAreas_old = {},{},{},{},{}
 distanceOldNewIDs_old, recParams_local_old= {}, {}
-#distanceBubMasks, distanceBubImages, distanceBubRectParams,  distanceBubCentroids, distanceBubHullAreas_old = {},{},{},{},{}
-#distanceOldNewIDs = {}
-contoursAll, contours_old, frozenBubs, frozenBubsTimes, bubTypesLocal, bubTypesLocal_old = {}, {}, {}, {}, {}, {}
+temp = {}
+
+contoursAll, contours_old, frozenBubs, frozenBubsTimes,  bubTypesLocal_old = {}, {}, {}, {}, {}
 fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits = {}, {}, {}, {}, {}
 predictCentroidDiff,predictCentroidDiff2,predictHullArea  = {}, {}, {}; frozenIDs, frozenIDs_old  = [],[]
 #recParams_local_old - ring and cluster bounding rectangle params using global IDs for previous iteration.
 def mainer(index):
-    global shareData, globalCounter, contoursAll, contours_old, frozenBubs, frozenBubsTimes, fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits, contours_old
+    global globalCounter, contoursAll, contours_old, frozenBubs, frozenBubsTimes, fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits, contours_old
     global ringBubMasks_old, ringBubImages_old, ringBubRectParams_old, ringBubCentroids_old, ringCntrIDs, ringOldNewIDs_old
     global distanceBubMasks_old, distanceBubImages_old, distanceBubRectParams_old,  distanceBubCentroids_old, distanceBubHullAreas_old, distanceOldNewIDs_old
-    global distanceBubMasks, distanceBubImages, distanceBubRectParams,  distanceBubCentroids, distanceOldNewIDs
-    global centroidsByID2,recParamsByID,areasByID,masksByID,imagesByID,cntrIDsByIDs,bubTypesByID,bubTypesLocal,bubTypesLocal_old,cntrChildrenIDsByIDs
+    #global distanceBubMasks, distanceBubImages, distanceBubRectParams,  distanceBubCentroids, distanceOldNewIDs
+    global centroidsByID2,recParamsByID,areasByID,masksByID,imagesByID,cntrIDsByIDs,bubTypesByID,bubTypesLocal_old,cntrChildrenIDsByIDs
     global predictCentroidDiff,predictCentroidDiff2,predictCentroidDiff_local, predictHullArea, frozenIDs, frozenIDs_old, recParams_local_old
     orig0 = X_data[index]
-    if 1==12:
-        # orig = cv2.circle(orig.copy() * 0, (300,500), 250, 255, -1)
-        orig0 = cv2.circle(orig0.copy() , (700,300), 20, 255, -1)
-        # orig = cv2.circle(orig.copy() , (700,359), 30, 255, -1)
-        # orig0 = orig.copy()
-        # cv2.imshow('orig',orig)
-    #origRGB = convertGray2RGB(orig0)
-    if 1==1:
-        global orig
-        orig = orig0 -cv2.blur(mean, (5,5),cv2.BORDER_REFLECT)
-    
-        orig[orig < 0] = 0                  # if orig0 > mean
-        orig = orig.astype(np.uint8)
-        # blank = orig0.copy() * 0
-        # cv2.imshow('mean',mean.astype(np.uint8))
-     
-    if 1==1:
-        global err
-        # subMasks_old, subImages_old = {}, list()    
-        #err0 = err.copy()
-        _,err = cv2.threshold(orig.copy(),thresh0,255,cv2.THRESH_BINARY)
-        err = cv2.morphologyEx(err.copy(), cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
-        # err = removeBorderComponents(err,2,10)    
-        #cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\msk_"+str(dataStart+globalCounter).zfill(4)+".png" ,err)
-        
-    # if globalCounter>0:
-        # global orig_prev, err_prev
-        # orig_prev, err_prev = orig.copy() ,err.copy()
-        
-        
-        # err = maskDilateErode(img = origRGB,mask = err,kernel = 14,iters = 1, order = 1, graphics = 1, name = 'global')
-    
-    # remove border components https://stackoverflow.com/questions/65534370/remove-the-element-attached-to-the-image-border
-    
-       
-    # qq =  maskSegmentAndHull(img = orig, mask = err, minArea = 350, graphics = 0, name = 1)
-    # cv2.imshow("qq",qq)
+    # wanted to replace code below with cv2.subtract, but there are alot of problems with dtypes and results are not bit different
+    orig = orig0 -cv2.blur(mean, (5,5),cv2.BORDER_REFLECT)
+    orig[orig < 0] = 0                  # if orig0 > mean
+    orig = orig.astype(np.uint8)
+
+    _,err = cv2.threshold(orig.copy(),thresh0,255,cv2.THRESH_BINARY)
+    err = cv2.morphologyEx(err.copy(), cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
+
     if workBigArray == 1  and readSingleFromArray == 1: gfx = 1
     else: gfx = 0
     if workBigArray == 0: gfx = 1
 
-    global contours4, mergeCandidates, bubTypesLocal, bubTypesLocal_old, debugVecPredict,contoursFilter_RectParams_dropIDs_old
+    global debugVecPredict,contoursFilter_RectParams_dropIDs_old
     mergeCandidates,mergeCandidatesSubcontourIDs = {},{}
     recoveredMaskElse, recoveredImgElse, recoverRectParamsElse,recoverCentroidsElse, recoverOldNewIDsElse, recoverBubHullAreas = {}, {}, {}, {}, {}, {}
-    #bubTypesLocal, bubTypesLocal, bubTypesLocal_old = {}, {}, {}
+    bubTypesLocal= {}
     ringBubMasks, ringBubImages, ringBubRectParam, ringBubCentoids, ringBubHullAreas, ringOldNewIDs = {}, {}, {}, {}, {}, {} # temp placeholders, redefined in the end
     recoveredMaskRB, recoveredImgRB, recoverRectParamsRB,recoveredCentroidsRB, recoverOldNewIDsRB, recoverBubHullAreasRB = {} , {} , {} , {} , {}, {} # moved A copy for sake of globalCounter > 0
     predictCentroidDiff_local = {}
-    #try:
+
     (contours4, whereParentOriginal,
         whereParentAreaFiltered,whereChildrenAreaFiltered) = cntParentChildHierarchy(err,1, 1200,100,0.1) # whereParentOriginal all non-child contours
     contoursAll[globalCounter] = contours4
@@ -783,25 +756,23 @@ def mainer(index):
         frozenKeys = {int(globalIDstr): allLastFrozenIDs[centroidID][0] for centroidID,globalIDstr in allLastFrozenParamsIDs.items()}
         calcMoments = lambda contourList, contourIDs: getCentroidPosContours(bodyCntrs = contourList[contourIDs], hullArea = 0)
 
-        #contoursAll #cntrIDsByIDs[timeStep]
-        #contourSubset = [contoursAll[timeStep][k] for k in IDs] #
-        #contourStack = np.vstack([contoursAll[timeStep][k] for k in IDs])#IDs if type(IDs[0]) != str else cntrIDsByIDs[timeStep][int(IDs[0])]
+
         print(f'allLastFrozenIDs:{allLastFrozenIDs}')
         # change str 'globalID' into localID of that step. not likely to happen. 
         allLastFrozenIDs = {centroidID: [timeStep, IDs if type(IDs[0]) != str else cntrIDsByIDs[timeStep][int(IDs[0])]]  for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()}
         print(f'allLastFrozenIDs:{allLastFrozenIDs}')
         allLastFrozenParams1 = {centroidID: calcMoments(contoursAll[timeStep],IDs) for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()}
         allLastFrozenParams2 = {centroidID: cv2.boundingRect(np.vstack([contoursAll[timeStep][k] for k in IDs])) for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()}
-        # old #allLastFrozenParamsIDs = {centroidID: IDs  for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()}
-        #allLastFrozenAreas = {centroidID: calcMoments(contoursAll[timeStep],IDs if type(IDs[0]) != str else cntrIDsByIDs[timeStep][int(IDs[0])]) for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()}
+        
         stuckRectParams = {**stuckRectParams, **allLastFrozenParams2}
         stuckAreas = {**stuckAreas,**{centroidID: area for centroidID, [_,area] in allLastFrozenParams1.items()}}
         stuckCentroids  = {**stuckCentroids,**{centroidID: centroidLatest for centroidID, [centroidLatest,_] in allLastFrozenParams1.items()}}
+        global temp
         #joinAreas2 = {oldID: np.sum(mask)/255 for oldID, mask in jointMasks.items()}
         # I want to join old singles and clusters , check them vs new singles. see if there are multiple singles/+cluster point at new single, select most viable, compare to global fb storage and add to old or new
         fields = [stuckRectParams,fbStoreRectParams2,stuckAreas,fbStoreAreas2,stuckCentroids,fbStoreCentroids2,fbStoreCulprits,frozenIDs_old,allLastFrozenParamsIDs]
-        frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, globalCounter, relArea = 0.2, relDist = 3) # TODO breaks on higher relDist, probly not being split correctly
-        
+        frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, globalCounter, temp, relArea = 0.2, relDist = 3) # TODO breaks on higher relDist, probly not being split correctly
+        print(f'temp:{temp}')
         # IDs are held in fbStoreCulprits (appended each time)
         print(f'fbStoreCulprits:{fbStoreCulprits}')
         # !!! detectStuckBubs -> centroidAreaSumPermutations when permutation search fails returns empty array. it fucks shit up
@@ -858,18 +829,7 @@ def mainer(index):
             _, hullArea               = getCentroidPosContours(bodyCntrs = [cntP],holesCntrs=[], hullArea = 1)
             ringBubHullAreas[newID]   = hullArea
                 
-            # for cSel in whereChildrenAreaFiltered[newID]:
-            #     ccr = getCentroidPos(inp = contours4[cSel], offset = (0,0), mode=0, mask=[])
-            #     temp.append([cpr,ccr])
-    
-            # childParentCentroids.append(temp)
-               
-    # parentChildNorms = [
-    #                     [np.linalg.norm(np.array(p1) - np.array(p2)) for (p1,p2) in A]
-    #                     for A in childParentCentroids
-    #                     ]
-        
-     
+
 
     # -----  calculate centroid-centroid distance for old and new ring bubbles
     # -----  take only ones that satisfy criteria
@@ -910,6 +870,7 @@ def mainer(index):
                 if dist2 <= distCheck2 + 5*distCheck2Sigma and  areaCrit < 3: # difference in areas is less then 3 sigmas
                     predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), np.around(dist2,2)]
                     RBOldNewDist = np.append(RBOldNewDist,[[oldID,newID]],axis=0)
+                    bubTypesLocal[oldID] = typeRing
                     print(f' resolved oldID:{oldID}- newID:{newID} relation with pC-cDist:{dist2:0.1f} and  areaCrit:{areaCrit:0.2f}')
                 else:
                     accumulateFailParams.append([[oldID,newID],[int(dist2),int(distCheck2),int(distCheck2Sigma)],[np.around(areaCrit,2)]])
@@ -973,7 +934,7 @@ def mainer(index):
                     recoverOldNewIDsRB[i]   = overlapingContourIDList
                     recoverBubHullAreasRB[i]= getCentroidPosContours(bodyCntrs = [contours4[k] for k in overlapingContourIDList], hullArea = 1)[1]
                     
-                    # bubTypesLocal[i] = typeRecoveredRing
+                    bubTypesLocal[i] = typeRecoveredRing
                     bubTypesByID[i][globalCounter] = typeRecoveredRing
                     # centroidsByID2[i][globalCounter] = tempC
 
@@ -1247,6 +1208,7 @@ def mainer(index):
                         elseOldNewDoubleCriterium.append([oldID,unresNewRBID,dist2,areaCrit])
                         elseOldNewDoubleCriteriumSubIDs[unresNewRBID] = [subNewIDs]
                         newFoundBubsRings.remove(unresNewRBID)
+                        bubTypesLocal[oldID] = typeRing
                     elif dist2 > 70 or areaCrit > 15:
                         0#;print('dist 2. soft break') # if values are completely wack, dont try to do permutations
                     else:
@@ -1259,6 +1221,7 @@ def mainer(index):
                             elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),dist2,permRelArea2])
                             elseOldNewDoubleCriteriumSubIDs[min(permIDsol2)] = permIDsol2
                             newFoundBubsRings.remove(unresNewRBID)
+                            bubTypesLocal[oldID] = typeRing
             # in case elseOldNewDoubleCriterium  has multiple options, select most likely
             print(elseOldNewDoubleCriterium)
             if len(elseOldNewDoubleCriterium)>0:
@@ -2199,11 +2162,11 @@ for globalCounter in range(globalCounter):
             origPos = np.array(centroidsByID2[ID][globalCounter])
             centroidX, halfTotSize = origPos[0],int(totSize/2)
             leftSideOffset = max(0, 0 - (centroidX-halfTotSize)) # in case text is out of frame add offset.
-            rightSideOffset = min(0,err.shape[1] - (centroidX+halfTotSize)) 
+            rightSideOffset = min(0,blank.shape[1] - (centroidX+halfTotSize)) 
             # ladder = (k%4)*(ySize+baseline + 5) # vertical offset in steps
             ladder = int(np.ceil(0.5*(k+1)))*(ySize+baseline + 5) # ceil to get 1,1,2,2,3,3,...
             if k%2 == 0:
-                topBottom = err.shape[0]-baseline - 30;flip = -1
+                topBottom = blank.shape[0]-baseline - 30;flip = -1
             else:
                 topBottom = 30 + ySize; flip  = 1
             pos = np.array(

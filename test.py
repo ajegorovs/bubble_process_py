@@ -3,6 +3,7 @@
 # i wanted to scale up A contour w/o having to use images and morphological dilate. 
 
 import sqlite3
+from time import process_time_ns
 import numpy as np
 import numpy
 import cv2
@@ -564,9 +565,21 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
 #        elseOldNewDoubleCriterium = [entry for ID,entry in enumerate(elseOldNewDoubleCriterium) if ID not in dropCopies]
 #print(elseOldNewDoubleCriterium)
 
-arr = np.array([[12, 16]])
-arr0 = np.empty((0,2))
-arr1 = np.vstack((arr0,arr))
-print(arr1)
+#arr = np.array([[12, 16]])
+#arr0 = np.empty((0,2))
+#arr1 = np.vstack((arr0,arr))
+#print(arr1)
+
+
+#arr = np.array(['6','7'], dtype=object)
+##mask = [True if a in []]
+
+#arr2 = np.array(['6',32], dtype=object)
+#print([True if a in arr else False for a in arr2])
+
+
 
     
+arr = ['0', '1', '4', '5', '7', '8', '6']
+print()
+print(np.argwhere(np.array(arr,np.int8)==int('6'))[0,0])

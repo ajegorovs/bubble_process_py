@@ -569,8 +569,8 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart           = 58 #154   #     260
-dataNum             =  5 #8    #11 
+dataStart           = 53 #154   #     260
+dataNum             =  7 #8    #11 
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -672,28 +672,30 @@ ringBubMasks_old, ringBubImages_old, ringBubRectParams_old, ringBubCentroids_old
 ringOldNewIDs_old = {}
 distanceBubMasks_old, distanceBubImages_old, distanceBubRectParams_old, distanceBubCentroids_old, distanceBubHullAreas_old = {},{},{},{},{}
 distanceOldNewIDs_old, recParams_local_old= {}, {}
-temp = {}
+frozenGlobal = {}
 
 contoursAll, contours_old, frozenBubs, frozenBubsTimes,  bubTypesLocal_old = {}, {}, {}, {}, {}
-fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits = {}, {}, {}, {}, {}
+fbStoreCentroids_old, fbStoreAreas_old,fbStoreAreasHull_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits = {}, {}, {}, {}, {}, {}
 predictCentroidDiff,predictCentroidDiff2,predictHullArea  = {}, {}, {}; frozenIDs, frozenIDs_old  = [],[]
 #recParams_local_old - ring and cluster bounding rectangle params using global IDs for previous iteration.
 def mainer(index):
-    global globalCounter, contoursAll, contours_old, frozenBubs, frozenBubsTimes, fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits, contours_old
+    global globalCounter, contoursAll, contours_old, frozenBubs, frozenBubsTimes, fbStoreCentroids_old, fbStoreAreas_old, fbStoreRectParams, fbStoreRectParams_old, fbStoreCulprits
+
     global ringBubMasks_old, ringBubImages_old, ringBubRectParams_old, ringBubCentroids_old, ringCntrIDs, ringOldNewIDs_old
     global distanceBubMasks_old, distanceBubImages_old, distanceBubRectParams_old,  distanceBubCentroids_old, distanceBubHullAreas_old, distanceOldNewIDs_old
     #global distanceBubMasks, distanceBubImages, distanceBubRectParams,  distanceBubCentroids, distanceOldNewIDs
     global centroidsByID2,recParamsByID,areasByID,masksByID,imagesByID,cntrIDsByIDs,bubTypesByID,bubTypesLocal_old,cntrChildrenIDsByIDs
     global predictCentroidDiff,predictCentroidDiff2,predictCentroidDiff_local, predictHullArea, frozenIDs, frozenIDs_old, recParams_local_old
     orig0 = X_data[index]
-    # wanted to replace code below with cv2.subtract, but there are alot of problems with dtypes and results are not bit different
+    # wanted to replace code below with cv2.subtract, but there are alot of problems with dtypes and results are a bit different
     orig = orig0 -cv2.blur(mean, (5,5),cv2.BORDER_REFLECT)
     orig[orig < 0] = 0                  # if orig0 > mean
     orig = orig.astype(np.uint8)
 
     _,err = cv2.threshold(orig.copy(),thresh0,255,cv2.THRESH_BINARY)
     err = cv2.morphologyEx(err.copy(), cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
-
+    #err = cv2.circle(err.copy() , (100,200), 11, 255, -1) if globalCounter<dataNum-1 else err.copy()
+    
     if workBigArray == 1  and readSingleFromArray == 1: gfx = 1
     else: gfx = 0
     if workBigArray == 0: gfx = 1
@@ -706,49 +708,53 @@ def mainer(index):
     recoveredMaskRB, recoveredImgRB, recoverRectParamsRB,recoveredCentroidsRB, recoverOldNewIDsRB, recoverBubHullAreasRB = {} , {} , {} , {} , {}, {} # moved A copy for sake of globalCounter > 0
     predictCentroidDiff_local = {}
 
-    (contours4, whereParentOriginal,
-        whereParentAreaFiltered,whereChildrenAreaFiltered) = cntParentChildHierarchy(err,1, 1200,100,0.1) # whereParentOriginal all non-child contours
-    contoursAll[globalCounter] = contours4
-    print(f'whereChildrenAreaFiltered {whereChildrenAreaFiltered}')
+    # get contours from binary image. filter out useless. 
     global contoursFilter_RectParams,contoursFilter_RectParams_dropIDs
     contoursFilter_RectParams_dropIDs,fbStoreCentroids = [], {}
-    contoursFilter_RectParams = {ID: cv2.boundingRect(contours4[ID]) for ID in whereParentOriginal} # maybe mod if for all contours
-    # Bubbles boundingRect: x+w < 80 pix <-> filter out bubbles at left image edge
-    contoursFilter_RectParams_dropIDs = [ID for ID,params in contoursFilter_RectParams.items() if sum(params[0:3:2])<80]
-    # Additional size filter
-    minArea = 160 # used in distance bub filtering
-    fbStoreAreas = {key: cv2.contourArea(contours4[key]) for key in contoursFilter_RectParams if key not in contoursFilter_RectParams_dropIDs } # dropped since never used
-    contoursFilter_RectParams_dropIDs = contoursFilter_RectParams_dropIDs + [key for key, area in fbStoreAreas.items() if area < minArea]
-        
-
-    jointMasks = {**ringBubMasks_old, **distanceBubMasks_old}  # possibly no need for dist bubs here!
-    jointRectParams = {**ringBubRectParams_old, **distanceBubRectParams_old}
+    
+    (contours4, whereParentOriginal,
+        whereParentAreaFiltered,whereChildrenAreaFiltered) = cntParentChildHierarchy(err,1, 1200,100,0.1) # whereParentOriginal all non-child contours.
+    contoursAll[globalCounter] = contours4                                                                # add contours to global storage.
+    print(f'whereChildrenAreaFiltered {whereChildrenAreaFiltered}')
+    contoursFilter_RectParams = {ID: cv2.boundingRect(contours4[ID]) for ID in whereParentOriginal} # remember bounding rectangle parameters for all primary contours.
+    contoursFilter_RectParams_dropIDs = [ID for ID,params in contoursFilter_RectParams.items() if sum(params[0:3:2])<80] # filter out bubbles at left image edge, keep those outside 80 pix boundary. x+w < 80 pix.
+    fbStoreAreas = {key: cv2.contourArea(contours4[key]) for key in contoursFilter_RectParams if key not in contoursFilter_RectParams_dropIDs } # remember contour areas of main contours that are out of side band.
+    fbStoreAreasHull = {ID:getContourHullArea(contours4[ID]) for ID in fbStoreAreas} # convex hull of a single contour. for multiple contrours use getCentroidPosContours.
+    minArea = 160 
+    contoursFilter_RectParams_dropIDs = contoursFilter_RectParams_dropIDs + [key for key, area in fbStoreAreas.items() if area < minArea] # list of useless contours- inside side band and too small area.
+    fbStoreRectParams = {key: val for key, val in contoursFilter_RectParams.items() if key in fbStoreAreas} # bounding rectangle parameters for all primary except within a band.
+    fbStoreCentroids = {key: getCentroidPosContours(bodyCntrs = [contours4[key]])[0] for key in fbStoreRectParams} # centroids of ^
+       
+    # data from previous frame. join ring bubbles and other bubbles
+    jointMasks = {**ringBubMasks_old, **distanceBubMasks_old}                   # names self explanatory. all images are cropped versions with size and position data from rect params.
     jointImages = {**ringBubImages_old, **distanceBubImages_old}
+    jointRectParams = {**ringBubRectParams_old, **distanceBubRectParams_old}
     jointCentroids = {**ringBubCentroids_old,**distanceBubCentroids_old}
-    jointSubIDs = {**ringOldNewIDs_old,**distanceOldNewIDs_old}
-           
-
-    fbStoreAreas = {key: area for key, area in fbStoreAreas.items()} # if area > minArea
-    fbStoreRectParams = {key: val for key, val in contoursFilter_RectParams.items() if key in fbStoreAreas}
-    fbStoreCentroids = {key: getCentroidPosContours(bodyCntrs = [contours4[key]])[0] for key in fbStoreRectParams}
+    jointSubIDs = {**ringOldNewIDs_old,**distanceOldNewIDs_old}                 # prev frame global and local ID relations -> {old global ID: [old local 1, old local 2,...]}
+    joinHullAreas = {**ringBubHullAreas_old,**distanceBubHullAreas_old}
     frozenIDs = []
     if globalCounter >= 1:
-        print(f'{globalCounter}:-------- Begin search for frozen bubbles ---------')
-        # dicts below do not hold info about frozen bubbles !!!
-        joinAreas = {oldID: sum([fbStoreAreas_old[subID] for subID in subIDs]) for oldID, subIDs in jointSubIDs.items()}# no children- bigger area for rings, no hull- fails if type changes
-        stuckRectParams = {**fbStoreRectParams_old,**{str(key):val for key,val in jointRectParams.items()}}
-        stuckAreas = {**fbStoreAreas_old,**{str(key):val for key,val in joinAreas.items()}}
-        stuckCentroids = {**fbStoreCentroids_old,**{str(key):val for key,val in jointCentroids.items()}}
+        # try to find old contours or cluster of contours that did not move during frame transition.
+        # double overlay of old global and old local IDs, remove local & keep global.
+        dropKeys = lambda lib,IDs: {key:val for key,val in lib.items() if key not in IDs} # function that drops all keys listed in ids from dictionary lib
         
-        dropKeysOld = lambda x: {key:val for key,val in x.items() if key not in contoursFilter_RectParams_dropIDs_old}
-        dropKeysNew = lambda x: {key:val for key,val in x.items() if key not in contoursFilter_RectParams_dropIDs}
-        [stuckRectParams,stuckAreas,stuckCentroids] = list(map(dropKeysOld,[stuckRectParams,stuckAreas,stuckCentroids] ))
-        [fbStoreRectParams2,fbStoreAreas2,fbStoreCentroids2] = list(map(dropKeysNew,[fbStoreRectParams,fbStoreAreas,fbStoreCentroids] ))
+        print(f'{globalCounter}:-------- Begin search for frozen bubbles ---------')
+        deleteOverlaySoloIDs = [key for key, subIDs in jointSubIDs.items() if len(subIDs) == 1] # these are duplicates of global IDs from prev frame. ex: jointSubIDs= {0: [15]} -> fbStoreAreas_old= {15:A} & joinAreas = {0:A} same object.
+        stuckAreas      = {**dropKeys(fbStoreAreas_old,deleteOverlaySoloIDs),       **{str(key):val for key,val in joinHullAreas.items()}}
+        stuckRectParams = {**dropKeys(fbStoreRectParams_old,deleteOverlaySoloIDs),  **{str(key):val for key,val in jointRectParams.items()}}
+        stuckCentroids  = {**dropKeys(fbStoreCentroids_old,deleteOverlaySoloIDs),   **{str(key):val for key,val in jointCentroids.items()}}
+        
+        dropKeysOld = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs_old)
+        dropKeysNew = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs)
+        [stuckRectParams,stuckAreas,stuckCentroids]             = list(map(dropKeysOld,[stuckRectParams,stuckAreas,stuckCentroids] ))
+        [fbStoreRectParams2,fbStoreAreas2,fbStoreCentroids2]    = list(map(dropKeysNew,[fbStoreRectParams,fbStoreAreas,fbStoreCentroids] ))
+
+        # frozen bubbles, other than from previous time step should be considered.================================
 
         allLastFrozenIDs = {centroidID: (lambda x: [x,timeLibs[x][1]])(max(timeLibs)) for centroidID, timeLibs in fbStoreCulprits.items()} # if max(timeLibs)<globalCounter -1
         print(f'allLastFrozenIDs:{allLastFrozenIDs}')
         allLastFrozenIDs = {centroidID: [timeStep,IDs] for centroidID, [timeStep,IDs] in allLastFrozenIDs.items() if 1 < timeStep < globalCounter -1}
-        
+        print(f'allLastFrozenIDs:{allLastFrozenIDs}')
         # ... grab all IDs that have specific time step. find which ID has subIDs that we search
         allLastFrozenParamsIDs0 = [{centroidID: str([key for key,cIDs in {ID: vals[timeStep] for ID,vals in cntrIDsByIDs.items() if timeStep in vals}.items() if cIDs == IDs][0]) if type(IDs[0]) != str else IDs[0]} for centroidID, [timeStep,IDs] in allLastFrozenIDs.items()]
         allLastFrozenParamsIDs = {};[allLastFrozenParamsIDs.update(elem) for elem in allLastFrozenParamsIDs0]
@@ -767,12 +773,13 @@ def mainer(index):
         stuckRectParams = {**stuckRectParams, **allLastFrozenParams2}
         stuckAreas = {**stuckAreas,**{centroidID: area for centroidID, [_,area] in allLastFrozenParams1.items()}}
         stuckCentroids  = {**stuckCentroids,**{centroidID: centroidLatest for centroidID, [centroidLatest,_] in allLastFrozenParams1.items()}}
-        global temp
+        global frozenGlobal
+        frozenLocal = []
         #joinAreas2 = {oldID: np.sum(mask)/255 for oldID, mask in jointMasks.items()}
         # I want to join old singles and clusters , check them vs new singles. see if there are multiple singles/+cluster point at new single, select most viable, compare to global fb storage and add to old or new
         fields = [stuckRectParams,fbStoreRectParams2,stuckAreas,fbStoreAreas2,stuckCentroids,fbStoreCentroids2,fbStoreCulprits,frozenIDs_old,allLastFrozenParamsIDs]
-        frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, globalCounter, temp, relArea = 0.2, relDist = 3) # TODO breaks on higher relDist, probly not being split correctly
-        print(f'temp:{temp}')
+        frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, globalCounter, frozenLocal, relArea = 0.2, relDist = 3) # TODO breaks on higher relDist, probly not being split correctly
+        print(f'frozenLocal:{frozenLocal}')
         # IDs are held in fbStoreCulprits (appended each time)
         print(f'fbStoreCulprits:{fbStoreCulprits}')
         # !!! detectStuckBubs -> centroidAreaSumPermutations when permutation search fails returns empty array. it fucks shit up
@@ -804,7 +811,7 @@ def mainer(index):
         
         for IDS in [bID for bID,bType in bubTypesLocal_old.items() if bType == typeFrozen]:
             predictCentroidDiff_local[IDS] = [tuple(map(int,stuckCentroids[str(IDS)])), -1]
-    contoursFilter_RectParams_dropIDs_old = contoursFilter_RectParams_dropIDs # prepare/store for next time step    
+     
         # 1.1 ------------- GRAB RING BUBBLES RB ----------------------
     #for (cntPi,cntP) in enumerate(contours4[whereParentAreaFiltered]): #subset contours
     for (newID,cntP) in zip(whereParentAreaFiltered,contours4[whereParentAreaFiltered]):
@@ -1791,8 +1798,10 @@ def mainer(index):
 
 
     fbStoreAreas_old = fbStoreAreas
+    fbStoreAreasHull_old = fbStoreAreasHull
     fbStoreCentroids_old = fbStoreCentroids
     fbStoreRectParams_old = fbStoreRectParams
+    contoursFilter_RectParams_dropIDs_old = contoursFilter_RectParams_dropIDs # prepare/store for next time step   
     contours_old = contours4
     frozenIDs_old = frozenIDs
 

@@ -580,6 +580,17 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
 
 
     
-arr = ['0', '1', '4', '5', '7', '8', '6']
-print()
-print(np.argwhere(np.array(arr,np.int8)==int('6'))[0,0])
+#arr = ['0', '1', '4', '5', '7', '8', '6']
+#print()
+#print(np.argwhere(np.array(arr,np.int8)==int('6'))[0,0])
+
+player_age = 13
+
+if player_age >= 18:
+    print("You could be in college.")
+elif player_age >= 13:
+    print("You can also attend iD Academies!")
+elif player_age >= 7:
+    print("You can attend iD Tech Camps!")
+else:
+    print("You're young.")

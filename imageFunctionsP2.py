@@ -247,7 +247,7 @@ def getCentroidPosContours(bodyCntrs,holesCntrs=[],hullArea = 0):
     return  tuple(map(int,np.ceil(endCentroid))), int(returnArea)
 
 def getContourHullArea(bodyCntrs):
-    return int(cv2.contourArea(cv2.convexHull(np.vstack(bodyCntrs))))
+    return cv2.contourArea(cv2.convexHull(np.vstack(bodyCntrs))) #removed int
 
 def getCentroidPosCentroidsAndAreas(centroids1,areas1,centroids0=[],areas0=[]):
     centroids1 =  np.float32(centroids1)
@@ -803,7 +803,7 @@ def overlappingRotatedRectangles(group1Params,group2Params):
     return intersectingCombs
 
 
-def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,centroids,fbStoreCulprits,frozenIDs_old,allLatestIDs,globalCounter,temp,relArea,relDist):
+def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,centroids,fbStoreCulprits,frozenIDs_old,allLatestIDs,globalCounter,frozenLocal,relArea,relDist):
     # analyze current and previous frame: old controur-new contour, old cluster-> new contour
     # search rough neighbors combination by detecting overlapping bounding rectangles
     allCombs = list(itertools.product(rectParams_Old, rectParams))#;print(f'allCombs,{allCombs}')
@@ -894,14 +894,14 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
     # compare these two-frame combinations with global list of stuck bubbles
     toList = lambda x: [x] if type(x) != list else x
     returnInfo = []
-    if globalCounter not in temp: temp[globalCounter] = {}
-
+    
+    print(f'len(fbStoreCulprits.copy()): {len(fbStoreCulprits.copy())}')
     if len(fbStoreCulprits.copy()) == 0 and len(intersectingCombs_stage2) > 0 : #  if list of global frozen bubbles is clear but current frame has it/them 
         for keyOld, keyNew, relArea, dist  in intersectingCombs_stage2:
             fbStoreCulprits[tuple(centroids_Old[keyOld])] = {globalCounter-1:[ [-1], toList(keyOld)]}
             fbStoreCulprits[tuple(centroids_Old[keyOld])][globalCounter] = [ toList(keyOld), toList(keyNew)]
             returnInfo.append([keyOld,keyNew, dist, relArea, centroids_Old[keyOld]])
-            temp[globalCounter][keyOld] = [keyNew, dist, relArea, centroids_Old[keyOld]]
+            frozenLocal.append([keyNew])
 
     elif len(intersectingCombs_stage2) > 0 and len(fbStoreCulprits)>0:
         for keyOld, keyNew, relArea, dist in intersectingCombs_stage2:
@@ -909,18 +909,19 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
             if type(keyOld) == tuple:
                 fbStoreCulprits[keyOld][globalCounter] = [[allLatestIDs[keyOld]], toList(keyNew)] #allLatestIDs[keyOld][0] is crap. old ID must be of len one. either a single contour or cluster 
                 returnInfo.append([allLatestIDs[keyOld],keyNew, dist, relArea, keyOld])
-            else:
+            else: # fbStoreCulprits is updated after prev match, maybe dont iterate over updated version!!!!!!!=================
                 dists = {centroid:np.linalg.norm(np.diff([centroid,searchCentroid],axis=0),axis=1)[0] for centroid in fbStoreCulprits}
                 minKey = min(dists, key=dists.get) #min dist centroid
                 if dists[minKey] < 5:
                     oldID = fbStoreCulprits[minKey][globalCounter-1][0]
                     fbStoreCulprits[minKey][globalCounter] = [ toList(oldID), toList(keyNew)]
                     returnInfo.append([keyOld,keyNew, dists[minKey], relArea, minKey]) # maybe fixed dist -> dists[minKey] !!!
-                    temp[globalCounter][keyOld] = [keyNew, dists[minKey], relArea, minKey]
+                    frozenLocal.append([keyNew])
                 else:
                     fbStoreCulprits[tuple(searchCentroid)] = {globalCounter-1:[[-1],  toList(keyOld)]}
                     fbStoreCulprits[tuple(searchCentroid)][globalCounter] = [ toList(keyOld),  toList(keyNew)]
                     returnInfo.append([keyOld,keyNew, dist, relArea, tuple(searchCentroid)])
+                    frozenLocal.append([keyNew])
     # search frozen bubbles that had split. take fbStoreCulprits and make intersercting permutation with new contours
     # problem: this wont catch bubbles E->split E. because they are not in fbStoreCulprits yet
     returnInfo = np.array(returnInfo, dtype=object)

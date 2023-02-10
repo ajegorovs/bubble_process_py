@@ -594,3 +594,8 @@ elif player_age >= 7:
     print("You can attend iD Tech Camps!")
 else:
     print("You're young.")
+
+arr = [[45, 54, 0.1446886446886447, 2.23606797749979]]
+print(arr)
+arr = [[a,[b],c,d] for a,b,c,d in arr]
+print(arr)

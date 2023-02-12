@@ -584,18 +584,13 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
 #print()
 #print(np.argwhere(np.array(arr,np.int8)==int('6'))[0,0])
 
-player_age = 13
 
-if player_age >= 18:
-    print("You could be in college.")
-elif player_age >= 13:
-    print("You can also attend iD Academies!")
-elif player_age >= 7:
-    print("You can attend iD Tech Camps!")
-else:
-    print("You're young.")
+#print(np.argwhere(arr == 22).reshape(-1).tolist())
+arr = {1: [0,6],2:[1,2],3:[0,2,3]}
 
-arr = [[45, 54, 0.1446886446886447, 2.23606797749979]]
-print(arr)
-arr = [[a,[b],c,d] for a,b,c,d in arr]
-print(arr)
+srch = [2,6]
+sol = srch * 0
+aa = {ID:max([time for time,IDs in arr.items() if ID in IDs]) for ID in srch}
+print(aa)
+#a = list(filter(lambda x: x[1].index(srch) if srch in x[1]), arr.items()))
+#print(a)

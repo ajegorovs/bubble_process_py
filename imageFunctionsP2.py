@@ -802,23 +802,7 @@ def overlappingRotatedRectangles(group1Params,group2Params):
             intersectingCombs.append([keyOld,keyNew]) # rough neighbors combinations
     return intersectingCombs
 
-
-def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,centroids,fbStoreCulprits,frozenIDs_old,allLatestIDs,globalCounter,frozenLocal,relArea,relDist):
-    # analyze current and previous frame: old controur-new contour, old cluster-> new contour
-    # search rough neighbors combination by detecting overlapping bounding rectangles
-    allCombs = list(itertools.product(rectParams_Old, rectParams))#;print(f'allCombs,{allCombs}')
-    intersectingCombs = []
-    for (keyOld,keyNew) in allCombs:
-        x1,y1,w1,h1 = rectParams[keyNew]
-        rotatedRectangle_new = ((x1+w1/2, y1+h1/2), (w1, h1), 0)
-        x2,y2,w2,h2 = rectParams_Old[keyOld]
-        rotatedRectangle_old = ((x2+w2/2, y2+h2/2), (w2, h2), 0)
-        interType,_ = cv2.rotatedRectangleIntersection(rotatedRectangle_new, rotatedRectangle_old)
-        if interType > 0:
-            intersectingCombs.append([keyOld,keyNew]) # rough neighbors combinations
-    #print(f'intersectingCombs,{intersectingCombs}')
-    # fiter these combinations based on centroid dist and relative area change
-    # !!!! for some reason '6' = 32 jhas different centroid coordinates (here by 1 pixel) !!! should be the same 'cause same object !!!!
+def filterPermutations(intersectingCombs,rectParams_Old,areas_Old,areas,centroids,centroids_Old,frozenIDs_old,relArea,relDist):
     intersectingCombs_stage2 = []
     for (keyOld,keyNew) in intersectingCombs:
         if keyOld in frozenIDs_old: relArea2 = 1; relDist2 = np.linalg.norm(rectParams_Old[keyOld][-2:]) # in case of FB split, weaken contrains 
@@ -827,13 +811,28 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
         relativeAreaChange = abs(areaOld-areaNew)/areaOld
         centroidOld,centroidNew = centroids_Old[keyOld], centroids[keyNew]
         dist = np.linalg.norm(np.diff([centroidOld,centroidNew],axis=0),axis=1)[0]
-        if  relativeAreaChange < relArea2 and dist < relDist2:#
+        if  relativeAreaChange < 2*relArea2 and dist < 1: # due to hulls area might change alot, but if displacement is really low, relax relArea crit 11/02/23
               intersectingCombs_stage2.append([keyOld,keyNew,relativeAreaChange,dist]) # these objects did not move or change area in-between last time steps
+        elif  relativeAreaChange < relArea2 and dist < relDist2:
+              intersectingCombs_stage2.append([keyOld,keyNew,relativeAreaChange,dist])
+    return intersectingCombs_stage2
+
+def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,centroids,fbStoreCulprits,frozenIDs_old,allLatestIDs,globalCounter,frozenLocal,relArea,relDist):
+    # analyze current and previous frame: old controur-new contour, old cluster-> new contour
+    # search rough neighbors combination by detecting overlapping bounding rectangles
+
+    intersectingCombs = overlappingRotatedRectangles(rectParams_Old,rectParams)
+
+    #print(f'intersectingCombs,{intersectingCombs}')
+    # fiter these combinations based on centroid dist and relative area change
+    # !!!! for some reason '6' = 32 has different centroid coordinates (here by 1 pixel) !!! should be the same 'cause same object !!!!
+    
+    intersectingCombs_stage2 = filterPermutations(intersectingCombs,rectParams_Old,areas_Old,areas,centroids,centroids_Old,frozenIDs_old,relArea,relDist)
     #print(f'intersectingCombs_stage2,{intersectingCombs_stage2}')
     # if constraints are weak single new contour will be related to multiple old cntrs/clusters.
     # find these duplicate combinations. must be very rare case. can check it by setting high rel area and dist
-    # ====== MERGE =======
-    #dupMerge = {keyNew:[a[1] for a in intersectingCombs_stage2].count(keyNew)}
+    # ====== MERGE ======= 
+    # must check this out more thorougly 12/02/23. had problem with split, array of mixed types, argwhere did not work, produced []
     keysNew = [a[1] for a in intersectingCombs_stage2]
     keysNewVals = np.array([a[0] for a in intersectingCombs_stage2],dtype=object)
     values, counts = np.unique(keysNew, return_counts=True)
@@ -859,72 +858,76 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
             assert 2 == 3, "dupVals consists of more than 2 elements- global and local IDs, but some other object "
             permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations([], subIDs, centroids_Old, areas_Old,
                                          centroids[ID], relDist, areas[ID], relAreaCheck = 0.7, doHull = 0, debug = 0)
-            print(f'pIDs: {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
+            print(f'pIDs (merge): {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
             assert len(permIDsol2) < 2, f"detectStuckBubs-> centroidAreaSumPermutations  resulted in strange solution for new ID:{ID} - permIDsol2"
             dupSubset.append([permIDsol2[0],ID,permDist2,permRelArea2]) # 
             
             intersectingCombs_stage2 = [a for a in intersectingCombs_stage2 if a[1] not in dupWhereIndicies]    # drop duplicates altogether
             intersectingCombs_stage2 = intersectingCombs_stage2 + dupSubset                                     # add solution
 
-
-    #dupSplit = {keyNew:[a[0] for a in intersectingCombs_stage2].count(keyNew)}
-    keysOld = [a[0] for a in intersectingCombs_stage2]
-    keysOldVals = np.array([a[1] for a in intersectingCombs_stage2],dtype=object)
-    
+    # ========================== Detect Splits ===========================
+    # non overlapping old local and old global (else/clusters) intersections with new local contours <-> intersectingCombs
+    # take those old that intersect multiple new. try to find match of permutations using double criteria weights
+    keysOld = [a[0] for a in intersectingCombs]
+    keysOldVals = np.array([a[1] for a in intersectingCombs],dtype=object)
     values = list(set(keysOld))
     counts = [keysOld.count(a) for a in values]
     #values, counts = np.unique(keysOld, return_counts=True) # unique does not want to deal with mixed type
     dupSplit = [ a for a,b in zip(values, counts) if b>1]
+    keysOld = np.array(keysOld,dtype = object)
     dupWhereIndicies = {a:np.argwhere(keysOld == a).reshape(-1).tolist() for a in dupSplit}
     dupVals = {ID:keysOldVals[lst] for ID,lst in dupWhereIndicies.items()}
-    print(f'dupVals:{dupVals}')
-    # perform two-criteria  (dist/area) minimization task
+    print(f'dupVals Split:{dupVals}')
     dupSubset = []
-    #dbg = 1 if globalCounter == 12 else 0
     for ID, subIDs in dupVals.items():
         permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations([], subIDs, centroids, areas,
                                      centroids_Old[ID], relDist, areas_Old[ID], relAreaCheck = 2, doHull = 0, debug = 0) # !! new and _old swapped palces , relArea  should be around 1 !!
-        print(f'pIDs: {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
-        #if  permRelArea2 > 1 - relArea and permRelArea2 < 1 + relArea and permDist2 < relDist:
-        if  permRelArea2 <  relArea and permDist2 < relDist:
-            dupSubset.append([ID, permIDsol2, permDist2,permRelArea2]) # 
-        
+        print(f'pIDs (split): {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
+        if  0 < permRelArea2 <  relArea and 0< permDist2 < relDist:
+            dupSubset.append([ID, permIDsol2, permDist2,permRelArea2])
+            
     intersectingCombs_stage2 = [a for a in intersectingCombs_stage2 if a[0] not in dupWhereIndicies]
     intersectingCombs_stage2 = [[a,[b],c,d] for a,b,c,d in intersectingCombs_stage2] # newIDs as a list, in case there are multiple IDs, which happens.
     intersectingCombs_stage2 = intersectingCombs_stage2 + dupSubset        
     # compare these two-frame combinations with global list of stuck bubbles
     toList = lambda x: [x] if type(x) != list else x
     returnInfo = []
-    
-    print(f'len(fbStoreCulprits.copy()): {len(fbStoreCulprits.copy())}')
-    if len(fbStoreCulprits.copy()) == 0 and len(intersectingCombs_stage2) > 0 : #  if list of global frozen bubbles is clear but current frame has it/them 
-        for keyOld, keyNew, relArea, dist  in intersectingCombs_stage2:
-            fbStoreCulprits[tuple(centroids_Old[keyOld])] = {globalCounter-1:[ [-1], toList(keyOld)]}
-            fbStoreCulprits[tuple(centroids_Old[keyOld])][globalCounter] = [ toList(keyOld), toList(keyNew)]
-            returnInfo.append([keyOld,keyNew, dist, relArea, centroids_Old[keyOld]])
-            frozenLocal.append(keyNew)
 
-    elif len(intersectingCombs_stage2) > 0 and len(fbStoreCulprits)>0:
-        for keyOld, keyNew, relArea, dist in intersectingCombs_stage2:
-            searchCentroid = centroids_Old[keyOld]
-            if type(keyOld) == tuple:
-                fbStoreCulprits[keyOld][globalCounter] = [[allLatestIDs[keyOld]], toList(keyNew)] #allLatestIDs[keyOld][0] is crap. old ID must be of len one. either a single contour or cluster 
-                returnInfo.append([allLatestIDs[keyOld],keyNew, dist, relArea, keyOld])
-            else: # fbStoreCulprits is updated after prev match, maybe dont iterate over updated version!!!!!!!=================
-                dists = {centroid:np.linalg.norm(np.diff([centroid,searchCentroid],axis=0),axis=1)[0] for centroid in fbStoreCulprits}
-                minKey = min(dists, key=dists.get) #min dist centroid
-                if dists[minKey] < 5:
-                    oldID = fbStoreCulprits[minKey][globalCounter-1][0]
-                    fbStoreCulprits[minKey][globalCounter] = [ toList(oldID), toList(keyNew)]
-                    returnInfo.append([keyOld,keyNew, dists[minKey], relArea, minKey]) # maybe fixed dist -> dists[minKey] !!!
-                    frozenLocal.append(keyNew)
-                else:
-                    fbStoreCulprits[tuple(searchCentroid)] = {globalCounter-1:[[-1],  toList(keyOld)]}
-                    fbStoreCulprits[tuple(searchCentroid)][globalCounter] = [ toList(keyOld),  toList(keyNew)]
-                    returnInfo.append([keyOld,keyNew, dist, relArea, tuple(searchCentroid)])
-                    frozenLocal.append(keyNew)
+    # commented 12/02/23
+    #print(f'len(fbStoreCulprits.copy()): {len(fbStoreCulprits.copy())}')
+    #if len(fbStoreCulprits.copy()) == 0 and len(intersectingCombs_stage2) > 0 : #  if list of global frozen bubbles is clear but current frame has it/them 
+    #    for keyOld, keyNew, relArea, dist  in intersectingCombs_stage2:
+    #        fbStoreCulprits[tuple(centroids_Old[keyOld])] = {globalCounter-1:[ [-1], toList(keyOld)]}
+    #        fbStoreCulprits[tuple(centroids_Old[keyOld])][globalCounter] = [ toList(keyOld), toList(keyNew)]
+    #        returnInfo.append([keyOld,keyNew, dist, relArea, centroids_Old[keyOld]])
+    #        frozenLocal.append(keyNew)
+    #
+    #elif len(intersectingCombs_stage2) > 0 and len(fbStoreCulprits)>0:
+    #    for keyOld, keyNew, relArea, dist in intersectingCombs_stage2:
+    #        searchCentroid = centroids_Old[keyOld]
+    #        if type(keyOld) == tuple:
+    #            fbStoreCulprits[keyOld][globalCounter] = [[allLatestIDs[keyOld]], toList(keyNew)] #allLatestIDs[keyOld][0] is crap. old ID must be of len one. either a single contour or cluster 
+    #            returnInfo.append([allLatestIDs[keyOld],keyNew, dist, relArea, keyOld])
+    #        else: # fbStoreCulprits is updated after prev match, maybe dont iterate over updated version!!!!!!!=================
+    #            dists = {centroid:np.linalg.norm(np.diff([centroid,searchCentroid],axis=0),axis=1)[0] for centroid in fbStoreCulprits}
+    #            minKey = min(dists, key=dists.get) #min dist centroid
+    #            if dists[minKey] < 5:
+    #                oldID = fbStoreCulprits[minKey][globalCounter-1][0]
+    #                fbStoreCulprits[minKey][globalCounter] = [ toList(oldID), toList(keyNew)]
+    #                returnInfo.append([keyOld,keyNew, dists[minKey], relArea, minKey]) # maybe fixed dist -> dists[minKey] !!!
+    #                frozenLocal.append(keyNew)
+    #            else:
+    #                fbStoreCulprits[tuple(searchCentroid)] = {globalCounter-1:[[-1],  toList(keyOld)]}
+    #                fbStoreCulprits[tuple(searchCentroid)][globalCounter] = [ toList(keyOld),  toList(keyNew)]
+    #                returnInfo.append([keyOld,keyNew, dist, relArea, tuple(searchCentroid)])
+    #                frozenLocal.append(keyNew)
     # search frozen bubbles that had split. take fbStoreCulprits and make intersercting permutation with new contours
     # problem: this wont catch bubbles E->split E. because they are not in fbStoreCulprits yet
+    for keyOld, keyNew, relArea, dist  in intersectingCombs_stage2:
+        #fbStoreCulprits[tuple(centroids_Old[keyOld])] = {globalCounter-1:[ [-1], toList(keyOld)]}
+        #fbStoreCulprits[tuple(centroids_Old[keyOld])][globalCounter] = [ toList(keyOld), toList(keyNew)]
+        returnInfo.append([keyOld,keyNew, dist, relArea, centroids_Old[keyOld]])
+        frozenLocal.append(keyNew)
     returnInfo = np.array(returnInfo, dtype=object) # kind weird that second element goes from [54] to list([54]), but looks like it makes not diff
     returnNewIDs = returnInfo[:,1] if len(returnInfo)>0 else np.array([])
     return returnNewIDs, returnInfo

@@ -1,0 +1,13 @@
+General comments/ideas:
+-distStatPredictionVect2 function is too complex.
+-relax all criterium on inlet side.
+
+
+15/02/23:
+Global:
+predictCentroidDiff2- implement local, last step version so program does not have fetch big array.
+predictHullArea - same
+distCheck2Sigma, areaCrit make them update from statistis as calc
+
+lastNStepsFrozenHullAreas - check if this actually works- FB from much earier steps are identified
+l_bubble_type is done multiple times. may be relict of when fb were managed with RB and Dist B

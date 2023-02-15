@@ -802,7 +802,7 @@ def overlappingRotatedRectangles(group1Params,group2Params):
             intersectingCombs.append([keyOld,keyNew]) # rough neighbors combinations
     return intersectingCombs
 
-def filterPermutations(intersectingCombs,rectParams_Old,areas_Old,areas,centroids,centroids_Old,frozenIDs_old,relArea,relDist):
+def filterPermutations(intersectingCombs,rectParams_Old,areas_Old,areas,centroids,centroids_Old,frozenIDs_old,relArea,relDist,globalCounter):
     intersectingCombs_stage2 = []
     for (keyOld,keyNew) in intersectingCombs:
         if keyOld in frozenIDs_old: relArea2 = 1; relDist2 = np.linalg.norm(rectParams_Old[keyOld][-2:]) # in case of FB split, weaken contrains 
@@ -827,7 +827,7 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
     # fiter these combinations based on centroid dist and relative area change
     # !!!! for some reason '6' = 32 has different centroid coordinates (here by 1 pixel) !!! should be the same 'cause same object !!!!
     
-    intersectingCombs_stage2 = filterPermutations(intersectingCombs,rectParams_Old,areas_Old,areas,centroids,centroids_Old,frozenIDs_old,relArea,relDist)
+    intersectingCombs_stage2 = filterPermutations(intersectingCombs,rectParams_Old,areas_Old,areas,centroids,centroids_Old,frozenIDs_old,relArea,relDist,globalCounter)
     #print(f'intersectingCombs_stage2,{intersectingCombs_stage2}')
     # if constraints are weak single new contour will be related to multiple old cntrs/clusters.
     # find these duplicate combinations. must be very rare case. can check it by setting high rel area and dist

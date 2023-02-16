@@ -1,9 +1,13 @@
 General comments/ideas:
--distStatPredictionVect2 function is too complex.
--relax all criterium on inlet side.
+- distStatPredictionVect2 function is too complex.
+- relax all criterium on inlet side.
+- frozens might not change to other types and back.
+- split frozen into high and low likelyhood fr bubbes using temporal stat.
 
-
+16/02/23:
+change boundRectAngle to atan2
 15/02/23:
+
 Global:
 predictCentroidDiff2- implement local, last step version so program does not have fetch big array.
 predictHullArea - same
@@ -11,3 +15,6 @@ distCheck2Sigma, areaCrit make them update from statistis as calc
 
 lastNStepsFrozenHullAreas - check if this actually works- FB from much earier steps are identified
 l_bubble_type is done multiple times. may be relict of when fb were managed with RB and Dist B
+
+check these lines long-term!:
+	assert type(fID) == list, ' you need a line below! '

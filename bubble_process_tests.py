@@ -677,11 +677,11 @@ frozenGlobal,frozenGlobal_LocalIDs = {},{}
 
 g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull = {},{},{}
 g_contours,  frozenBubs, frozenBubsTimes,  l_bubble_type_old = {}, {}, {}, {}
-l_Centroids_old, l_Areas_old,l_Areas_hull_old, l_BoundingRectangle_params, l_BoundingRectangle_params_old, fbStoreCulprits = {}, {}, {}, {}, {}, {}
+l_Centroids_old, l_Areas_old,l_Areas_hull_old, l_BoundingRectangle_params, l_BoundingRectangle_params_old = {}, {}, {}, {}, {}
 g_predict_displacement, g_predict_area_hull  = {}, {}; frozenIDs, frozenIDs_old  = [],[]
 l_masks_old, l_images_old, l_rect_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old = {}, {}, {}, {}, {}, {}
 def mainer(index):
-    global globalCounter, g_contours, frozenBubs, frozenBubsTimes, l_Centroids_old, l_Areas_old, l_Areas_hull_old, l_BoundingRectangle_params, l_BoundingRectangle_params_old, fbStoreCulprits
+    global globalCounter, g_contours, frozenBubs, frozenBubsTimes, l_Centroids_old, l_Areas_old, l_Areas_hull_old, l_BoundingRectangle_params, l_BoundingRectangle_params_old
 
     global l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_old_new_IDs_old, ringCntrIDs
     global l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old,  l_DBub_centroids_old, l_DBub_areas_hull_old, l_DBub_old_new_IDs_old
@@ -766,12 +766,11 @@ def mainer(index):
         stuckAreas      = {**stuckAreas,        **lastNStepsFrozenHullAreas}
         stuckCentroids  = {**stuckCentroids,    **lastNStepsFrozenCentroids}
 
-        fields = [stuckRectParams,fbStoreRectParams2,stuckAreas,fbStoreAreas2,stuckCentroids,fbStoreCentroids2,{},{},{}]
+        fields = [stuckRectParams,fbStoreRectParams2,stuckAreas,fbStoreAreas2,stuckCentroids,fbStoreCentroids2]
         #fields = [stuckRectParams,fbStoreRectParams2,stuckAreas,fbStoreAreas2,stuckCentroids,fbStoreCentroids2,fbStoreCulprits,frozenIDs_old,allLastFrozenParamsIDs]
-        frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, globalCounter, frozenLocal, relArea = 0.3, relDist = 3) # TODO breaks on higher relDist, probly not being split correctly
+        frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, globalCounter, frozenLocal, relArea = 0.5, relDist = 3,maxAngle = 10) # TODO breaks on higher relDist, probly not being split correctly
         print(f'frozenLocal:{frozenLocal}')
 
-        print(f'fbStoreCulprits:{fbStoreCulprits}')
         #[cv2.drawContours( blank, l_contours, ID, cyclicColor(key), -1) for ID in cntrIDlist]    # IMSHOW
         # store frozen bubble info for this step using local old IDs. could use only _old field instead, but this is more consistent with other fields 10/02/23
         frozenOldGlobNewLoc = {}
@@ -986,7 +985,7 @@ def mainer(index):
         # sometimes nearby cluster elements [n1,n2] do not get connected via rect intersection. but it was clearly part of bigger bubble of prev frame [old].
         # grab that old bubble and find its intersection with new frame elements-> [[old,n1],[old,n2]]-> [n1,n2] are connected now via [old]
         distContoursOldNew = {ID:l_rect_parms_old[ID] for ID,bubType in l_bubble_type_old.items() if bubType !=  typeRing}
-        print(f'l_rect_parms_old:{l_rect_parms_old}')
+        #print(f'l_rect_parms_old:{l_rect_parms_old}')
         dOldNewAll = np.array(overlappingRotatedRectangles(distContoursOldNew,distContours))
         if len(dOldNewAll)>0:
             dOldNew_main = np.unique(dOldNewAll[:,0])
@@ -1024,21 +1023,33 @@ def mainer(index):
         # forzen bubs (FB) can be falsely joint for being too close. or it can be false positive FB
             
         #------------------------------------------------------------------------------- deal with  frozen bubbles!! ----------------------------------------------
+        # Drop frozen IDs from clusters, add as standalone objects.
         frozenSeparated = False
-        for i,comb in enumerate(cc_unique.copy()):
-            #print(f'frozenIDs:{frozenIDs}')
-            for fID in frozenIDs:
-                if type(fID) != list: fID = [fID]
-                               
-                intersection = np.intersect1d(fID, comb) # kind of fID, but part may be lost. if everything is clustered nicely - should be fine
-                difference = np.setdiff1d(comb, fID)     # rest. order matters
-                if len(intersection)>0:
-                    assert len(intersection) == len(fID), f"intersection: {intersection}, fID: {fID}, comb: {comb}"
-                    if len(difference)>0:
-                        cc_unique.remove(comb)
-                        cc_unique.append(intersection.tolist())
-                        cc_unique.append(difference.tolist())
-                    frozenSeparated = True
+        allFrozenLocalIDs = sum(frozenIDs,[])
+        temp = []
+        for subTemp in cc_unique:
+            bfr = []
+            for elem in subTemp:
+                if elem not in allFrozenLocalIDs:bfr.append(elem)
+                else: frozenSeparated = True
+            temp.append(bfr)
+        #
+        #for i,comb in enumerate(temp):
+        #    #print(f'frozenIDs:{frozenIDs}')
+        #    for fID in frozenIDs:
+        #        assert type(fID) == list, ' you need a line below! '
+        #        #if type(fID) != list: fID = [fID]
+        #                       
+        #        intersection = np.intersect1d(fID, comb) # kind of fID, but part may be lost. if everything is clustered nicely - should be fine
+        #        difference = np.setdiff1d(comb, fID)     # rest. order matters
+        #        if len(intersection)>0:
+        #            assert len(intersection) == len(fID), f"intersection: {intersection}, fID: {fID}, comb: {comb}"
+        #            if len(difference)>0:
+        #                temp.remove(comb)
+        #                temp.append(intersection.tolist())
+        #                temp.append(difference.tolist())
+        #            frozenSeparated = True
+        cc_unique = temp
         frozenIDs = np.array([a if type(a) != list else min(a) for a in frozenIDs])
         # why [42]-> 42? idk 10/02/23
         #if len(frozenIDs)>0: frozenIDsInfo[:,1] = np.array([a if type(a) != list else min(a) for a in frozenIDsInfo[:,1]])

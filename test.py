@@ -594,3 +594,17 @@ aa = {ID:max([time for time,IDs in arr.items() if ID in IDs]) for ID in srch}
 print(aa)
 #a = list(filter(lambda x: x[1].index(srch) if srch in x[1]), arr.items()))
 #print(a)
+
+allFrozenLocalIDs0 = [[32,14], [28],[13]]
+allFrozenLocalIDs = sum(allFrozenLocalIDs0,[])
+print(f'drop {allFrozenLocalIDs}')
+temp = [[11,9,32,14],[4], [28,24],[0,13]]
+print(f'full {temp}')
+temp2 = []
+for subTemp in temp:
+    bfr = []
+    for elem in subTemp:
+        if elem not in allFrozenLocalIDs: bfr.append(elem)
+    temp2.append(bfr)
+#[for subTemp in temp2]
+print(temp2)#subTemp.remove(elem) for elem in allFrozenLocalIDs if allFrozenLocalIDs in subTemp 

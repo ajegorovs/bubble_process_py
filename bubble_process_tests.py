@@ -570,7 +570,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 53+3 #154   #     260
-dataNum             =  4 #8    #11 
+dataNum             =  23 #8    #11 
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -722,16 +722,18 @@ def mainer(index):
     (l_contours,
      whereParentOriginal,
      whereParentAreaFiltered,
-     whereChildrenAreaFiltered)         = cntParentChildHierarchy(err,1, 1200,100,0.1)                                  # whereParentOriginal all non-child contours.
-    g_contours[globalCounter]           = l_contours                                                                    # add contours to global storage.
-    contoursFilter_RectParams           = {ID: cv2.boundingRect(l_contours[ID]) for ID in whereParentOriginal}          # remember bounding rectangle parameters for all primary contours.
-    contoursFilter_RectParams_dropIDs   = [ID for ID,params in contoursFilter_RectParams.items() if sum(params[0:3:2])<80] # filter out bubbles at left image edge, keep those outside 80 pix boundary. x+w < 80 pix.
-    l_Areas                             = {key: cv2.contourArea(l_contours[key]) for key in contoursFilter_RectParams if key not in contoursFilter_RectParams_dropIDs } # remember contour areas of main contours that are out of side band.
-    l_Areas_hull                        = {ID:getContourHullArea(l_contours[ID]) for ID in l_Areas}                     # convex hull of a single contour. for multiple contrours use getCentroidPosContours.
-    minArea                             = 160 
-    contoursFilter_RectParams_dropIDs   = contoursFilter_RectParams_dropIDs + [key for key, area in l_Areas.items() if area < minArea] # list of useless contours- inside side band and too small area.
-    l_BoundingRectangle_params          = {key: val for key, val in contoursFilter_RectParams.items() if key in l_Areas}# bounding rectangle parameters for all primary except within a band.
-    l_Centroids                         = {key: getCentroidPosContours(bodyCntrs = [l_contours[key]])[0] for key in l_BoundingRectangle_params} # centroids of ^
+     whereChildrenAreaFiltered)             = cntParentChildHierarchy(err,1, 1200,100,0.1)                                  # whereParentOriginal all non-child contours.
+    g_contours[globalCounter]               = l_contours                                                                    # add contours to global storage.
+    contoursFilter_RectParams               = {ID: cv2.boundingRect(l_contours[ID]) for ID in whereParentOriginal}          # remember bounding rectangle parameters for all primary contours.
+    contoursFilter_RectParams_dropIDs       = [ID for ID,params in contoursFilter_RectParams.items() if sum(params[0:3:2])<80] # filter out bubbles at left image edge, keep those outside 80 pix boundary. x+w < 80 pix.
+    contoursFilter_RectParams_dropIDs_inlet = [ID for ID,params in contoursFilter_RectParams.items() if params[0] > err.shape[1]- 80] # top right corner is within box that starts at len(img)-len(box)
+    contoursFilter_RectParams_dropIDs       = contoursFilter_RectParams_dropIDs + contoursFilter_RectParams_dropIDs_inlet
+    l_Areas                                 = {key: cv2.contourArea(l_contours[key]) for key in contoursFilter_RectParams if key not in contoursFilter_RectParams_dropIDs } # remember contour areas of main contours that are out of side band.
+    l_Areas_hull                            = {ID:getContourHullArea(l_contours[ID]) for ID in l_Areas}                     # convex hull of a single contour. for multiple contrours use getCentroidPosContours.
+    minArea                                 = 160 
+    contoursFilter_RectParams_dropIDs       = contoursFilter_RectParams_dropIDs + [key for key, area in l_Areas.items() if area < minArea] # list of useless contours- inside side band and too small area.
+    l_BoundingRectangle_params              = {key: val for key, val in contoursFilter_RectParams.items() if key in l_Areas}# bounding rectangle parameters for all primary except within a band.
+    l_Centroids                             = {key: getCentroidPosContours(bodyCntrs = [l_contours[key]])[0] for key in l_BoundingRectangle_params} # centroids of ^
     
     frozenIDs = []
     global frozenGlobal,frozenGlobal_LocalIDs
@@ -758,9 +760,9 @@ def mainer(index):
         lastNStepsFrozenTimesAll        = [time for time in frozenGlobal.keys()if max(globalCounter-lastNStepsFrozen-1,0)<time<globalCounter] # if time is in [0 1 2 3 4 5], lastNStepsFrozen = 3, globalCounter = 5 -> out = [2, 3, 4]
         lastNStepsFrozenIDsExceptOld    = set([a for a in sum(frozenGlobal.values(),[]) if a not in lastStepFrozenGlobIDs]) if len(lastNStepsFrozenTimesAll)>0 else []
         lastNStepsFrozenLatestTimes     = {ID:max([time for time,IDs in frozenGlobal.items() if ID in IDs]) for ID in lastNStepsFrozenIDsExceptOld}
-        lastNStepsFrozenRectParams      = {ID:g_FBub_rect_parms[latestTime][ID]     for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
-        lastNStepsFrozenHullAreas       = {ID:g_FBub_areas_hull[latestTime][ID]     for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
-        lastNStepsFrozenCentroids       = {ID:g_FBub_centroids[latestTime][ID]      for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
+        lastNStepsFrozenRectParams      = {str(ID):g_FBub_rect_parms[latestTime][ID]     for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
+        lastNStepsFrozenHullAreas       = {str(ID):g_FBub_areas_hull[latestTime][ID]     for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
+        lastNStepsFrozenCentroids       = {str(ID):g_FBub_centroids[latestTime][ID]      for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
         
         stuckRectParams = {**stuckRectParams,   **lastNStepsFrozenRectParams}
         stuckAreas      = {**stuckAreas,        **lastNStepsFrozenHullAreas}
@@ -768,7 +770,7 @@ def mainer(index):
 
         fields = [stuckRectParams,fbStoreRectParams2,stuckAreas,fbStoreAreas2,stuckCentroids,fbStoreCentroids2]
         #fields = [stuckRectParams,fbStoreRectParams2,stuckAreas,fbStoreAreas2,stuckCentroids,fbStoreCentroids2,fbStoreCulprits,frozenIDs_old,allLastFrozenParamsIDs]
-        frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, globalCounter, frozenLocal, relArea = 0.5, relDist = 3,maxAngle = 10) # TODO breaks on higher relDist, probly not being split correctly
+        frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, l_contours, globalCounter, frozenLocal, relArea = 0.5, relDist = 3, maxAngle = 10, maxArea = 1000) # TODO breaks on higher relDist, probly not being split correctly
         print(f'frozenLocal:{frozenLocal}')
 
         #[cv2.drawContours( blank, l_contours, ID, cyclicColor(key), -1) for ID in cntrIDlist]    # IMSHOW
@@ -793,6 +795,7 @@ def mainer(index):
             
             findOldGlobIds = []; [findOldGlobIds.append(globID) for globID, locIDs in l_old_new_IDs_old.items() if oldLocalID in locIDs]
             if type(oldLocalID) == str and int(oldLocalID) in l_old_new_IDs_old: findOldGlobIds.append(oldLocalID) # in case oldLocalID is old Else bubble ~='7' 11/02/23
+            if type(oldLocalID) == str and oldLocalID in lastNStepsFrozenRectParams: findOldGlobIds.append(oldLocalID) # frozen from N step back 18/02/23
             frozenOldGlobNewLoc[min(newLocalIDs)] = findOldGlobIds[0] # min(newLocalIDs) ! kind of correct, might cause problems 10/02/23
         
             #frozenKeys = list(frozenOldGlobNewLoc.values()) wrong 11/02/23
@@ -879,8 +882,8 @@ def mainer(index):
                 #l_Areas  l_Areas_old l_RBub_old_new_IDs_old
         print(f'RBOldNewDist:{list(map(list,RBOldNewDist))}') 
         print(f'accumulateFailParams:{accumulateFailParams}') if len(l_RBub_centroids_old)>0 else 0
-        newFoundBubsRings = list(l_RBub_centroids.keys())                           # these are yet unresolved new RBs
-        oldFoundRings = list(l_RBub_centroids_old.keys())                           # and unres old RBs
+        newFoundBubsRings = list(l_RBub_centroids.keys())                                                   # these are yet unresolved new RBs
+        oldFoundRings = list(l_RBub_centroids_old.keys())                                                   # and unres old RBs
         if debugOnly(11):
             print("newFoundBubsRings (new typeRing bubbles):\n",newFoundBubsRings)
             print("oldFoundRings (all old R,rR bubbles):\n",oldFoundRings)
@@ -2074,14 +2077,15 @@ for globalCounter in range(globalCounter):
         A = [x for y in zip(cCIstr, [","]*len(cCIstr)) for x in y][:-1] #dont ask me
         temp += A
         # if len(g_old_new_IDs[ID]) == 1:
-        if globalCounter-1 not in g_old_new_IDs[ID]:
+        prevTimeStep = globalCounter-1 if currentType != typeFrozen else list(g_bubble_type[ID].keys())[-2] # FB may not exist in prev step 18/02/23
+        if globalCounter-1 not in g_old_new_IDs[ID] and currentType != typeFrozen: 
             # text += " new"
             temp += [f"):{ID} new"]
         else:
             temp[0] = 1
-            prevType = g_bubble_type[ID][globalCounter-1]
+            prevType = g_bubble_type[ID][prevTimeStep]
             prevTypeStr = typeStrings[prevType] 
-            prevCntrIds  = g_old_new_IDs[ID][globalCounter-1]
+            prevCntrIds  = g_old_new_IDs[ID][prevTimeStep]
             # text += "-" + prevTypeStr + f'({ID})'
             temp += [")"+str(":" + prevTypeStr + f'({ID})')]
         splitStrings[ID] = temp

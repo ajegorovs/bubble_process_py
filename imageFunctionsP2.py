@@ -254,7 +254,7 @@ def getCentroidPosContours(bodyCntrs,holesCntrs=[],hullArea = 0):
     return  tuple(map(int,np.ceil(endCentroid))), int(returnArea)
 
 def getContourHullArea(bodyCntrs):
-    return cv2.contourArea(cv2.convexHull(np.vstack(bodyCntrs))) #removed int
+    return cv2.contourArea(cv2.convexHull(np.vstack(bodyCntrs))) if len(bodyCntrs)>0 else -1 
 
 def getCentroidPosCentroidsAndAreas(centroids1,areas1,centroids0=[],areas0=[]):
     centroids1 =  np.float32(centroids1)
@@ -809,7 +809,7 @@ def overlappingRotatedRectangles(group1Params,group2Params):
             intersectingCombs.append([keyOld,keyNew]) # rough neighbors combinations
     return intersectingCombs
 
-def filterPermutations(intersectingCombs,rectParams,rectParams_Old,areas_Old,areas,centroids,centroids_Old,relArea,relDist,maxAngle,globalCounter):
+def filterPermutations(intersectingCombs,rectParams,rectParams_Old,areas_Old,areas,centroids,centroids_Old,relArea,relDist,maxAngle,maxArea,globalCounter):
     intersectingCombs_stage2 = []
     for (keyOld,keyNew) in intersectingCombs:
         #if keyOld in frozenIDs_old: relArea2 = 1; relDist2 = np.linalg.norm(rectParams_Old[keyOld][-2:]) # in case of FB split, weaken contrains 
@@ -820,13 +820,13 @@ def filterPermutations(intersectingCombs,rectParams,rectParams_Old,areas_Old,are
         centroidOld,centroidNew = centroids_Old[keyOld], centroids[keyNew]
         dist = np.linalg.norm(np.diff([centroidOld,centroidNew],axis=0),axis=1)[0]
         [anglePass, angleDiff] = boundRectAngle(rectParams[keyNew],rectParams_Old[keyOld], maxAngle, debug  = 0, info= '')
-        if  relativeAreaChange < 2*relArea2 and dist < 1 and anglePass == True: # due to hulls area might change alot, but if displacement is really low, relax relArea crit 11/02/23
+        if  relativeAreaChange < 2*relArea2 and dist < 1 and anglePass == True and areaNew < maxArea: # due to hulls area might change alot, but if displacement is really low, relax relArea crit 11/02/23
               intersectingCombs_stage2.append([keyOld,keyNew,relativeAreaChange,dist]) # these objects did not move or change area in-between last time steps
-        elif  relativeAreaChange < relArea2 and dist < relDist2 and anglePass == True:
+        elif  relativeAreaChange < relArea2 and dist < relDist2 and anglePass == True and areaNew < maxArea:
               intersectingCombs_stage2.append([keyOld,keyNew,relativeAreaChange,dist])
     return intersectingCombs_stage2
 
-def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,centroids,globalCounter,frozenLocal,relArea,relDist,maxAngle):
+def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,centroids,contours,globalCounter,frozenLocal,relArea,relDist,maxAngle,maxArea):
     # analyze current and previous frame: old controur-new contour, old cluster-> new contour
     # search rough neighbors combination by detecting overlapping bounding rectangles
 
@@ -836,7 +836,7 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
     # fiter these combinations based on centroid dist and relative area change
     # !!!! for some reason '6' = 32 has different centroid coordinates (here by 1 pixel) !!! should be the same 'cause same object !!!!
     
-    intersectingCombs_stage2 = filterPermutations(intersectingCombs,rectParams,rectParams_Old,areas_Old,areas,centroids,centroids_Old,relArea,relDist,maxAngle,globalCounter)
+    intersectingCombs_stage2 = filterPermutations(intersectingCombs,rectParams,rectParams_Old,areas_Old,areas,centroids,centroids_Old,relArea,relDist,maxAngle,maxArea,globalCounter)
     #print(f'intersectingCombs_stage2,{intersectingCombs_stage2}')
     # if constraints are weak single new contour will be related to multiple old cntrs/clusters.
     # find these duplicate combinations. must be very rare case. can check it by setting high rel area and dist
@@ -865,8 +865,8 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
 
         if simpleCopy == False:
             assert 2 == 3, "dupVals consists of more than 2 elements- global and local IDs, but some other object "
-            permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations([], subIDs, centroids_Old, areas_Old,
-                                         centroids[ID], relDist, areas[ID], relAreaCheck = 0.7, doHull = 0, debug = 0)
+            permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(contours, subIDs, centroids_Old, areas_Old,
+                                         centroids[ID], relDist, areas[ID], relAreaCheck = 0.7, doHull = 1, debug = 0)
             print(f'pIDs (merge): {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
             assert len(permIDsol2) < 2, f"detectStuckBubs-> centroidAreaSumPermutations  resulted in strange solution for new ID:{ID} - permIDsol2"
             dupSubset.append([permIDsol2[0],ID,permDist2,permRelArea2]) # 
@@ -878,25 +878,28 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
     # non overlapping old local and old global (else/clusters) intersections with new local contours <-> intersectingCombs
     # take those old that intersect multiple new. try to find match of permutations using double criteria weights
     keysOld = [a[0] for a in intersectingCombs]
-    keysOldVals = np.array([a[1] for a in intersectingCombs],dtype=object)
+    keysNewVals = np.array([a[1] for a in intersectingCombs],dtype=object)
     values = list(set(keysOld))
     counts = [keysOld.count(a) for a in values]
     #values, counts = np.unique(keysOld, return_counts=True) # unique does not want to deal with mixed type
     dupSplit = [ a for a,b in zip(values, counts) if b>1]
     keysOld = np.array(keysOld,dtype = object)
     dupWhereIndicies = {a:np.argwhere(keysOld == a).reshape(-1).tolist() for a in dupSplit}
-    dupVals = {ID:keysOldVals[lst] for ID,lst in dupWhereIndicies.items()}
+    dupVals = {ID:keysNewVals[lst] for ID,lst in dupWhereIndicies.items()}
     print(f'dupVals Split:{dupVals}')
     dupSubset = []
     for ID, subIDs in dupVals.items():
-        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations([], subIDs, centroids, areas,
-                                     centroids_Old[ID], relDist, areas_Old[ID], relAreaCheck = 2, doHull = 0, debug = 0) # !! new and _old swapped palces , relArea  should be around 1 !!
-        if  0 < permRelArea2 <  relArea and 0< permDist2 < relDist:
+        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(contours, subIDs, centroids, areas,
+                                     centroids_Old[ID], relDist, areas_Old[ID], relAreaCheck = 2, doHull = 1, debug = 0) # !! new and _old swapped palces , relArea  should be around 1 !!
+        cntrs = contours[permIDsol2]
+        newArea = getContourHullArea(cntrs)
+        if  0 < permRelArea2 <  relArea and 0 < permDist2 < relDist and 0 < newArea <  maxArea:
             dupSubset.append([ID, permIDsol2, permDist2,permRelArea2])
             print(f'pIDs (split): {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
         
-            
-    intersectingCombs_stage2 = [a for a in intersectingCombs_stage2 if a[0] not in dupWhereIndicies]
+    asd = [ e[0] for e in dupSubset]  
+    if len(dupSubset) > 0:
+        intersectingCombs_stage2 = [a for a in intersectingCombs_stage2  if a[0] not in asd]#not in dupWhereIndicies
     intersectingCombs_stage2 = [[a,[b],c,d] for a,b,c,d in intersectingCombs_stage2] # newIDs as a list, in case there are multiple IDs, which happens.
     intersectingCombs_stage2 = intersectingCombs_stage2 + dupSubset        
     # compare these two-frame combinations with global list of stuck bubbles

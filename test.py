@@ -608,3 +608,10 @@ for subTemp in temp:
     temp2.append(bfr)
 #[for subTemp in temp2]
 print(temp2)#subTemp.remove(elem) for elem in allFrozenLocalIDs if allFrozenLocalIDs in subTemp 
+
+keysNewVals = np.array([24, 34, 24, 34, 31, 15, 24, 34, 39, 41, 34, 39], dtype=object)
+dupWhereIndicies = {'5': [10, 11], '4': [6, 7, 8], 18: [0, 1], 28: [2, 3]}
+keysOld = np.array([18, 18, 28, 28, '1', '0', '4', '4', '4', '6', '5', '5'], dtype=object)
+dupSplit = ['5', '4', 18, 28]
+dupWhereIndicies = {a:np.argwhere(keysOld == a) for a in dupSplit}
+dupVals = {ID:keysNewVals[lst] for ID,lst in dupWhereIndicies.items()}

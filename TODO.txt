@@ -18,3 +18,5 @@ l_bubble_type is done multiple times. may be relict of when fb were managed with
 
 check these lines long-term!:
 	assert type(fID) == list, ' you need a line below! '
+
+	newFoundBubsElse = [A for A in newFoundBubsElse if A not in elseOldNewDist[:,1] and A not in frozenOldGlobNewLoc.keys()]; frozenOldGlobNewLoc now mixed,and needs new gID for int FR

@@ -569,8 +569,8 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart           = 53+3 #154   #     260
-dataNum             =  23 #8    #11 
+dataStart           = 53+3+5  #53+3  # 
+dataNum             = 7+5        #17    # 
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -793,10 +793,15 @@ def mainer(index):
             l_FBub_images[oldLocalID]           = baseSubImage
             l_FBub_areas_hull[oldLocalID]       = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in newLocalIDs], hullArea = 1)[1]
             
-            findOldGlobIds = []; [findOldGlobIds.append(globID) for globID, locIDs in l_old_new_IDs_old.items() if oldLocalID in locIDs]
-            if type(oldLocalID) == str and int(oldLocalID) in l_old_new_IDs_old: findOldGlobIds.append(oldLocalID) # in case oldLocalID is old Else bubble ~='7' 11/02/23
-            if type(oldLocalID) == str and oldLocalID in lastNStepsFrozenRectParams: findOldGlobIds.append(oldLocalID) # frozen from N step back 18/02/23
-            frozenOldGlobNewLoc[min(newLocalIDs)] = findOldGlobIds[0] # min(newLocalIDs) ! kind of correct, might cause problems 10/02/23
+            #findOldGlobIds = []; [findOldGlobIds.append(globID) for globID, locIDs in l_old_new_IDs_old.items() if oldLocalID in locIDs]
+            if type(oldLocalID) == str:                                                                # if old ID already has global ID (str -> global, int -> local)
+                if int(oldLocalID) in l_old_new_IDs_old or oldLocalID in lastNStepsFrozenRectParams:   # in case oldLocalID is old Else bubble ~='7' 11/02/23 or frozen from N step back 18/02/23
+                    #findOldGlobIds.append(oldLocalID)
+                    frozenOldGlobNewLoc[min(newLocalIDs)] = oldLocalID                                 # min(newLocalIDs) ! kind of correct, might cause problems 10/02/23/ modded 19/02/23
+            else: frozenOldGlobNewLoc[min(newLocalIDs)] = oldLocalID                                   # == if it was single local, then it should have a global, if its part of old cluster, it must get new ID 19/02/23 
+            #if type(oldLocalID) == str and int(oldLocalID) in l_old_new_IDs_old: findOldGlobIds.append(oldLocalID) # in case oldLocalID is old Else bubble ~='7' 11/02/23
+            #if type(oldLocalID) == str and oldLocalID in lastNStepsFrozenRectParams: findOldGlobIds.append(oldLocalID) # frozen from N step back 18/02/23
+            
         
             #frozenKeys = list(frozenOldGlobNewLoc.values()) wrong 11/02/23
             # !!! detectStuckBubs -> centroidAreaSumPermutations when permutation search fails returns empty array. it fucks shit up
@@ -1059,8 +1064,8 @@ def mainer(index):
         #frozenIDsInfo = np.array([a if type(a[1]) != list else [a[0]]+[min(a[1])]+[a[2:]] for a in frozenIDsInfo])
 
         jointNeighbors = {min(elem): elem for elem in cc_unique if len(elem)>0}
-        clusterMsg = 'Cluster groups: ' if frozenSeparated == False else 'Cluster groups (frozenIDs detected): '
-        print(clusterMsg,"\n", jointNeighbors)
+        clusterMsg = 'Cluster groups: ' if frozenSeparated == False else f'Cluster groups (frozenIDs:{frozenIDs} detected): '
+        print(clusterMsg,"\n", list(jointNeighbors.values()))
         # collect multiple contours into one object, store it for further check
         # on first iteration there are no more checks to be done. store it early
         if globalCounter == 0:
@@ -1164,9 +1169,9 @@ def mainer(index):
             # frozenIDs_old_glob-> double for. grab ID from local old IDS, and for loop check if its in oldLocIDs of some old global IDs
             #oldLocIDs = frozenIDsInfo[:,0] if len(frozenIDsInfo)>0 else np.array([]) # !!!!! check this 10/02/23. added because it was missing for next line
             # 10/02/23 grabbing frozenIDs_old (frID) from  frozenOldGlobNewLoc. replaced oldLocIDs -> oldGlobID beacuse now have access to this info
-            frozenIDs_old_glob = [oldGlobID for frID in frozenOldGlobNewLoc.values() for oldGlobID,oldLocIDs in  l_DBub_old_new_IDs_old.items() if frID == oldGlobID ] # !!!!! check this 10/02/23
+            #frozenIDs_old_glob = [oldGlobID for frID in frozenOldGlobNewLoc.values() for oldGlobID,oldLocIDs in  l_DBub_old_new_IDs_old.items() if frID == oldGlobID ] # !!!!! check this 10/02/23
             # drop frozen bubs from prev frame
-            resolvedFrozenGlobalIDs = list(map(int,frozenOldGlobNewLoc.values())) # not sure if it breaks if mixed type 12/02/23
+            resolvedFrozenGlobalIDs = [int(elem) for elem in frozenOldGlobNewLoc.values() if type(elem) == str]#list(map(int,frozenOldGlobNewLoc.values())) # not sure if it breaks if mixed type 12/02/23 now its mixed, but i drop not globals 19/02/23
             oldDistanceCentroidsWoFrozen = {key:val for key,val in l_DBub_centroids_old.items() if key not in list(l_FBub_old_new_IDs_old.keys()) + resolvedFrozenGlobalIDs}
             for oldID, oldCentroid in oldDistanceCentroidsWoFrozen.items():
                 trajectory = list(g_Centroids[oldID].values())
@@ -1318,7 +1323,7 @@ def mainer(index):
                 print("oldFoundElse (all old Else IDs)\n",oldFoundElse)
             if len(elseOldNewDist) > 0: # if all distance checks fail (elseOldNewDist)
                 newFoundBubsElse = [A for A in newFoundBubsElse if A not in elseOldNewDist[:,1] and A not in frozenOldGlobNewLoc.keys()]; 
-                oldFoundElse = [A for A in oldFoundElse if A not in elseOldNewDist[:,0] and A not in list(map(int,frozenOldGlobNewLoc.values()))]; # might contain strings, so map to int 11/02/23
+                oldFoundElse = [A for A in oldFoundElse if A not in elseOldNewDist[:,0] and A not in resolvedFrozenGlobalIDs]; # might contain strings, so map to int 11/02/23 modded 19/02/23
                 if debugOnly(21):
                     print("newFoundBubsElse (unresolved new IDs)\n",newFoundBubsElse)
                     print("oldFoundElse (unresolved old Else IDs)\n",oldFoundElse)
@@ -1569,10 +1574,14 @@ def mainer(index):
         
         # ============== frozen tricks ============
         oldLocIDs2 = frozenIDsInfo[:,0] if len(frozenIDsInfo)>0 else np.array([]) # 10/02/23
-        oldGlobIDs02 = [
-                            {ii:ID for ID, vals in l_old_new_IDs_old.items() if ii in vals} if type(ii) != str else {ii:int(ii)} 
-                            for ii in oldLocIDs2 ] # relevant new:old dict   
-        oldGlobIDs = {};[oldGlobIDs.update(elem) for elem in oldGlobIDs02] # basically flatten [{x:a},{y:b}] into {x:a,y:b} or something  10/02/23
+        oldGlobIDs = {}
+        for oldLocID in oldLocIDs2:
+            if type(oldLocID) == str: oldGlobIDs[oldLocID] = int(oldLocID)
+            else: oldGlobIDs[oldLocID] = max(g_bubble_type) + 1
+        #oldGlobIDs02 = [
+        #                    {ii:ID for ID, vals in l_old_new_IDs_old.items() if ii in vals} if type(ii) != str else {ii:int(ii)} 
+        #                    for ii in oldLocIDs2 ] # relevant new:old dict   
+        #oldGlobIDs = {};[oldGlobIDs.update(elem) for elem in oldGlobIDs02] # basically flatten [{x:a},{y:b}] into {x:a,y:b} or something  10/02/23
         l_FBub_old_new_IDs_old = {oldGlobIDs[localOldID]:localNewIDs for localOldID, localNewIDs,_,_,_ in frozenIDsInfo}
         for key in l_FBub_masks: # contains relation indices that satisfy distance
             gKey = oldGlobIDs[key]
@@ -1580,15 +1589,17 @@ def mainer(index):
             l_FBub_images_old[gKey]                 = l_FBub_images[key]
             l_FBub_rect_parms_old[gKey]             = l_FBub_rect_parms[key]
             l_FBub_centroids_old[gKey]              = l_FBub_centroids[key] 
-            #l_DBub_old_new_IDs_old[gKey]    = l_DBub_old_new_IDs[key]
             l_FBub_areas_hull_old[gKey]             = l_FBub_areas_hull[key]
-            l_bubble_type[gKey]                     = typeFrozen
-            g_bubble_type[gKey][globalCounter]      = typeFrozen
+            l_bubble_type[gKey]                     = typeFrozen if str(gKey) not in lastNStepsFrozenCentroids else typeRecoveredFrozen
             if globalCounter not in frozenGlobal:
                 frozenGlobal[globalCounter]             = []
                 g_FBub_rect_parms[globalCounter]        = {}
                 g_FBub_centroids[globalCounter]         = {}
                 g_FBub_areas_hull[globalCounter]        = {}
+               
+            if gKey not in g_bubble_type: g_bubble_type[gKey] = {}
+            
+            g_bubble_type[gKey][globalCounter]      = typeFrozen if str(gKey) not in lastNStepsFrozenCentroids else typeRecoveredFrozen
             frozenGlobal[globalCounter].append(gKey)
             g_FBub_rect_parms[globalCounter][gKey]  = l_FBub_rect_parms[key]
             g_FBub_centroids[globalCounter][gKey]   = l_FBub_centroids[key]
@@ -1643,7 +1654,7 @@ def mainer(index):
         # ------------ NEW UNRESOLVED RINGS ADDED TO STORAGE WITH NEW ID --------------
             
         # if len(newFoundBubsRings)>0: # if there is new stray bubble, create new storage index
-        startID = max(g_Centroids)+1
+        startID = max(g_bubble_type) + 1          # changed from g_centroid to g_bubble_type, cause includes frozen 19/02/23
         for gID, localID in zip(range(startID,startID+len(newFoundBubsRings),1), newFoundBubsRings):
             l_RBub_masks_old[gID]               = l_RBub_masks[localID]
             l_RBub_images_old[gID]              = l_RBub_images[localID]
@@ -1702,13 +1713,13 @@ def mainer(index):
         else:
             updateValue                     = l_areas_hull_old[key]
             historyLen                      = len(g_predict_area_hull[key])
+            timeStep                        = globalCounter-1 if key not in lastNStepsFrozenLatestTimes else lastNStepsFrozenLatestTimes[key]
             if historyLen == 1:
-                prevVals                        = [g_predict_area_hull[key][globalCounter-1][0],updateValue]
+                prevVals                        = [g_predict_area_hull[key][timeStep][0],updateValue]
                 hullAreaMean                    = np.mean(prevVals)
                 hullAreaStd                     = np.std(prevVals)
             else:
                 #timeStep = globalCounter-1 if key not in frozenKeys else frozenKeys[key];
-                timeStep                        = globalCounter-1 if key not in lastNStepsFrozenLatestTimes else lastNStepsFrozenLatestTimes[key]
                 prevMean                        = g_predict_area_hull[key][timeStep][1]
                 prevStd                         = g_predict_area_hull[key][timeStep][2]
                 hullAreaMean, hullAreaStd       = updateStat(historyLen, prevMean, prevStd, updateValue) # just fancy way of updating mean and sdtev w/o recalc whole path data. most likely does not impact anything
@@ -2076,12 +2087,10 @@ for globalCounter in range(globalCounter):
         cCIstr = list(map(str,currentCntrIds))
         A = [x for y in zip(cCIstr, [","]*len(cCIstr)) for x in y][:-1] #dont ask me
         temp += A
-        # if len(g_old_new_IDs[ID]) == 1:
-        prevTimeStep = globalCounter-1 if currentType != typeFrozen else list(g_bubble_type[ID].keys())[-2] # FB may not exist in prev step 18/02/23
-        if globalCounter-1 not in g_old_new_IDs[ID] and currentType != typeFrozen: 
-            # text += " new"
+        if min(g_old_new_IDs[ID]) == globalCounter:                 # if current time step is the first in IDs data - mark it "NEW"            
             temp += [f"):{ID} new"]
-        else:
+        else:                                                       # 
+            prevTimeStep = globalCounter - 1 if (currentType != typeFrozen and currentType != typeRecoveredFrozen) else [ts for ts in g_bubble_type[ID].keys() if ts < globalCounter][-1]
             temp[0] = 1
             prevType = g_bubble_type[ID][prevTimeStep]
             prevTypeStr = typeStrings[prevType] 

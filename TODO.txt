@@ -1,8 +1,10 @@
 General comments/ideas:
-- distStatPredictionVect2 function is too complex.
-- relax all criterium on inlet side.
-- frozens might not change to other types and back.
+- distStatPredictionVect2 function is too complex.: but deos the job.
+- relax all criterium on inlet side. x - filtered out inlet IDs, for now.
+- frozens might not change to other types and back. : not yet confirmed 100%
 - split frozen into high and low likelyhood fr bubbes using temporal stat.
+- statistics on bubble parameters were supposed to converge from more relaxed inital limits to something stationary.
+	this might not be the best option, since bubbles may start to change rapidly.
 
 16/02/23:
 change boundRectAngle to atan2

@@ -569,8 +569,8 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart           = 53+3+5  #53+3  # 
-dataNum             = 7+5        #17    # 
+dataStart           = 200 #  53+3+5
+dataNum             = 6  # 7+5   
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -599,7 +599,7 @@ globalCounter = 0
 # debug section numbers: 11- RB IDs, 12- RB recovery, 21- Else IDs, 22- else recovery, 31- merge
 # debug on specific steps- empty list, do all steps, or time steps in list
 debugSections = [11,21,12,22,31]
-debugSteps = [0]
+debugSteps = [5]
 debugVecPredict = 0
 def debugOnly(section):
     global globalCounter, debugSections, debugSteps
@@ -984,9 +984,10 @@ def mainer(index):
         
         distContours = {ID:contoursFilter_RectParams[ID] for ID in cntrRemainingIDs}
 
-        combosSelf = np.sort(np.array(overlappingRotatedRectangles(distContours,distContours)))
-        combosSelf = np.unique(combosSelf, axis = 0)
-        combosSelf = np.array([[a,b] for a,b in combosSelf if a != b])
+        combosSelf = np.array(overlappingRotatedRectangles(distContours,distContours))
+        #combosSelf = np.sort(np.array(overlappingRotatedRectangles(distContours,distContours)))
+        #combosSelf = np.unique(combosSelf, axis = 0)
+        #combosSelf = np.array([[a,b] for a,b in combosSelf if a != b])
         
         if len(combosSelf) == 0: # happens if bubble overlays only itself
             combosSelf = np.empty((0,2),np.int)
@@ -1072,11 +1073,7 @@ def mainer(index):
             blank  = np.zeros(err.shape,np.uint8)
             blank = convertGray2RGB(blank)                                                              # IMSHOW
             
-            # TODO:
-            # place if  markFirstMaskManually == 1 here DONE
-            # remove dropResolvedRingIDs from it REMOVED AT START
-            # modify jointNeighbors, so code can transition to part below
-            # great success cv2.imread("./manualMask/frame"+str(dataStart).zfill(4)+" - Copy.png",1)
+            # 
             if  markFirstMaskManually == 1 and os.path.exists("./manualMask/frame"+str(dataStart).zfill(4)+" - Copy.png"):
                 # i am dropping RBs out of search, assuming they behave well. i do it to avoid doing it after.
                 cntrRemainingIDsMOD = [cID for cID in whereParentOriginal if cID not in dropResolvedRingIDs + contoursFilter_RectParams_dropIDs ]
@@ -1192,10 +1189,10 @@ def mainer(index):
                     
                 #----------------- looking for new else bubs related to old else bubs ---------------------
                 for mainNewID, subNewIDs in jointNeighborsWoFrozen.items():
-                    newCentroid, newArea = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in subNewIDs], hullArea = 1)
+                    newCentroid, newArea = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in subNewIDs], hullArea = 1)             # likely that this cluster is a bubble. get its params
                     #relArea = abs(areaCheck - newArea)/areaCheck
                     #dist = np.linalg.norm(np.array(newCentroid) - np.array(oldCentroid))
-                    dist2 = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))
+                    dist2 = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))                                               # distance between cluster and predicted centroids
                     areaCrit = np.abs(newArea-oldMeanArea)/ oldAreaStd
                         
                     if dist2 <= distCheck2 + 5*distCheck2Sigma and areaCrit < 3:
@@ -1206,8 +1203,8 @@ def mainer(index):
                     elif dist2 > 70 or areaCrit > 15:
                         0#;print('dist 2. soft break')
                     else:
-                        debug = 1 if (globalCounter == 1 and oldID == 3) else 0 #, permCentroid
-                        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours, subNewIDs, l_Centroids, l_Areas,
+                        debug = 1 if (globalCounter == 5 and oldID == 5) else 0 #, permCentroid
+                        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], subNewIDs, l_Centroids, l_Areas,
                                                     predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = debug, doHull = 1)
                         if len(permIDsol2)>0:
                             print(f'\ndist-dist. Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, permIDsol2: {permIDsol2}, permDist2: {permDist2}')
@@ -1236,7 +1233,7 @@ def mainer(index):
                         0#;print('dist 2. soft break') # if values are completely wack, dont try to do permutations
                     else:
                         debug = 1 if (globalCounter == 1123123 and oldID == 3) else 0
-                        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours, toList(subNewIDs), l_Centroids, l_Areas,
+                        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], toList(subNewIDs), l_Centroids, l_Areas,
                                                     predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = debug)
                         if len(permIDsol2)>0:
                             print(f'\nrb-dist. Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, permIDsol2: {permIDsol2}, permDist2: {permDist2}')
@@ -2128,7 +2125,7 @@ for globalCounter in range(globalCounter):
             #         hull = np.array(list(zip(x,y)),np.int32).reshape((-1,1,2))
             #         cv2.drawContours(  blank,   [hull], -1, (125,0,180), 1)
             #     cv2.imshow('asd',blank)
-        
+    #cv2.imshow('asd',blank)    
     fontScale = 0.7;thickness = 4;
     for k,ID in enumerate(activeIDs):
         moveX = 0

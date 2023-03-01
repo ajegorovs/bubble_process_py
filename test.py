@@ -615,90 +615,278 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
 #dupSplit = ['5', '4', 18, 28]
 #dupWhereIndicies = {a:np.argwhere(keysOld == a) for a in dupSplit}
 #dupVals = {ID:keysNewVals[lst] for ID,lst in dupWhereIndicies.items()}
-import itertools, networkx as nx
-def overlappingRotatedRectangles(group1Params,group2Params):
-    group1IDs, group2IDs = list(group1Params.keys()),list(group2Params.keys())
-    allCombs = np.unique(np.sort(np.array(list(itertools.permutations(rectParams, 2)))), axis = 0)#;print(f'allCombs,{allCombs}')
-    intersectingCombs = []
-    for (keyOld,keyNew) in allCombs:
-        x1,y1,w1,h1 = group2Params[keyNew]
-        rotatedRectangle_new = ((x1+w1/2, y1+h1/2), (w1, h1), 0)
-        x2,y2,w2,h2 = group1Params[keyOld]
-        rotatedRectangle_old = ((x2+w2/2, y2+h2/2), (w2, h2), 0)
-        interType,_ = cv2.rotatedRectangleIntersection(rotatedRectangle_new, rotatedRectangle_old)
-        if interType > 0:
-            intersectingCombs.append([keyOld,keyNew]) # rough neighbors combinations
-    return intersectingCombs
 
-img = cv2.imread ('.\\manualMask\\frame0150.png',0)*0
-H,L = img.shape
-rectParams = {0:[0.15*L,0.4*H,200,200],1:[0.45*L,0.35*H,200,200],2:[0.75*L,0.35*H,200,200],3:[0.55*L,0.73*H,200,100],4:[0.7*L,0.60*H,100,100],5:[0.45*L,0.26*H,100,70],6:[0.52*L,0.17*H,100,70],7:[0.48*L,0.63*H,100,70],8:[0.18*L,0.65*H,100,70],9:[0.25*L,0.75*H,100,70]}
-rectParams = {i:list(map(int,a)) for i,a in rectParams.items()}; print(rectParams)
-rectParamsVert = {ID:[x,0,w,H] for ID,[x,y,w,h] in rectParams.items()}
-[cv2.rectangle(img, (x,y), (x+w,y+h), 128, -1) for [x,y,w,h] in rectParamsVert.values()]
-[cv2.rectangle(img, (x,y), (x+w,y+h), 255, -1) for [x,y,w,h] in rectParams.values()]
-#cv2.imshow('a', img)
 
-#aa = np.unique(np.sort(np.array(list(itertools.permutations(rectParams, 2)))), axis = 0)
-#print(aa)
-aa = overlappingRotatedRectangles(rectParamsVert,rectParamsVert);print(aa)
-HG = nx.Graph()
-HG.add_nodes_from(rectParams.keys())
-HG.add_edges_from(aa)
-cntrd = {ID:tuple((x+int(0.5*w),y+int(0.5*h))) for ID,[x,y,w,h] in rectParams.items()}
-# ----- visualize  netrworkx graph with background contrours
 
+
+
+#cv2.imshow('a',img)
+
+#print(bodyCntrs[15]) #[[[1009  518]],[[a,b]]]
+#doHull = 1;debug = 0;distCheck = 59.67;relAreaCheck = 0.7;refArea = 18170
+#permutations = sum([list(itertools.combinations(IDsOfInterest, r)) for r in range(1,len(IDsOfInterest)+1)],[])          # different combinations of size 1 to max cluster size.
+#cntrds2 =  np.array([getCentroidPosCentroidsAndAreas([centroidDict[k] for k in vec],[areaDict[m] for m in vec]) for vec in permutations])
+#if doHull == 1:
+#    hullAreas = np.array([cv2.contourArea(cv2.convexHull(np.vstack([bodyCntrs[k] for k in vec]))) for vec in permutations])
+#else:
+#    hullAreas = np.array([sum([areaDict[m] for m in vec]) for vec in permutations])
+#print(f'permutations,{permutations}') if debug == 1 else 0
+#print(f'refC: {refCentroid}, cntrds2: {list(map(list,cntrds2))}') if debug == 1 else 0
+#distances = np.linalg.norm(cntrds2-refCentroid,axis=1)
+#distPassIndices = np.where(distances<distCheck)[0]
+#relAreas = np.abs(refArea-hullAreas)/refArea 
+#relAreasPassIndices = np.where(relAreas<relAreaCheck)[0]
+#passBothIndices = np.intersect1d(distPassIndices, relAreasPassIndices)
+
+
+#cv2.INTERSECT_FULL
+#group1Params = {'1': [0, 605, 86, 179], '2': [369, 500, 127, 30], '3': [931, 434, 114, 119], '4': [713, 432, 135, 207], '5': [1093, 429, 115, 98]}
+#group2Params = {26: (371, 506, 23, 17), 34: (1064, 465, 19, 22), 36: (911, 441, 115, 114), 41: (704, 436, 136, 206), 42: (1079, 424, 119, 112)}
+#allCombs =  list(itertools.product(group1Params, group2Params))
+#for (keyOld,keyNew) in allCombs:
+#    x1,y1,w1,h1 = group2Params[keyNew]
+#    rotatedRectangle_new = ((x1+w1/2, y1+h1/2), (w1, h1), 0)
+#    x2,y2,w2,h2 = group1Params[keyOld]
+#    rotatedRectangle_old = ((x2+w2/2, y2+h2/2), (w2, h2), 0)
+#    interType,aa = cv2.rotatedRectangleIntersection(rotatedRectangle_new, rotatedRectangle_old)
+#    if interType > 0 and keyOld == '2':
+#        print(keyOld,keyNew,interType)#,aa.reshape((-1,2)),aa.reshape((-1,1,2))
+#        cv2.rectangle(img, (x1,y1), (x1+w1,y1+h1), (255,0,0), 1)
+#        cv2.rectangle(img, (x2,y2), (x2+w2,y2+h2), (120,255,0), 1)
+#
+#        img = cv2.drawContours(img, [aa.astype(int)], -1, (0,0,255), -1)
+
+def cyclicColor(index):
+    colors = [(255,0,0),(0,255,0),(125,125,0),(0,125,125),(0,0,255),(125,0,125),(255,125,0),(255,0,125),(125,255,0)]
+    colors = np.array(colors,dtype=np.uint8)
+    # np.random.shuffle(colors)
+    return colors[index % len(colors)].tolist()
+
+dm = 500
+numP = 110
+dPhi = 2*np.pi/numP
+img = np.zeros((dm,dm,3),np.uint8)
+
+if 1 == 1:
+    import itertools, pickle
+    img = np.zeros((1000,1400,3),np.uint8)
+    with open('cntr.pickle', 'rb') as handle:
+                    bodyCntrs = pickle.load(handle)
+    #rectParams = {0: (1177, 895, 5, 5), 2: (265, 890, 6, 5), 3: (123, 880, 5, 5), 9: (944, 675, 7, 6), 10: (955, 610, 6, 5), 11: (963, 598, 16, 9), 12: (1030, 589, 5, 5), 13: (1041, 583, 8, 7), 14: (352, 545, 13, 9), 15: (1005, 518, 124, 33), 16: (316, 498, 21, 21), 17: (305, 495, 91, 98), 18: (1091, 493, 35, 26), 19: (615, 484, 14, 10), 20: (857, 482, 25, 29), 21: (1153, 473, 9, 7), 22: (866, 457, 101, 101), 25: (1119, 454, 20, 53), 26: (1183, 452, 15, 10), 27: (648, 444, 164, 205), 30: (971, 422, 154, 91), 32: (924, 311, 6, 7), 36: (752, 94, 6, 6), 37: (307, 48, 19, 13), 38: (373, 43, 6, 8), 39: (611, 35, 5, 5), 41: (285, 3, 5, 7)}
+    IDsOfInterest = [15, 18, 20, 22, 25, 30]
+    refCentroid = np.array([1061.78233365,  491.36451101]).astype(np.int16)
+    [x,y,w,h] = [996, 421, 151, 126]
+#    cv2.circle(img, tuple(map(int,refCentroid)), 3, (255,0,0), -1)
+#    cntrsOfInterest = {ID:bodyCntrs[ID].reshape((-1,2)).astype(np.int16)-refCentroid for ID in IDsOfInterest}
+#    cntrsOfInterest_Polar = {}
+#    for ID in IDsOfInterest:
+#        x,y = np.transpose(cntrsOfInterest[ID])
+#        #print([np.arctan2(y[0],x[0]),np.sqrt(x[0]**2+y[0]**2)])
+#        cntrsOfInterest_Polar[ID] = np.transpose(np.array([np.arctan2(y,x),numpy.linalg.norm([x,y], axis=0)]))
+#        cntrsOfInterest_Polar[ID] = np.vstack((cntrsOfInterest_Polar[ID],cntrsOfInterest_Polar[ID][0]))
+#    area = {}
+#    Ravg = {}
+#    diffs = {ID:np.diff(arr,axis = 0) for ID,arr in cntrsOfInterest_Polar.items()}
+#    print(1)
+#    for ID in IDsOfInterest:
+#        area[ID] = 0
+#        Ravg[ID] = 0
+#        for i,[dAng,dR] in enumerate(diffs[ID]):
+#            R = cntrsOfInterest_Polar[ID][i][1]
+#            Reff = (R+0.5*dR)
+#            dA = 0.5*Reff**2*np.sin(dAng)
+#            area[ID] = area[ID] + dA
+#            Ravg[ID] = Ravg[ID] + 2/3* Reff * dA
+#        Ravg[ID] = Ravg[ID]/area[ID]
+#cntOG = {ID:bodyCntrs[ID].reshape((-1,2)) for ID in IDsOfInterest}
+#areasOG = {ID: cv2.contourArea(cntr) for ID, cntr in cntOG.items()}
+
+#print(f'area2 = {area}')
+#print(f'areasOG = {areasOG}')
+#print(f'Ravg = {Ravg}')
+
+
+#[cv2.drawContours(  img,   bodyCntrs, cid, cyclicColor(i), -1) for i,cid in enumerate(IDsOfInterest)]
+#[cv2.circle(img, refCentroid, int(Ravg[ID]), cyclicColor(i), 2) for i,ID in enumerate(IDsOfInterest)]
+#cv2.imshow('a',img)
+
+refCentroid = np.array([1061.78233365,  491.36451101]).astype(np.int16)
+imgGrayFinal = cv2.cvtColor(img.copy()*0, cv2.COLOR_BGR2GRAY)
+def rescaleTo255(rmin,rmax,x):
+    return int(255*(rmin-x)/(rmin-rmax))
+from matplotlib import pyplot as plt
+#for ID in IDsOfInterest:#IDsOfInterest
+#    imgGray = cv2.cvtColor(img.copy()*0, cv2.COLOR_BGR2GRAY)
+#    x,y,w,h = cv2.boundingRect(bodyCntrs[ID])
+#    subSubMask = np.zeros((h,w),np.uint8)
+#    cv2.drawContours( subSubMask, bodyCntrs, ID, 255, -1, offset = (-x,-y))
+#    #np.transpose(np.array([np.arctan2(y,x),numpy.linalg.norm([x,y], axis=0)]))
+#    xs, ys = np.meshgrid(np.arange(x,x+w,1), np.arange(y,y+h,1), sparse=True) # all x,y pairs. hopefully its faster using meshgrid + numpy
+#    #xs, ys = np.meshgrid(x, y, sparse=True)
+#    zs = np.sqrt((xs-refCentroid[0])**2 + (ys-refCentroid[1])**2).astype(int)
+#    rmin, rmax = np.min(zs), np.max(zs)
+#    dic ={rad:0 for rad in np.arange(rmin,rmax+1,1)}                              # all possible radiusses
+#    imgGray[y:y+h,x:x+w] = subSubMask
+#    imgGray2 = imgGray.copy()
+#    #print( rescaleTo255(0,10,0),rescaleTo255(0,10,10))
+#    for i,xses in enumerate(xs[0]):
+#        for j,yses in enumerate(ys):
+#            #ptClr = imgGray[yses[0],xses] 
+#            if imgGray[yses[0],xses] == 255:
+#                radi = zs[j][i]
+#                dic[radi] += 1
+#                #clr = rescaleTo255(rmin,rmax,radi)
+#                #imgGray[yses[0],xses] = clr
     
-posTB = {ID:0 if y < (H - (y+h)) else 1 for ID,[x,y,w,h] in rectParams.items()};print(f'posTB:{posTB}')
+#    xvals = np.array(list(dic.keys()))
+#    weights = np.array(list(dic.values()))
+#    avg = np.average(xvals, weights=weights)
+#    stdev = np.sqrt(numpy.average((xvals-avg)**2, weights=weights))
+#    dmin,dmax = min(dic.values()),max(dic.values())
+#    if ID == 15:
+#        plt.plot(dic.keys(),dic.values())
+#        plt.xlabel('radius')
+#        plt.ylabel('# pixels')
+#        plt.vlines(avg, min(dic.values()), max(dic.values()), linestyles ="dashed", colors ="k")
+#        plt.vlines(avg-stdev, dmin,dmax, linestyles ="dashed", colors ="b")
+#        plt.vlines(avg+stdev, dmin,dmax, linestyles ="dashed", colors ="b")
+    
+    
+#    for i,xses in enumerate(xs[0]):
+#        for j,yses in enumerate(ys):
+#            if imgGray[yses[0],xses] == 255:
+#                radi = zs[j][i]
+#                clr = rescaleTo255(dmin,dmax,dic[radi])
+#                imgGrayFinal[yses[0],xses] = clr
+#    #for ypos in yy:
+#    #    imgGray[yy,x] = 128
+#cv2.imshow('a',imgGrayFinal)
+#plt.show()
+##print('asdasd',rescaleTo255(27,86,64))
+
+def findMajorInterval(x,fx,cover_area,uniformStep,debug):
+    if uniformStep == 1:
+        ddx = x[1]-x[0]                 # uniform step
+        fx_c = np.cumsum(fx)*ddx        # stacking object heights, then multipying by width.
+    else:
+        dx = np.diff(x)
+        dx = np.append(dx,dx[-1])
+        fx_c2 = np.multiply(fx,dx)      # calculating each object area
+        fx_c = np.cumsum(fx_c2)         # then adding
+
+    fx_c = fx_c/fx_c[-1]                # normalize to 0- 1
+    fx_c = np.concatenate(([0],fx_c))   # first entry 0 area, bit of an offset.
+    x_right_max_index = np.argmax(fx_c >= (1-cover_area))-1   # at which x cum_sum reaches (1-cover_area), so next x-ses wont cover remaining cover_area. 
+    # i have to reduce x_right_max_index because of indexing problems.
+    #print(f'cumulative area at x = {x[x_right_max_index] } is {fx_c[x_right_max_index]} and x-1 = {x[x_right_max_index-1]} is {fx_c[x_right_max_index-1]} and x+1 = {x[x_right_max_index+1]} is {fx_c[x_right_max_index+1]}')
+    solsIntevals2 = np.zeros(x_right_max_index)
+    solsAreas2 = np.zeros(x_right_max_index)
+    #print(f'cover Area %: {cover_area:.2f}')
+    for i in range(0,x_right_max_index,1): 
+        x_left              = x[i]                                  # area betwen x[i] and x[i+n] is (fx_c[i+n] - fx_c[i])
+        targetArea          = cover_area + fx_c[i]                  # fx_c[i] is staggered to the left. so x[i = 0] has area fx_c[i=0] of zero.
+        tarIndex            = np.argmin(np.abs(fx_c - targetArea))  # considers target value closest to target, from both top and bottom. top- wider interval. might not be best soln
+        x_right             = x[tarIndex]
+        solsIntevals2[i]    = np.round(x_right - x_left,3)          # precision oscillations can mess with min max, thus rounding.
+        solsAreas2[i]       = np.round(np.abs(cover_area-(fx_c[tarIndex]-fx_c[i])),5) # can be relative dA/A0, but all A0 same for all.
+        if debug == 1:
+            print(str(i).zfill(2)+f', from: {x[i]:.2f}, to: {x[tarIndex]:.2f}, x_diff: {(x[tarIndex]-x[i]):.2f}, diff: {(fx_c[tarIndex]-fx_c[i]):.3f}, diff -1: {(fx_c[tarIndex-1]-fx_c[i]):.3f}, diff+1: {(fx_c[tarIndex+1]-fx_c[i]):.3f}')
+            print(f'cA: {fx_c[i]:.3f}, tarArea: {targetArea:.3f}, existingArea: {fx_c[tarIndex]:.3f}, solAreas: {solsAreas2[i]}')
+    
+    min1Pos     = np.argmin(solsIntevals2);min1Val = solsIntevals2[min1Pos] # take the shortest interval [x[i],x[i+n]] that has area close to cover_area
+    where1      = np.argwhere(solsIntevals2 == min1Val).flatten()           # multiple intervals of this length can be recovered (due to discrete distribution)
+                                                                            # 
+    min2Pos     = np.argmin(solsAreas2[where1])                             # search in subset of IDs, solution is subset ID
+    min2PosG    = where1[min2Pos]                                           # refine with respect of subset.
+    if debug == 1:
+        fig, axes = plt.subplots(2, 1, figsize=(6, 6), sharex=True, sharey=False)
+        axes[1].plot(x,fx)
+        #axes[1].fill_between(x,fx,0,where=(x>=minKey2) & (x<=minKey2+solsIntevals[minKey2]),color='b')
+        axes[1].fill_between(x,fx,0,where=(x>=x[min2PosG]) & (x<=x[min2PosG]+solsIntevals2[min2PosG]),color='g')
+        axes[1].set_xlabel('radius, pix')
+        axes[1].set_ylabel('density')
+        axes[1].set_xticks(x)
+        plt.show()
+    return x[min2PosG],solsIntevals2[min2PosG]
+
+if 12 == 122:
+    sigma  = 1.5;sigma2  = 0.8;
+    step = 0.2
+    cover_area = 0.8
+    end = 10
+    x = np.around(np.arange(0,end,step),4)
+    #x = np.around(np.arange(2,8,step),4)
+    #x = np.around(np.concatenate((np.arange(0,end/4,step/2),np.arange(end/4,3/4*end,step/4),np.arange(3/4*end,end,step/2))),4)
+    #fx = np.mean(x)
+    #fx = np.around(1/sigma/np.sqrt(2*np.pi)*np.exp(-1/2/sigma**2*(x-x_mean)**2)+1/sigma2/np.sqrt(2*np.pi)*np.exp(-1/2/sigma2**2*(x-0.55*x_mean)**2),4) #
+    #fx = np.piecewise(x, [x < 5, ((x >= 5) & (x <= 12)), x > 12], [0, 1, 0])
+    #fx = np.full(len(x),1)
+    fx = np.sqrt((end/2)**2-(x- end/2)**2)
+    fx = np.piecewise(x, [x < end/2, x >= end/2], [lambda x: x, lambda x: -x+end])
+    #fx = x
+    #fx = -(x-end/2)**2+25
+    findMajorInterval(x,fx,cover_area,uniformStep =1,debug= 1)
+
+def radialStats(bodyCntrs,IDsOfInterest,refCentroid,img, oneContour = True,debug = 0):
+
+    output = {ID:[0,0] for ID in IDsOfInterest}                                             # future return dict {ID:[avg_r,stdev_r]}
+    imgGray = cv2.cvtColor(img.copy()*0, cv2.COLOR_BGR2GRAY) if debug > 0 else 1
+
+    for ID in IDsOfInterest:
+        area0           = cv2.contourArea(bodyCntrs[ID])
+        x,y,w,h         = cv2.boundingRect(bodyCntrs[ID])
+        xs, ys          = np.meshgrid(np.arange(x,x+w,1), np.arange(y,y+h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
+        zs              = np.sqrt((xs-refCentroid[0])**2 + (ys-refCentroid[1])**2).astype(int)  # calculate L2 norms from reference centroid.
+        rmin, rmax      = np.min(zs), np.max(zs)
+        
+        if oneContour == True:                                                              # count all pixel at radius 'rad'-> {r1:n1, r2:n2, ...}
+            dic = {rad:0 for rad in np.arange(rmin,rmax+1,1)}                               # if only one pixel, 'rad' should be continous, exept casting to int can disrupt it.
+        else:
+            dic = {rad:0 for rad in np.sort(np.unique(np.flatten(zs)))}                     # order (sort) should not be important if not drawing a continious relation [r1,n1],[r2,n2],...
+        
+        subSubMask      = np.zeros((h,w),np.uint8)                                          # stencil for determining if pixel is part of a bubble
+        cv2.drawContours( subSubMask, bodyCntrs, ID, 255, -1, offset = (-x,-y))
+        
+        for i,xses in enumerate(xs[0]):                                                     # get radius of each pixel, add to counter. 
+            for j,yses in enumerate(ys):
+                if subSubMask[yses[0]-y,xses-x] == 255:                                     # count only those inside contour (color = 255)
+                    radi = zs[j][i]
+                    dic[radi] += 1
+                    #clr = rescaleTo255(rmin,rmax,radi)
+                    #imgGray[yses[0],xses] = clr
+    
+        xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))           # cast to numpy to do statistics
+        avg             = np.average(xvals, weights=weights)                                 # weighted average
+        stdev           = np.sqrt(numpy.average((xvals-avg)**2, weights=weights))            # stdev of weighted data. theres no ready function in numpy.
+        a,b             = findMajorInterval(xvals,weights,0.7,uniformStep =1,debug= 0)      ;print(a,b)
+        dmin, dmax      = min(dic.values()),max(dic.values())
+        output[ID]      = [avg, stdev]
+        if debug == 1:
+            plt.plot(xvals,weights, label=f'Radial pixel distribution ID:{ID}')
+            plt.vlines(avg, min(dic.values()), max(dic.values()), linestyles ="dashed", colors ="k")
+            #plt.vlines(avg-stdev, dmin,dmax, linestyles ="dashed", colors ="b")
+            #plt.vlines(avg+stdev, dmin,dmax, linestyles ="dashed", colors ="b")
+            plt.fill_between(xvals,weights,0,where= (xvals<=a+b) & (xvals>=a))
+            plt.xlabel('radius, pix')
+            plt.ylabel('sum of pixels')
+        
+            for i,xses in enumerate(xs[0]):
+                for j,yses in enumerate(ys):
+                    if subSubMask[yses[0]-y,xses-x] == 255:
+                        radi                    = zs[j][i]
+                        clr                     = rescaleTo255(dmin,dmax,dic[radi])             # select a grayscale value based on number of pixel at that radius
+                        imgGray[yses[0],xses]   = clr
+            x0,y0 = bodyCntrs[ID][0][0]
+            cv2.putText(imgGray, str(ID), (x0,y0), cv2.FONT_HERSHEY_SIMPLEX, 0.3, 0, 3, cv2.LINE_AA)
+            cv2.putText(imgGray, str(ID), (x0,y0), cv2.FONT_HERSHEY_SIMPLEX, 0.3, 255, 1, cv2.LINE_AA)
+            
+    if debug == 1:
+        cv2.imshow('a',imgGray)
+        plt.show()
+    return output
+ids = np.array(IDsOfInterest)[[1,3,4]] ;print(ids)
+aa = radialStats(bodyCntrs,ids,refCentroid,img, oneContour = True,debug = 1)
+#print(aa)
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key
     cv2.destroyAllWindows()
-q = 1
-neighbors = {ID:[] for ID in rectParams}
-neighborsSameSide = {ID:[] for ID in rectParams}
-for IDs in rectParams:
-    for i in HG.neighbors(IDs):
-        neighbors[IDs].append(i)
-        if posTB[i] == posTB[IDs]: neighborsSameSide[IDs].append(i)
-print(neighbors)
-print(neighborsSameSide)
-clusters0 = [tuple(np.sort(np.array([ID] +nbrs))) for ID, nbrs in neighborsSameSide.items()];print(clusters0)
-SameSideClusters = [list(aa) for aa in set(clusters0)]
-print(f'SameSideCluster:{SameSideClusters}')
-#print(np.argsort(list(hehe.values())))
-globSideOrder = {ID:0 for ID in rectParams}
-print(f'globSideOrder   :{globSideOrder}')
-for arr in SameSideClusters:
-    srt = np.argsort([cntrd[ID][1] for ID in arr]);print(srt)
-    for i,elem in enumerate(arr):
-        globSideOrder[elem] = srt[i]
-print(f'globSideOrder   :{globSideOrder}')
-print(f'posTB:{posTB}')
-
-textHeight  = 25
-textNoGo    = 10
-textSep     = 15
-q = 0
-#cv2.rectangle(img, (x,y), (x+w,y+h), 255, -1)
-for ID,[x,y,w,h] in rectParams.items():
-    if posTB[ID] == 1:
-        start = H - textNoGo - globSideOrder[ID]*(textHeight + textSep)
-        stop = start - textHeight
-        cv2.rectangle(img, (x,start), (x+w,stop), 255, 5) 
-    if posTB[ID] == 0:
-        start = textNoGo + globSideOrder[ID]*(textHeight + textSep)
-        stop = start + textHeight
-        cv2.rectangle(img, (x,start), (x+w,stop), 255, 5)
-
-if 1 == 1: 
-    #pos = {i:getCentroidPos(inp = vec, offset = (0,0), mode=0, mask=[]) for i, vec in cntrRemaining.items()}
-    for n, p in cntrd.items():
-            HG.nodes[n]['pos'] = p
-    plt.figure(1)
-    plt.imshow(img)
-    #for cntr in list(cntrRemaining.values()):
-    #    [x,y] = np.array(cntr).reshape(-1,2).T
-    #    plt.plot(x,y)
-    #[cv2.rectangle(img, (x,y), (x+w,y+h), 255, -1) for [x,y,w,h] in rectParams.values()]
-    nx.draw(HG, cntrd, with_labels=True)
-plt.show()

@@ -321,10 +321,13 @@ def dropDoubleCritCopies(elseOldNewDoubleCriterium):
     else:
         return elseOldNewDoubleCriterium
 
-def centroidAreaSumPermutations(bodyCntrs, IDsOfInterest, centroidDict, areaDict, refCentroid, distCheck, refArea=10, relAreaCheck = 10000000, doHull = 1, debug = 0):
+def centroidAreaSumPermutations(bodyCntrs,rectParams,rectParams_old, IDsOfInterest, centroidDict, areaDict, refCentroid, distCheck, refArea=10, relAreaCheck = 10000000, doHull = 1, debug = 0):
     #bodyCntrs is used only if doHull == 1. i dont use it for frozen bubs permutations
-    permutations = sum([list(itertools.combinations(IDsOfInterest, r)) for r in range(1,len(IDsOfInterest)+1)],[])
-    cntrds2 =  np.array([getCentroidPosCentroidsAndAreas([centroidDict[k] for k in vec],[areaDict[m] for m in vec]) for vec in permutations])
+    #print(rectParams)
+    with open('./cntr.pickle', 'wb') as handle:
+                pickle.dump(bodyCntrs, handle) 
+    permutations = sum([list(itertools.combinations(IDsOfInterest, r)) for r in range(1,len(IDsOfInterest)+1)],[])                              # different combinations of size 1 to max cluster size.
+    cntrds2 =  np.array([getCentroidPosCentroidsAndAreas([centroidDict[k] for k in vec],[areaDict[m] for m in vec]) for vec in permutations])   # NOT OF HULLS !!!
     if doHull == 1:
         hullAreas = np.array([cv2.contourArea(cv2.convexHull(np.vstack([bodyCntrs[k] for k in vec]))) for vec in permutations])
     else:
@@ -333,42 +336,72 @@ def centroidAreaSumPermutations(bodyCntrs, IDsOfInterest, centroidDict, areaDict
     print(f'refC: {refCentroid}, cntrds2: {list(map(list,cntrds2))}') if debug == 1 else 0
     distances = np.linalg.norm(cntrds2-refCentroid,axis=1)
     distPassIndices = np.where(distances<distCheck)[0]
-    relAreas = np.abs(refArea-hullAreas)/refArea 
+    relAreas = np.abs(refArea-hullAreas)/refArea
+    relAreas2 = (refArea-hullAreas)/refArea 
     relAreasPassIndices = np.where(relAreas<relAreaCheck)[0]
     passBothIndices = np.intersect1d(distPassIndices, relAreasPassIndices)
+    # added aspect ratio check - angle difference check 24/02/23
+    rects = [cv2.boundingRect(np.vstack([bodyCntrs[k] for k in perm])) for perm in permutations]
+    angles = np.array([boundRectAngle(rect,rectParams_old, maxAngle = 10, debug  = 0, info= '')[1] for rect in rects],np.int)
+    anglePassIndices = np.where(angles<20)[0]
+    passBothIndices = np.intersect1d(passBothIndices, anglePassIndices)
+
     if len(passBothIndices)>0:
         if len(passBothIndices) == 1:
             print(f'only 1 comb after stage 1: {list(permutations[passBothIndices[0]])}') if debug == 1 else 0 
             return list(permutations[passBothIndices[0]]), distances[passBothIndices[0]], relAreas[passBothIndices[0]]
+        
         remainingPermutations = np.array(permutations, dtype=object)[passBothIndices]
         print(f'remainingPermutations: {remainingPermutations}') if debug == 1 else 0
         #remainingCentroids = np.array(cntrds2)[passBothIndices]
         remainingDistances = np.array(distances)[passBothIndices]
         remainingRelAreas = np.array(relAreas)[passBothIndices]
+        remainingRelAreas2 = np.array(relAreas2)[passBothIndices]
         print(f'remainingDistances: {remainingDistances}') if debug == 1 else 0
         print(f'remainingRelAreas: {remainingRelAreas}') if debug == 1 else 0
+        remainingCentroids = np.array(cntrds2)[passBothIndices]
 
-        #distArgSort = np.argsort(remainingDistances)
-        #relAreasArgSort = np.argsort(remainingRelAreas)
+        # ==== permutations blindly pick combinations that suit criteria the best, sometimes that means that lone elements are left inside clusters, which is non-physical. ====
+        if debug == 1:
+            candidates = []
+            x0,y0,w0,h0 = rectParams_old
+            remainingPermutationsList = [list(a) for a in remainingPermutations]
+
+            for i,ID in enumerate(passBothIndices):
+                perm = permutations[ID]
+                if 1 < len(perm) < len(IDsOfInterest) and remainingRelAreas[i] < 0.3:
+                    
+                    xt,yt,wt,ht = cv2.boundingRect(np.vstack([bodyCntrs[k] for k in perm]))                             # small permutation in question
+                    rotatedRectangle_perm = ((xt+wt/2, yt+ht/2), (wt, ht), 0)
+
+                    for elem in [a for a in IDsOfInterest if a not in perm]:                                            # elem = subID: check all ids thats not in perm
+
+                        x1,y1,w1,h1 = rectParams[elem]                                                                  # subID, take its parameters
+                        rotatedRectangle_elem = ((x1+w1/2, y1+h1/2), (w1, h1), 0)        
+                        interType,aa = cv2.rotatedRectangleIntersection(rotatedRectangle_perm, rotatedRectangle_elem)   # check if elem (SubID) intersects with small perm
+
+                        join = list(perm) + [elem] ;join.sort() #(15, 18, 20, 22, 25, 30))                              # form big perm from small perm and elem (subID)
+                        if interType > 0 and join in remainingPermutationsList:                                         # if there there intersection and big per was not discarded previously
+                            idBig       = remainingPermutationsList.index(join)                                         # idBig: find ID of big perm in all releveant perm IDs
+                            cBig        = remainingCentroids[idBig]                                                     # grab big perm centroid
+                            cSmall      = remainingCentroids[i]                                                         # grab small perm centroid
+                            deltaD      = cBig-cSmall
+                            #ddist   = np.linalg.norm(,axis=0)
+                            candidates.append(join)
+                            img = np.zeros((800,1200,3),np.uint8)
+                            cv2.rectangle(img, (x0,y0), (x0+w0,y0+h0), (0,125,255), 1)
+                            cv2.rectangle(img, (xt,yt), (xt+wt,yt+ht), (255,0,0), 1)
+                            #cv2.rectangle(img, (x1,y1), (x1+w1,y1+h1), (120,255,0), 1)
+                            cv2.drawContours(img, [aa.astype(int)], -1, (0,0,255), -1)
+                            [cv2.drawContours(  img,   bodyCntrs, cid, (125,250,120), 1) for cid in perm]
+                            cv2.drawContours(  img,   bodyCntrs, elem, (250,120,120), 1)
+                            cv2.circle(img, tuple(cBig), 1,  (0,0,255), -1)
+                            cv2.circle(img, tuple(cSmall), 1, (255,0,0), -1)
+                            cv2.putText(img, "big rA: "+str(np.around(remainingRelAreas2[idBig],4)), (200,100), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,0,0), 1, cv2.LINE_AA)
+                            cv2.putText(img, "sml rA: "+str(np.around(remainingRelAreas2[i],4)), (200,150), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,0,0), 1, cv2.LINE_AA)
+                            cv2.imshow(str(i)+": "+str(perm)+" bonus: "+str(elem) ,img)
+                            1
         resIndex = doubleCritMinimum(remainingDistances,remainingRelAreas, mode = 0, debug = debug, printPrefix='')
-        #A = remainingDistances
-        #deltaA = max(A) - min(A)
-        #print(f'A: (centroid diff  min pos) {A}') if debug == 1 else 0
-        #print(f'A (deltas): {deltaA}') if debug == 1 else 0
-        #B = remainingRelAreas
-        #deltaB = max(B) - min(B)
-        #print(f'B: (area ratio  min pos) {B}') if debug == 1 else 0 
-        #print(f'B (deltas): {deltaB}') if debug == 1 else 0
-        #if deltaB == 0 or deltaA == 0: # in detectStuckBubs() i pass both identical objects cluster and separate bubs : {"1":[1,2], 1:[1], 2:[2]}. so permutation "1"  = 1 + 2. hard to throw it out of function
-        #    deltaB = 1;deltaA = 1
-        #weightedA = (np.array(A)-min(A))/deltaA;print(f'weightedA: {[np.round(a, 2) for a in weightedA]}') if debug == 1 else 0
-        #weightedB = (np.array(B)-min(B))/deltaB;print(f'weightedB: {[np.round(a, 2) for a in weightedB]}') if debug == 1 else 0
-        #sortedA = np.argsort(np.argsort(A));print(f'sortedA (position): {[np.round(a, 2) for a in sortedA]}') if debug == 1 else 0
-        #sortedB = np.argsort(np.argsort(B));print(f'sortedB (position): {[np.round(a, 2) for a in sortedB]}') if debug == 1 else 0
-        #rescaledArgSortA = np.matmul(np.diag(weightedA),sortedA);print(f'rescaledArgSortA (position): {[np.round(a, 2) for a in rescaledArgSortA]}') if debug == 1 else 0
-        #rescaledArgSortB = np.matmul(np.diag(weightedB),sortedB);print(f'rescaledArgSortB (position): {[np.round(a, 2) for a in rescaledArgSortB]}') if debug == 1 else 0
-        #res = [np.mean([a,b]) for a,b in zip(rescaledArgSortA,rescaledArgSortB)];print(f'mean rescaled positions :\n{[np.round(a, 2) for a in res]}') if debug == 1 else 0
-        #resIndex = np.argmin(res);print(f'resIndex: {resIndex}') if debug == 1 else 0
         return list(remainingPermutations[resIndex]), remainingDistances[resIndex], remainingRelAreas[resIndex]#,  remainingCentroids[resIndex]
     else: 
         return [],-1,-1#,[]
@@ -796,11 +829,15 @@ def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [],
     return returnVec
 
 def overlappingRotatedRectangles(group1Params,group2Params):
-    group1IDs, group2IDs = list(group1Params.keys()),list(group2Params.keys())
-    allCombs = list(itertools.product(group1IDs, group2IDs))#;print(f'allCombs,{allCombs}')
+    #group1IDs, group2IDs = list(group1Params.keys()),list(group2Params.keys())
+    #allCombs = list(itertools.product(group1Params, group1Params))#;print(f'allCombs,{allCombs}')
+    if group1Params == group2Params:
+        allCombs = np.unique(np.sort(np.array(list(itertools.permutations(group1Params, 2)))), axis = 0)
+    else: 
+        allCombs = list(itertools.product(group1Params, group2Params))#;print(f'allCombs,{allCombs}')
     intersectingCombs = []
     for (keyOld,keyNew) in allCombs:
-        x1,y1,w1,h1 = group2Params[keyNew]
+        x1,y1,w1,h1 = group2Params[keyNew]#;print(allCombs)
         rotatedRectangle_new = ((x1+w1/2, y1+h1/2), (w1, h1), 0)
         x2,y2,w2,h2 = group1Params[keyOld]
         rotatedRectangle_old = ((x2+w2/2, y2+h2/2), (w2, h2), 0)
@@ -865,7 +902,7 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
 
         if simpleCopy == False:
             assert 2 == 3, "dupVals consists of more than 2 elements- global and local IDs, but some other object "
-            permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(contours, subIDs, centroids_Old, areas_Old,
+            permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(contours, rectParams, rectParams_Old[ID], subIDs, centroids_Old, areas_Old,
                                          centroids[ID], relDist, areas[ID], relAreaCheck = 0.7, doHull = 1, debug = 0)
             print(f'pIDs (merge): {permIDsol2}; pDist: {permDist2:0.1f}; pRelA: {permRelArea2:0.2f}')
             assert len(permIDsol2) < 2, f"detectStuckBubs-> centroidAreaSumPermutations  resulted in strange solution for new ID:{ID} - permIDsol2"
@@ -889,7 +926,7 @@ def detectStuckBubs(rectParams_Old,rectParams,areas_Old,areas,centroids_Old,cent
     print(f'dupVals Split:{dupVals}')
     dupSubset = []
     for ID, subIDs in dupVals.items():
-        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(contours, subIDs, centroids, areas,
+        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(contours, rectParams, rectParams_Old[ID], subIDs, centroids, areas,
                                      centroids_Old[ID], relDist, areas_Old[ID], relAreaCheck = 2, doHull = 1, debug = 0) # !! new and _old swapped palces , relArea  should be around 1 !!
         cntrs = contours[permIDsol2]
         newArea = getContourHullArea(cntrs)

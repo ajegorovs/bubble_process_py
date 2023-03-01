@@ -52,7 +52,8 @@ from imageFunctionsP2 import (initImport, init, bubbleTypeCheck,
                               ,getMasksParams,getCentroidPosCentroidsAndAreas,centroidSumPermutationsMOD,
                               getContourHullArea, centroidAreaSumPermutations, listFormat,
                               distStatPredictionVect,distStatPredictionVect2,updateStat,overlappingRotatedRectangles,
-                              multiContourBoundingRect,stuckBubHelp,doubleCritMinimum,dropDoubleCritCopies)
+                              multiContourBoundingRect,stuckBubHelp,doubleCritMinimum,dropDoubleCritCopies,
+                              clusterPerms)
 def resizeImage(img,frac):
     width = int(img.shape[1] * frac)
     height = int(img.shape[0] * frac)
@@ -1186,7 +1187,11 @@ def mainer(index):
                 oldAreaStd = g_predict_area_hull[oldID][globalCounter-1][2]
                 areaCheck = oldMeanArea + 3*oldAreaStd 
                 predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), -1] # in case search fails, predictCentroid will be stored here.
-                    
+                # ========== GET RADIAL DISTRIBUTION FROM LAST STEP ==============
+                #   oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID]
+                
+                if (globalCounter == 5 and oldID == 5):
+                    clusterPerms(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], oldID, globalCounter ,debug = 1)
                 #----------------- looking for new else bubs related to old else bubs ---------------------
                 for mainNewID, subNewIDs in jointNeighborsWoFrozen.items():
                     newCentroid, newArea = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in subNewIDs], hullArea = 1)             # likely that this cluster is a bubble. get its params
@@ -1203,7 +1208,7 @@ def mainer(index):
                     elif dist2 > 70 or areaCrit > 15:
                         0#;print('dist 2. soft break')
                     else:
-                        debug = 1 if (globalCounter == 5 and oldID == 5) else 0 #, permCentroid
+                        debug = 1 if (globalCounter == 5 and oldID == 5111) else 0 #, permCentroid
                         permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], subNewIDs, l_Centroids, l_Areas,
                                                     predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = debug, doHull = 1)
                         if len(permIDsol2)>0:

@@ -321,11 +321,46 @@ def dropDoubleCritCopies(elseOldNewDoubleCriterium):
     else:
         return elseOldNewDoubleCriterium
 
+def rescaleTo255(rmin,rmax,x):
+    return int(255*(rmin-x)/(rmin-rmax))
+
+def clusterPerms(refCentroid, mask, rectParams, ID, globalCounter, debug = 0):#oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID]
+    x,y,w,h         = rectParams
+    localCentroid   = np.array(refCentroid,dtype = int) - np.array([x,y],dtype = int)
+    xs, ys          = np.meshgrid(np.arange(0,w,1), np.arange(0,h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
+    zs              = np.sqrt((xs-localCentroid[0])**2 + (ys-localCentroid[1])**2).astype(int)
+    #rmin, rmax      = np.min(zs), np.max(zs)
+    dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))} 
+    for i,xses in enumerate(xs[0]):                                                     # get radius of each pixel, add to counter. 
+            for j,yses in enumerate(ys):
+                if mask[yses[0],xses] == 255:                                     # count only those inside contour (color = 255)
+                    radi = zs[j][i]
+                    dic[radi] += 1
+    
+    if debug == 1:
+        xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values())) 
+        
+        fig, axes = plt.subplots(2, 1, figsize=(16, 16), sharex=False, sharey=False)
+        axes[0].scatter(xvals,weights, label=f'Radial pixel distribution ID:{ID}')
+        axes[1].scatter(np.arange(len(xvals)),xvals, label=f'Radial pixel distribution ID:{ID}')
+        dmin, dmax      = np.min(weights), np.max(weights)
+        mask2 = mask.copy()
+        for i,xses in enumerate(xs[0]):
+            for j,yses in enumerate(ys):
+                if mask[yses[0],xses] == 255:
+                    radi                    = zs[j][i]
+                    clr                     = rescaleTo255(dmin,dmax,dic[radi])             # select a grayscale value based on number of pixel at that radius
+                    mask2[yses[0],xses]   = clr
+        cv2.circle(mask2, localCentroid, 3,  190, -1)
+        cv2.imshow('a',mask2)
+        plt.show()
+    
+    1
 def centroidAreaSumPermutations(bodyCntrs,rectParams,rectParams_old, IDsOfInterest, centroidDict, areaDict, refCentroid, distCheck, refArea=10, relAreaCheck = 10000000, doHull = 1, debug = 0):
     #bodyCntrs is used only if doHull == 1. i dont use it for frozen bubs permutations
     #print(rectParams)
-    with open('./cntr.pickle', 'wb') as handle:
-                pickle.dump(bodyCntrs, handle) 
+    #with open('./cntr.pickle', 'wb') as handle:
+    #            pickle.dump(bodyCntrs, handle) 
     permutations = sum([list(itertools.combinations(IDsOfInterest, r)) for r in range(1,len(IDsOfInterest)+1)],[])                              # different combinations of size 1 to max cluster size.
     cntrds2 =  np.array([getCentroidPosCentroidsAndAreas([centroidDict[k] for k in vec],[areaDict[m] for m in vec]) for vec in permutations])   # NOT OF HULLS !!!
     if doHull == 1:

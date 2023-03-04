@@ -53,7 +53,7 @@ from imageFunctionsP2 import (initImport, init, bubbleTypeCheck,
                               getContourHullArea, centroidAreaSumPermutations, listFormat,
                               distStatPredictionVect,distStatPredictionVect2,updateStat,overlappingRotatedRectangles,
                               multiContourBoundingRect,stuckBubHelp,doubleCritMinimum,dropDoubleCritCopies,
-                              clusterPerms)
+                              radialStatsImage,radialStatsContours,compareRadial)
 def resizeImage(img,frac):
     width = int(img.shape[1] * frac)
     height = int(img.shape[0] * frac)
@@ -548,11 +548,11 @@ def maskProcSegments(img, mask, lowThreshold, graphics, exportGraphics, drawBG, 
     # return cv2.drawContours( mean,   cntrHull, -1, (0,255,255), 1)
     return reportList[nReports-1]
 
+colorList  = np.array(list(itertools.permutations(np.arange(0,255,255/5, dtype= np.uint8), 3)))
+np.random.seed(1);np.random.shuffle(colorList);np.random.seed()
+
 def cyclicColor(index):
-    colors = [(255,0,0),(0,255,0),(125,125,0),(0,125,125),(0,0,255),(125,0,125),(255,125,0),(255,0,125),(125,255,0)]
-    colors = np.array(colors,dtype=np.uint8)
-    # np.random.shuffle(colors)
-    return colors[index % len(colors)].tolist()
+    return colorList[index % len(colorList)].tolist()
 
 
 toList = lambda x: [x] if type(x) != list else x
@@ -991,7 +991,7 @@ def mainer(index):
         #combosSelf = np.array([[a,b] for a,b in combosSelf if a != b])
         
         if len(combosSelf) == 0: # happens if bubble overlays only itself
-            combosSelf = np.empty((0,2),np.int)
+            combosSelf = np.empty((0,2),np.int16)
         # sometimes nearby cluster elements [n1,n2] do not get connected via rect intersection. but it was clearly part of bigger bubble of prev frame [old].
         # grab that old bubble and find its intersection with new frame elements-> [[old,n1],[old,n2]]-> [n1,n2] are connected now via [old]
         distContoursOldNew = {ID:l_rect_parms_old[ID] for ID,bubType in l_bubble_type_old.items() if bubType !=  typeRing}
@@ -1190,8 +1190,10 @@ def mainer(index):
                 # ========== GET RADIAL DISTRIBUTION FROM LAST STEP ==============
                 #   oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID]
                 
-                if (globalCounter == 5 and oldID == 5):
-                    clusterPerms(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], oldID, globalCounter ,debug = 1)
+                if (globalCounter == 3):
+                    cvr = 0.90
+                    OGband, OGDistr = radialStatsImage(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], cvr, oldID, globalCounter, debug = 0)   
+                    #clusterPerms(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], oldID, globalCounter ,debug = 1)
                 #----------------- looking for new else bubs related to old else bubs ---------------------
                 for mainNewID, subNewIDs in jointNeighborsWoFrozen.items():
                     newCentroid, newArea = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in subNewIDs], hullArea = 1)             # likely that this cluster is a bubble. get its params
@@ -1208,10 +1210,16 @@ def mainer(index):
                     elif dist2 > 70 or areaCrit > 15:
                         0#;print('dist 2. soft break')
                     else:
+                        if (globalCounter == 3):
+                            cvr2 = 0.8
+                            SlaveBand, SlaveDistr = radialStatsContours(l_contours,subNewIDs,oldCentroid, cvr2, err,debug = 0)
+                            compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr, cyclicColor, globalCounter, oldID)
+
                         debug = 1 if (globalCounter == 5 and oldID == 5111) else 0 #, permCentroid
                         permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], subNewIDs, l_Centroids, l_Areas,
                                                     predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = debug, doHull = 1)
                         if len(permIDsol2)>0:
+                            
                             print(f'\ndist-dist. Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, permIDsol2: {permIDsol2}, permDist2: {permDist2}')
                             #pDist = np.linalg.norm(np.array(newCentroid) - np.array(oldCentroid)).astype(np.uint32)
                             predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), np.around(permDist2,2)]

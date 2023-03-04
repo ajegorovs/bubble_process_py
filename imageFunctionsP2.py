@@ -325,6 +325,8 @@ def rescaleTo255(rmin,rmax,x):
     return int(255*(rmin-x)/(rmin-rmax))
 
 def clusterPerms(refCentroid, mask, rectParams, ID, globalCounter, debug = 0):#oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID]
+    #with open('./clusterPerms.pickle', 'wb') as handle:
+    #            pickle.dump([refCentroid,mask,rectParams,ID,globalCounter,debug], handle) 
     x,y,w,h         = rectParams
     localCentroid   = np.array(refCentroid,dtype = int) - np.array([x,y],dtype = int)
     xs, ys          = np.meshgrid(np.arange(0,w,1), np.arange(0,h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
@@ -354,8 +356,216 @@ def clusterPerms(refCentroid, mask, rectParams, ID, globalCounter, debug = 0):#o
         cv2.circle(mask2, localCentroid, 3,  190, -1)
         cv2.imshow('a',mask2)
         plt.show()
+
+# findMajorInterval() - given some function data [x,f(x)] eg [[0,1,5,8],[9,4,1,5]], calculates smallest x interval with  cover_area % area. from duplicate results, one closer to weighted mean(x) is selected.
+def findMajorInterval(x,fx,meanVal,cover_area,debug):
+    w_nonzero   = fx.nonzero()
+    x           = x[w_nonzero]
+    fx          = fx[w_nonzero]
+    fx_c        = np.cumsum(fx)                # assuming x is integer, fx_c is offset by 1 from x, either offset x id by -1 or consider fx_c as sum up to and including value at x[ID]
+    totalArea   = fx_c[-1]
+    fx_c        = fx_c/fx_c[-1]                # normalize to 0- 1
+    #fx_c = np.concatenate(([0],fx_c))   # first entry 0 area, bit of an offset.
+    #print(np.vstack((x,fx_c)))#;print(fx_c - (1-cover_area))    
+    # fx_c = [0.1,..., 0.7, 0.8, 0.9, 1. ]; cover_area 0.25, (fx_c - 0.75) = [-0.65 ... -0.15 -0.05  0.05  0.15  0.25] 
+    # means  that 2 closest options of x at which remaining areas are 0.30 (-0.05) and 0.20 (0.05). but there is no interval from (1-0.2) = 0.8 to (1-0.2) + cover_area = 1.05
+    x_right_max_index = np.argmin(np.abs(fx_c - (1-cover_area))) + 1   # abs(-0.05,0.05)- > (0.05,0.05) -> just take first since fx_c is monotone increasing f-n
+    #print(f'x_right = {x[x_right_max_index]},{fx_c - (1-cover_area)}\n')
+    #print(f'cumulative area at x = {x[x_right_max_index] } is {fx_c[x_right_max_index]} and x-1 = {x[x_right_max_index-1]} is {fx_c[x_right_max_index-1]} and x+1 = {x[x_right_max_index+1]} is {fx_c[x_right_max_index+1]}')
+    solsIntevals2 = np.zeros(x_right_max_index+1)
+    solsAreas2 = np.zeros(x_right_max_index+1)
+    #print(f'cover Area %: {cover_area:.2f}')
+    x_left              = x[0]                                      
+    targetArea          = cover_area  
+    findMin             = np.abs(fx_c - targetArea)#;print(findMin)            
+    tarIndex0           = np.array(np.where(findMin == findMin.min()))[0]   
+    #subTarIndex0        = np.argmin(np.abs(tarIndex0-meanVal)) # take one closer to x = 0. it is a bias. biasing towards meanVal selects bigger intervals in region [x[0],meanVal] and smaller in rest. i dont want it here.
+    tarIndex0           = tarIndex0[0]                               # apply prev IDs to og tarIndex0.
+    #tarIndex            = np.argmin(np.abs(fx_c - targetArea)) + 1
+    x_right             = x[tarIndex0 ]
+    solsIntevals2[0]    = np.round(x_right - x_left,3)          
+    solsAreas2[0]       = np.round(np.abs(cover_area-(fx_c[tarIndex0])),5) 
+    if debug == 1:
+        print(str(0).zfill(2)+f', x:[{x[0]:.2f} , {x[tarIndex0 ]:.2f}], x_diff: {(x[tarIndex0+1 ]-x[0]):.2f}, diff: {(fx_c[tarIndex0]):.3f}')
+        print(f'cA: {0:.3f}, tarArea: {targetArea:.3f}, existingArea: {fx_c[tarIndex0]:.3f}, solAreas: {solsAreas2[0]}')
+    if x_right_max_index > 0:
+        for i in range(1,x_right_max_index+1,1):                            # does not reach x_right_max_index, so +1
+            x_left              = x[i]                                      # area betwen x[i] and x[i+n] is (fx_c[i+n] - fx_c[i])
+            prevArea            = fx_c[i-1]    
+            targetArea          = cover_area + prevArea                     # fx_c[i-1] is staggered to the left. so x[i = 0] has area fx_c[i=0] of zero.
+            #tarIndex            = np.argmin(np.abs(fx_c - targetArea))     # considers target value closest to target, from both top and bottom. top- wider interval. might not be best soln
+            findMin             = np.round(np.abs(fx_c - targetArea),4)     #;print(findMin)  
+            tarIndex0           = np.array(np.where(findMin == findMin.min()))[0]   # in case there are same entries eg. min(abs([-1,1]), take on closer to mean value.
+            tarIndex            = tarIndex0[0]
+            x_right             = x[tarIndex]
+            solsIntevals2[i]    = np.round(x_right - x_left,3)              # precision oscillations can mess with min max, thus rounding.
+            solsAreas2[i]       = np.round(np.abs(cover_area-(fx_c[tarIndex]-fx_c[i-1])),7) # can be relative dA/A0, but all A0 same for all.
+            if debug == 1:
+                print(str(i).zfill(2)+f', x: [{x[i]} , {x[tarIndex]}], x_diff: {(x[tarIndex]-x[i])}, diff: {(fx_c[tarIndex]-fx_c[i-1]):.3f}')#, diff -1: {(fx_c[tarIndex-1]-fx_c[i-1]):.3f}, diff+1: {0 if tarIndex == x_right_max_index else (fx_c[tarIndex+1]-fx_c[i-1]):.3f}
+                print(f'cA: {fx_c[i-1]:.3f}, tarArea: {targetArea:.3f}, existingArea: {fx_c[tarIndex]:.3f}, solAreas: {solsAreas2[i]}\n')
     
-    1
+    # take the shortest interval [x[i],x[i+n]] that has area close to cover_area
+    checkIntr_G = np.argwhere(solsIntevals2 == solsIntevals2.min()).flatten()           # multiple intervals of this length can be recovered (due to discrete distribution)
+    minRelArea  = np.min(solsAreas2[checkIntr_G])   #take first min area                                                                    # 
+    minAreas_L     = np.argwhere(solsAreas2[checkIntr_G]  == minRelArea).flatten()                              # search in subset of IDs, solution is subset ID
+    minAreas_G      = checkIntr_G[minAreas_L]
+    #print(f'x: {x[minAreas_G]} , 0.5 int: {0.5*solsIntevals2[minAreas_G]},mn: {meanVal}, dx:{(x[minAreas_G]+0.5*solsIntevals2[minAreas_G])-meanVal}')
+    closestToMean_L     = np.argmin(np.abs((x[minAreas_G]+0.5*solsIntevals2[minAreas_G])-meanVal))
+    globalMin    = minAreas_G[closestToMean_L]
+    
+    if debug == 1:
+        _, axes = plt.subplots(2, 1, figsize=(6, 6), sharex=True, sharey=False)
+        axes[1].scatter(x,fx/totalArea)
+        #axes[1].fill_between(x,fx,0,where=(x>=minKey2) & (x<=minKey2+solsIntevals[minKey2]),color='b')
+        axes[1].fill_between(x,fx/totalArea,0,where=(x>=x[globalMin]) & (x<=x[globalMin]+solsIntevals2[globalMin]),color='g')
+        axes[1].set_xlabel('radius, pix')
+        axes[1].set_ylabel('density')
+        axes[1].set_xticks(x)
+        axes[0].scatter(x,fx_c)
+        plt.show()
+    return x[globalMin],solsIntevals2[globalMin]
+    # possible rework: higher f(x) values whould lead to smaller interval, but because of  discrete dx, area gained there might be too larger than $cover_area,
+    # so other interval for smaller f(x) is selected, which is not physically correct. fix: add small acceptable area deviation when its checked 
+
+# radialStatsImage() - given binary submask $mask, its position on main pictire $rectParams, calculate number of white pixels on concentric circles centered on global point $refCentroid
+def radialStatsImage(refCentroid, mask, rectParams, cover_area, ID, globalCounter, debug = 0):#oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID]
+    x,y,w,h         = rectParams
+    localCentroid   = np.array(refCentroid,dtype = int) - np.array([x,y],dtype = int)
+    xs, ys          = np.meshgrid(np.arange(0,w,1), np.arange(0,h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
+    zs              = np.sqrt((xs-localCentroid[0])**2 + (ys-localCentroid[1])**2).astype(int)
+    #rmin, rmax      = np.min(zs), np.max(zs)
+    dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))} 
+    for i,xses in enumerate(xs[0]):                                                     # get radius of each pixel, add to counter. 
+            for j,yses in enumerate(ys):
+                if mask[yses[0],xses] == 255:                                     # count only those inside contour (color = 255)
+                    radi = zs[j][i]
+                    dic[radi] += 1
+    xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))
+    avg             = np.average(xvals, weights=weights)
+    rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)
+    if debug == 1:
+        fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=False, sharey=False)
+        axes[0].scatter(xvals,weights, label=f'Radial pixel distribution ID:{ID}')
+        axes[0].fill_between(xvals,weights,0,where= (xvals<=rmin +dr) & (xvals>=rmin))
+        axes[1].scatter(np.arange(len(xvals)),xvals, label=f'Radial pixel distribution ID:{ID}')
+        dmin, dmax      = np.min(weights), np.max(weights)
+        mask2 = mask.copy()
+        for i,xses in enumerate(xs[0]):
+            for j,yses in enumerate(ys):
+                if mask[yses[0],xses] == 255:
+                    radi                    = zs[j][i]
+                    clr                     = rescaleTo255(dmin,dmax,dic[radi])             # select a grayscale value based on number of pixel at that radius
+                    mask2[yses[0],xses]   = clr
+        cv2.circle(mask2, localCentroid, 3,  190, -1)
+        cv2.imshow('a',mask2)
+        fig.suptitle(f'gc: {globalCounter}, bID: {ID}', fontsize=16)
+        plt.show()
+    return [avg, rmin, dr], dic
+# radialStatsContours() -  same as radialStatsImage() but for collection of $IDsOfInterest contours from list $bodyCntrs
+def radialStatsContours(bodyCntrs,IDsOfInterest,refCentroid, cover_area, img, debug = 0):
+
+    output = {ID:[0,0,0] for ID in IDsOfInterest}                                          # future return dict {ID:[avg_r,stdev_r]}
+    output_dist = {}
+    if debug == 1:
+        imgGray = img.copy()*0 #cv2.cvtColor(img.copy()*0, cv2.COLOR_BGR2GRAY) 
+        n = len(IDsOfInterest)
+        axes = plt.subplots(int(np.ceil(np.sqrt(n))), int(np.ceil(n/np.ceil(np.sqrt(n)))), figsize=(16, 9), sharex=True, sharey=False)[1]
+        if n>1:
+            axes = axes.reshape(-1)
+        else: axes = [axes]
+ 
+    for k,ID in enumerate(IDsOfInterest):
+        #area0           = cv2.contourArea(bodyCntrs[ID])
+        x,y,w,h         = cv2.boundingRect(bodyCntrs[ID])
+        xs, ys          = np.meshgrid(np.arange(x,x+w,1), np.arange(y,y+h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
+        zs              = np.sqrt((xs-refCentroid[0])**2 + (ys-refCentroid[1])**2).astype(int)  # calculate L2 norms from reference centroid.
+        rmin, rmax      = np.min(zs), np.max(zs)                                            # rmin/max of whole image, so 0 pixel count for some r values.
+        dic = {rad:0 for rad in np.arange(rmin,rmax+1,1)}                                   # if there is a discontinuity, because of casting to int, 0-count rads will be dropped anyway. EG (1.05, 1.99, 3.01)- > (1,1,3)
+        
+        #dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))}                          # order (sort) should not be important if not drawing a continious relation [r1,n1],[r2,n2],...
+        subSubMask      = np.zeros((h,w),np.uint8)                                          # stencil for determining if pixel is part of a bubble
+        cv2.drawContours( subSubMask, bodyCntrs, ID, 255, -1, offset = (-x,-y))
+        
+        for i,xses in enumerate(xs[0]):                                                     # get radius of each pixel, add to counter. 
+            for j,yses in enumerate(ys):
+                if subSubMask[yses[0]-y,xses-x] == 255:                                     # count only those inside contour (color = 255)
+                    radi = zs[j][i]
+                    dic[radi] += 1
+                    #clr = rescaleTo255(rmin,rmax,radi)
+                    #imgGray[yses[0],xses] = clr
+    
+        xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))           # cast to numpy to do statistics
+        avg             = np.average(xvals, weights=weights)                                 # weighted average
+        #stdev           = np.sqrt(numpy.average((xvals-avg)**2, weights=weights))            # stdev of weighted data. theres no ready function in numpy.
+        rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)      #;print(a,b)(x,fx,meanVal,cover_area,debug= 1)
+        dmin, dmax      = min(dic.values()),max(dic.values())
+        output[ID]      = [avg, rmin, dr]
+        output_dist[ID] = dic
+        if debug == 1:
+            
+            axes[k].plot(xvals,weights)
+            axes[k].vlines(avg, min(dic.values()), max(dic.values()), linestyles ="dashed", colors ="k")
+            axes[k].fill_between(xvals,weights,0,where= (xvals<=rmin +dr) & (xvals>=rmin))
+            axes[k].set_xlabel('radius, pix')
+            axes[k].set_ylabel('sum of pixels')
+            axes[k].set_title(f'Radial pixel distribution ID:{ID}')
+            
+            for i,xses in enumerate(xs[0]):
+                for j,yses in enumerate(ys):
+                    if subSubMask[yses[0]-y,xses-x] == 255:
+                        radi                    = zs[j][i]
+                        clr                     = rescaleTo255(dmin,dmax,dic[radi])             # select a grayscale value based on number of pixel at that radius
+                        imgGray[yses[0],xses]   = clr
+            x0,y0 = bodyCntrs[ID][0][0]
+            cv2.putText(imgGray, str(ID), (x0,y0), cv2.FONT_HERSHEY_SIMPLEX, 0.3, 0, 3, cv2.LINE_AA)
+            cv2.putText(imgGray, str(ID), (x0,y0), cv2.FONT_HERSHEY_SIMPLEX, 0.3, 255, 1, cv2.LINE_AA)
+            
+    if debug == 1:
+        cv2.circle(imgGray, tuple(map(int,refCentroid)), 3, (255,0,0), -1)
+        cv2.imshow('a',imgGray)
+        plt.tight_layout()
+        plt.show()
+        
+    return output, output_dist
+    # possible optimization, draw pixels on one bigger blank mask and iterate though offset $rectParams locally.
+def compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr,cyclicColor,globalCounter,oldID):
+    subNewIDs = np.array(list(SlaveDistr.keys()))
+    rmin  = 10000;rmax = 0
+    for ID,distr in SlaveDistr.items():
+        arr = np.array(list(distr.keys()))
+        dMin = np.min(arr);dMax = np.max(arr)
+        rmin = min(rmin,dMin);rmax = max(rmax,dMax)
+    #print(rmin,rmax)
+    domain = np.arange(rmin,rmax+1,1)
+    vals = np.zeros(len(domain))
+    for ID,distr in SlaveDistr.items():
+        for r,subVal in distr.items():
+            vals[r-rmin] += subVal # if dom = [rmin,rmin+1,...] distr: {{rmin:val},..}, val should go to vals[rmin-rmin] => vals[0]
+        
+
+    fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=True, sharey=False)
+    t = 8
+    ogDom = list(OGDistr.keys())
+    ogVals = list(OGDistr.values())
+    axes[0].plot(ogDom,ogVals,lw = 2,color=np.array(cyclicColor(0))/255,linestyle='dashed')
+    _,r,dr = OGband
+    #axes[0].plot([r,r+dr],[max(ogVals)+ t,max(ogVals)+ t],lw = 3,color=np.array(cyclicColor(0))/255)
+    axes[0].fill_between(ogDom,ogVals,0,where= (ogDom<=r +dr) & (ogDom>=r),color=np.array(cyclicColor(0))/255)
+    r1 = np.array([rr+0.5*drr for _,rr,drr in SlaveBand.values()])
+    ordr = np.argsort(r1)
+    for i,subID in enumerate(subNewIDs[ordr]):
+        i += 1
+        dom = list(SlaveDistr[subID].keys())
+        val = list(SlaveDistr[subID].values())
+        axes[0].plot(dom,val,c=np.array(cyclicColor(i))/255, lw = 3, label = str(subID))
+        _,r,dr = SlaveBand[subID]
+        axes[0].plot([r,r+dr],[-t*(i+1),-t*(i+1)],color=np.array(cyclicColor(i))/255, lw = 4)
+    axes[0].legend()
+    axes[1].scatter(ogDom,ogVals,s = 12)
+    axes[1].scatter(domain,vals,s = 12)
+    fig.suptitle(f'gc: {globalCounter}, oldID: {oldID}, ids: {subNewIDs}')
+    plt.show()
+
 def centroidAreaSumPermutations(bodyCntrs,rectParams,rectParams_old, IDsOfInterest, centroidDict, areaDict, refCentroid, distCheck, refArea=10, relAreaCheck = 10000000, doHull = 1, debug = 0):
     #bodyCntrs is used only if doHull == 1. i dont use it for frozen bubs permutations
     #print(rectParams)
@@ -377,7 +587,7 @@ def centroidAreaSumPermutations(bodyCntrs,rectParams,rectParams_old, IDsOfIntere
     passBothIndices = np.intersect1d(distPassIndices, relAreasPassIndices)
     # added aspect ratio check - angle difference check 24/02/23
     rects = [cv2.boundingRect(np.vstack([bodyCntrs[k] for k in perm])) for perm in permutations]
-    angles = np.array([boundRectAngle(rect,rectParams_old, maxAngle = 10, debug  = 0, info= '')[1] for rect in rects],np.int)
+    angles = np.array([boundRectAngle(rect,rectParams_old, maxAngle = 10, debug  = 0, info= '')[1] for rect in rects],np.int16)
     anglePassIndices = np.where(angles<20)[0]
     passBothIndices = np.intersect1d(passBothIndices, anglePassIndices)
 

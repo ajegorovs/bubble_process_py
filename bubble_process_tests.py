@@ -50,10 +50,10 @@ from imageFunctionsP2 import (initImport, init, bubbleTypeCheck,
                               maskByValue, getCentroidPos,getCentroidPosContours, compareMoments,
                               checkMoments,closes_point_contours, distStatPrediction,detectStuckBubs
                               ,getMasksParams,getCentroidPosCentroidsAndAreas,centroidSumPermutationsMOD,
-                              getContourHullArea, centroidAreaSumPermutations, listFormat,
+                              getContourHullArea, centroidAreaSumPermutations, centroidAreaSumPermutations2, listFormat, #centroidAreaSumPermutations2 04/03/23
                               distStatPredictionVect,distStatPredictionVect2,updateStat,overlappingRotatedRectangles,
                               multiContourBoundingRect,stuckBubHelp,doubleCritMinimum,dropDoubleCritCopies,
-                              radialStatsImage,radialStatsContours,compareRadial)
+                              radialStatsImage,radialStatsContours,compareRadial)                                        # radialStatsImage,radialStatsContours,compareRadial 03/03/23
 def resizeImage(img,frac):
     width = int(img.shape[1] * frac)
     height = int(img.shape[0] * frac)
@@ -554,6 +554,8 @@ np.random.seed(1);np.random.shuffle(colorList);np.random.seed()
 def cyclicColor(index):
     return colorList[index % len(colorList)].tolist()
 
+def getOverlap(a, b):
+    return np.maximum(0, np.minimum(a[:,1], b[:,1]) - np.maximum(a[:,0], b[:,0]))
 
 toList = lambda x: [x] if type(x) != list else x
 
@@ -1213,8 +1215,27 @@ def mainer(index):
                         if (globalCounter == 3):
                             cvr2 = 0.8
                             SlaveBand, SlaveDistr = radialStatsContours(l_contours,subNewIDs,oldCentroid, cvr2, err,debug = 0)
-                            compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr, cyclicColor, globalCounter, oldID)
+                            ogInterval  = np.array([0,OGband[1]+OGband[2]]).reshape(1,2)                            # set min radius to 0, interval = [0,rmin+dr]. so all inside contours are automatically incorporated.
+                            slIntervals = np.array([np.array( [b[1], b[1] + b[2]] ) for b in SlaveBand.values()])   # [[rmin1, rmin1 + dr1],[..],..]
+                            slWidths    = np.array([b[2] for b in SlaveBand.values()],int)                          # [dr1,dr2,..]
+                            overlap     = getOverlap(ogInterval,slIntervals)                                        # how much area inside 
+                            rOverlap    = np.divide(overlap,slWidths)                                               # overlap area/interval area-> 1: fully inside ogInterval, 0: no overlap.
+                            passBase    = np.where(rOverlap >= 0.9)[0]                                              # returns tuple of dim (x,)
+                            passRest    = np.where((rOverlap > 0.05) & (rOverlap < 0.9))[0]
+                            print(np.vstack((subNewIDs,rOverlap)))
+                            baseIDs     = np.array(subNewIDs)[passBase]
+                            
+                            if len(passRest) > 0:
+                                restIDs     = np.array(subNewIDs)[passRest]
+                                restIDsPerms = sum([list(itertools.combinations(restIDs, r)) for r in range(1,len(restIDs)+1)],[])
+                                combs = [tuple(baseIDs)]
+                                [combs.append(tuple(baseIDs) + perm) for perm in restIDsPerms]
 
+                                permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations2(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], combs, l_Centroids, l_Areas,
+                                                    predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = 1, doHull = 1)
+                                compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr, permIDsol2, cyclicColor, globalCounter, oldID)
+                                
+                            1 + 1
                         debug = 1 if (globalCounter == 5 and oldID == 5111) else 0 #, permCentroid
                         permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], subNewIDs, l_Centroids, l_Areas,
                                                     predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = debug, doHull = 1)

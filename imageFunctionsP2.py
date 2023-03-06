@@ -372,8 +372,8 @@ def findMajorInterval(x,fx,meanVal,cover_area,debug):
     x_right_max_index = np.argmin(np.abs(fx_c - (1-cover_area))) + 1   # abs(-0.05,0.05)- > (0.05,0.05) -> just take first since fx_c is monotone increasing f-n
     #print(f'x_right = {x[x_right_max_index]},{fx_c - (1-cover_area)}\n')
     #print(f'cumulative area at x = {x[x_right_max_index] } is {fx_c[x_right_max_index]} and x-1 = {x[x_right_max_index-1]} is {fx_c[x_right_max_index-1]} and x+1 = {x[x_right_max_index+1]} is {fx_c[x_right_max_index+1]}')
-    solsIntevals2 = np.zeros(x_right_max_index+1)
-    solsAreas2 = np.zeros(x_right_max_index+1)
+    solsIntevals2 = np.zeros(x_right_max_index+1, int)
+    solsAreas2 = np.zeros(x_right_max_index+1, int)
     #print(f'cover Area %: {cover_area:.2f}')
     x_left              = x[0]                                      
     targetArea          = cover_area  
@@ -383,7 +383,7 @@ def findMajorInterval(x,fx,meanVal,cover_area,debug):
     tarIndex0           = tarIndex0[0]                               # apply prev IDs to og tarIndex0.
     #tarIndex            = np.argmin(np.abs(fx_c - targetArea)) + 1
     x_right             = x[tarIndex0 ]
-    solsIntevals2[0]    = np.round(x_right - x_left,3)          
+    solsIntevals2[0]    = x_right - x_left          
     solsAreas2[0]       = np.round(np.abs(cover_area-(fx_c[tarIndex0])),5) 
     if debug == 1:
         print(str(0).zfill(2)+f', x:[{x[0]:.2f} , {x[tarIndex0 ]:.2f}], x_diff: {(x[tarIndex0+1 ]-x[0]):.2f}, diff: {(fx_c[tarIndex0]):.3f}')
@@ -398,7 +398,7 @@ def findMajorInterval(x,fx,meanVal,cover_area,debug):
             tarIndex0           = np.array(np.where(findMin == findMin.min()))[0]   # in case there are same entries eg. min(abs([-1,1]), take on closer to mean value.
             tarIndex            = tarIndex0[0]
             x_right             = x[tarIndex]
-            solsIntevals2[i]    = np.round(x_right - x_left,3)              # precision oscillations can mess with min max, thus rounding.
+            solsIntevals2[i]    = x_right - x_left             
             solsAreas2[i]       = np.round(np.abs(cover_area-(fx_c[tarIndex]-fx_c[i-1])),7) # can be relative dA/A0, but all A0 same for all.
             if debug == 1:
                 print(str(i).zfill(2)+f', x: [{x[i]} , {x[tarIndex]}], x_diff: {(x[tarIndex]-x[i])}, diff: {(fx_c[tarIndex]-fx_c[i-1]):.3f}')#, diff -1: {(fx_c[tarIndex-1]-fx_c[i-1]):.3f}, diff+1: {0 if tarIndex == x_right_max_index else (fx_c[tarIndex+1]-fx_c[i-1]):.3f}
@@ -441,7 +441,7 @@ def radialStatsImage(refCentroid, mask, rectParams, cover_area, ID, globalCounte
                     radi = zs[j][i]
                     dic[radi] += 1
     xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))
-    avg             = np.average(xvals, weights=weights)
+    avg             = np.average(xvals, weights=weights).astype(int)
     rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)
     if debug == 1:
         fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=False, sharey=False)
@@ -460,11 +460,12 @@ def radialStatsImage(refCentroid, mask, rectParams, cover_area, ID, globalCounte
         cv2.imshow('a',mask2)
         fig.suptitle(f'gc: {globalCounter}, bID: {ID}', fontsize=16)
         plt.show()
-    return [avg, rmin, dr], dic
+    return np.array([avg, rmin, dr],int), dic
 # radialStatsContours() -  same as radialStatsImage() but for collection of $IDsOfInterest contours from list $bodyCntrs
+
 def radialStatsContours(bodyCntrs,IDsOfInterest,refCentroid, cover_area, img, debug = 0):
 
-    output = {ID:[0,0,0] for ID in IDsOfInterest}                                          # future return dict {ID:[avg_r,stdev_r]}
+    output = {ID:np.zeros(3,int) for ID in IDsOfInterest}                                          # future return dict {ID:[avg_r,stdev_r]}
     output_dist = {}
     if debug == 1:
         imgGray = img.copy()*0 #cv2.cvtColor(img.copy()*0, cv2.COLOR_BGR2GRAY) 
@@ -495,11 +496,11 @@ def radialStatsContours(bodyCntrs,IDsOfInterest,refCentroid, cover_area, img, de
                     #imgGray[yses[0],xses] = clr
     
         xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))           # cast to numpy to do statistics
-        avg             = np.average(xvals, weights=weights)                                 # weighted average
+        avg             = np.average(xvals, weights=weights)     .astype(int)                            # weighted average
         #stdev           = np.sqrt(numpy.average((xvals-avg)**2, weights=weights))            # stdev of weighted data. theres no ready function in numpy.
         rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)      #;print(a,b)(x,fx,meanVal,cover_area,debug= 1)
         dmin, dmax      = min(dic.values()),max(dic.values())
-        output[ID]      = [avg, rmin, dr]
+        output[ID]      = np.array([avg, rmin, dr],int)
         output_dist[ID] = dic
         if debug == 1:
             
@@ -528,7 +529,7 @@ def radialStatsContours(bodyCntrs,IDsOfInterest,refCentroid, cover_area, img, de
         
     return output, output_dist
     # possible optimization, draw pixels on one bigger blank mask and iterate though offset $rectParams locally.
-def compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr,cyclicColor,globalCounter,oldID):
+def compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr,solution,cyclicColor,globalCounter,oldID):
     subNewIDs = np.array(list(SlaveDistr.keys()))
     rmin  = 10000;rmax = 0
     for ID,distr in SlaveDistr.items():
@@ -539,8 +540,9 @@ def compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr,cyclicColor,globalCount
     domain = np.arange(rmin,rmax+1,1)
     vals = np.zeros(len(domain))
     for ID,distr in SlaveDistr.items():
-        for r,subVal in distr.items():
-            vals[r-rmin] += subVal # if dom = [rmin,rmin+1,...] distr: {{rmin:val},..}, val should go to vals[rmin-rmin] => vals[0]
+        if ID in solution:
+            for r,subVal in distr.items():
+                vals[r-rmin] += subVal # if dom = [rmin,rmin+1,...] distr: {{rmin:val},..}, val should go to vals[rmin-rmin] => vals[0]
         
 
     fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=True, sharey=False)
@@ -561,8 +563,9 @@ def compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr,cyclicColor,globalCount
         _,r,dr = SlaveBand[subID]
         axes[0].plot([r,r+dr],[-t*(i+1),-t*(i+1)],color=np.array(cyclicColor(i))/255, lw = 4)
     axes[0].legend()
-    axes[1].scatter(ogDom,ogVals,s = 12)
-    axes[1].scatter(domain,vals,s = 12)
+    axes[1].scatter(ogDom,ogVals,s = 12,label = "original")
+    axes[1].scatter(domain,vals,s = 12,label = str(solution))
+    axes[1].legend()
     fig.suptitle(f'gc: {globalCounter}, oldID: {oldID}, ids: {subNewIDs}')
     plt.show()
 
@@ -651,6 +654,50 @@ def centroidAreaSumPermutations(bodyCntrs,rectParams,rectParams_old, IDsOfIntere
     else: 
         return [],-1,-1#,[]
 
+def centroidAreaSumPermutations2(bodyCntrs,rectParams,rectParams_old, permutations, centroidDict, areaDict, refCentroid, distCheck, refArea=10, relAreaCheck = 10000000, doHull = 1, debug = 0):
+    #bodyCntrs is used only if doHull == 1. i dont use it for frozen bubs permutations
+    #print(rectParams)
+    #with open('./cntr.pickle', 'wb') as handle:
+    #            pickle.dump(bodyCntrs, handle) 
+    cntrds2 =  np.array([getCentroidPosCentroidsAndAreas([centroidDict[k] for k in vec],[areaDict[m] for m in vec]) for vec in permutations])   # NOT OF HULLS !!!
+    if doHull == 1:
+        hullAreas = np.array([cv2.contourArea(cv2.convexHull(np.vstack([bodyCntrs[k] for k in vec]))) for vec in permutations])
+    else:
+        hullAreas = np.array([sum([areaDict[m] for m in vec]) for vec in permutations])
+    print(f'permutations,{permutations}') if debug == 1 else 0
+    print(f'refC: {refCentroid}, cntrds2: {list(map(list,cntrds2))}') if debug == 1 else 0
+    distances = np.linalg.norm(cntrds2-refCentroid,axis=1)
+    distPassIndices = np.where(distances<distCheck)[0]
+    relAreas = np.abs(refArea-hullAreas)/refArea
+    relAreas2 = (refArea-hullAreas)/refArea 
+    relAreasPassIndices = np.where(relAreas<relAreaCheck)[0]
+    passBothIndices = np.intersect1d(distPassIndices, relAreasPassIndices)
+    # added aspect ratio check - angle difference check 24/02/23
+    rects = [cv2.boundingRect(np.vstack([bodyCntrs[k] for k in perm])) for perm in permutations]
+    angles = np.array([boundRectAngle(rect,rectParams_old, maxAngle = 10, debug  = 0, info= '')[1] for rect in rects],np.int16)
+    anglePassIndices = np.where(angles<20)[0]
+    passBothIndices = np.intersect1d(passBothIndices, anglePassIndices)
+
+    if len(passBothIndices)>0:
+        if len(passBothIndices) == 1:
+            print(f'only 1 comb after stage 1: {list(permutations[passBothIndices[0]])}') if debug == 1 else 0 
+            return list(permutations[passBothIndices[0]]), distances[passBothIndices[0]], relAreas[passBothIndices[0]]
+        
+        remainingPermutations = np.array(permutations, dtype=object)[passBothIndices]
+        print(f'remainingPermutations: {remainingPermutations}') if debug == 1 else 0
+        #remainingCentroids = np.array(cntrds2)[passBothIndices]
+        remainingDistances = np.array(distances)[passBothIndices]
+        remainingRelAreas = np.array(relAreas)[passBothIndices]
+        remainingRelAreas2 = np.array(relAreas2)[passBothIndices]
+        print(f'remainingDistances: {remainingDistances}') if debug == 1 else 0
+        print(f'remainingRelAreas: {remainingRelAreas}') if debug == 1 else 0
+        remainingCentroids = np.array(cntrds2)[passBothIndices]
+
+
+        resIndex = doubleCritMinimum(remainingDistances,remainingRelAreas, mode = 0, debug = debug, printPrefix='')
+        return list(remainingPermutations[resIndex]), remainingDistances[resIndex], remainingRelAreas[resIndex]#,  remainingCentroids[resIndex]
+    else: 
+        return [],-1,-1#,[]
 
 def centroidSumPermutationsMOD(oldNewRelationArray, centroidDict, areaDict, refCentroidsDict,distCheck):
     u, c = np.unique(oldNewRelationArray[:,0], return_counts=True)

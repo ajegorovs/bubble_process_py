@@ -718,11 +718,8 @@ def rescaleTo255(rmin,rmax,x):
     return int(255*(rmin-x)/(rmin-rmax))
 from matplotlib import pyplot as plt
 
-
-def getOverlap(a, b):
-    return max(0, min(a[1], b[1]) - max(a[0], b[0]))
-
-print(getOverlap([0,1],[0,1])
+arr = np.array([ 5, 31])
+arr2 = {23: np.array([50, 43, 13]), 25: np.array([33, 17, 31])}
 
 #k = cv2.waitKey(0)
 #if k == 27:  # close on ESC key

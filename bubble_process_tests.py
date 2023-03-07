@@ -1192,9 +1192,9 @@ def mainer(index):
                 # ========== GET RADIAL DISTRIBUTION FROM LAST STEP ==============
                 #   oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID]
                 
-                if (globalCounter == 3):
-                    cvr = 0.90
-                    OGband, OGDistr = radialStatsImage(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], cvr, oldID, globalCounter, debug = 0)   
+                
+                cvr = 0.90
+                OGband, OGDistr = radialStatsImage(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], cvr, oldID, globalCounter, debug = 1)   
                     #clusterPerms(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], oldID, globalCounter ,debug = 1)
                 #----------------- looking for new else bubs related to old else bubs ---------------------
                 for mainNewID, subNewIDs in jointNeighborsWoFrozen.items():

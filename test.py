@@ -721,6 +721,114 @@ from matplotlib import pyplot as plt
 arr = np.array([ 5, 31])
 arr2 = {23: np.array([50, 43, 13]), 25: np.array([33, 17, 31])}
 
-#k = cv2.waitKey(0)
-#if k == 27:  # close on ESC key
-#    cv2.destroyAllWindows()
+
+
+
+dm = 500
+numP = 110
+dPhi = 2*np.pi/numP
+img = np.zeros((dm,dm),np.uint8)
+
+
+center_coordinates = np.array((120, 100),int)
+  
+axesLength = np.array((100, 50),int)
+  
+angle = 35
+  
+startAngle = 0
+  
+endAngle = 360
+   
+# Red color in BGR
+color = 255
+   
+# Line thickness of 5 px
+thickness = -1
+   
+# Using cv2.ellipse() method
+# Draw a ellipse with red line borders of thickness of 5 px
+img = cv2.ellipse(img, center_coordinates, axesLength,
+           angle, startAngle, endAngle, color, thickness)
+   
+
+
+contours, hierarchy = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+cntr = contours[0]
+axesLength = np.array(axesLength*0.4,int)
+img = cv2.ellipse(img, center_coordinates, axesLength,
+           angle, startAngle, endAngle, 0, -1)
+x,y,w,h         = cv2.boundingRect(cntr)
+mask = img[y:y+h,x:x+w]
+refCentroid = center_coordinates
+localCentroid   = np.array(refCentroid,dtype = int) - np.array([x,y],dtype = int)
+xs, ys          = np.meshgrid(np.arange(0,w,1), np.arange(0,h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
+xsl,ysl         = xs-localCentroid[0], ys-localCentroid[1]
+zs              = np.sqrt((xs-localCentroid[0])**2 + (ys-localCentroid[1])**2).astype(int)
+elipse          = cv2.fitEllipse(cntr)
+a2,b2           = elipse[1]
+theta = np.radians(180-elipse[2])
+c, s = np.cos(theta), np.sin(theta)
+R = np.array(((c, -s), (s, c)))
+xys = np.matmul(R,np.array([xsl,ysl]))
+xsl2  = xys[0];ysl2  = xys[1]
+alphas          = np.sqrt((xsl2/a2/2)**2 + (ysl2/b2/2)**2)
+alphasR         = (alphas*a2/2).astype(int)
+dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))} 
+dic2 = {rad:0 for rad in np.sort(np.unique(alphasR.flatten()))} 
+for i,xses in enumerate(xs[0]):                                                     # get radius of each pixel, add to counter. 
+        for j,yses in enumerate(ys):
+            if mask[yses[0],xses] == 255:                                     # count only those inside contour (color = 255)
+                radi = zs[j][i]
+                dic[radi] += 1
+                radi2 = alphasR[j][i]
+                dic2[radi2] += 1
+
+xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))
+xvals2, weights2  = np.array(list(dic2.keys())), np.array(list(dic2.values()))
+avg             = np.average(xvals, weights=weights).astype(int)
+    #rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)
+
+if 1 == 1:
+    #fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=False, sharey=False)
+    #axes[0].scatter(xvals,weights, label=f'Radial pixel distribution ID:{ID}')
+    #axes[0].fill_between(xvals,weights,0,where= (xvals<=rmin +dr) & (xvals>=rmin))
+    #axes[1].scatter(np.arange(len(xvals)),xvals, label=f'Radial pixel distribution ID:{ID}')
+    dmin, dmax      = np.min(weights), np.max(weights)
+    dmin2, dmax2      = np.min(weights2), np.max(weights2)
+    mask2 = mask.copy()
+    mask3 = mask.copy()
+    for i,xses in enumerate(xs[0]):
+        for j,yses in enumerate(ys):
+            if mask[yses[0],xses] == 255:
+                radi                    = zs[j][i]
+                clr                     = rescaleTo255(dmin,dmax,dic[radi])             # select a grayscale value based on number of pixel at that radius
+                mask2[yses[0],xses]   = clr
+
+                radi2 = alphasR[j][i]
+                clr2                     = rescaleTo255(dmin2,dmax2,dic2[radi2])
+                mask3[yses[0],xses]   = clr2
+    #cv2.circle(mask2, localCentroid, 3,  190, -1)
+    cv2.imshow('rng',mask2)
+    cv2.imshow('elps',mask3)
+    #fig.suptitle(f'gc: {globalCounter}, bID: {ID}', fontsize=16)
+    #plt.show()
+def funct(cntr,point):
+    elipse = cv2.fitEllipse(cntr)
+
+# Displaying the image 
+#elipse = cv2.fitEllipse(contours[0])
+#x,y = (160, 100)
+#img = cv2.circle(img, (x,y), 3,  60, -1)
+#a2,b2 = elipse[1]
+#alpha = np.sqrt((x/a2/2)**2 + (y/b2/2)**2) # finds at what scaled ellipse point (x,y) is located: (x/(alpha*a))^2 + (y/(alpha*b))^2 = 1 => (x/a)^2 + (y/b)^2 = alpha^2
+#axesLength_new = np.array(axesLength*alpha, int)
+#img = cv2.ellipse(img, center_coordinates, axesLength_new,
+#           angle, startAngle, endAngle, 180, 2)
+
+cv2.imshow("asd", img) 
+
+k = cv2.waitKey(0)
+if k == 27:  # close on esc key
+    cv2.destroyallwindows()

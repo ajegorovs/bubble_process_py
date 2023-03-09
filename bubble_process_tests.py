@@ -53,7 +53,7 @@ from imageFunctionsP2 import (initImport, init, bubbleTypeCheck,
                               getContourHullArea, centroidAreaSumPermutations, centroidAreaSumPermutations2, listFormat, #centroidAreaSumPermutations2 04/03/23
                               distStatPredictionVect,distStatPredictionVect2,updateStat,overlappingRotatedRectangles,
                               multiContourBoundingRect,stuckBubHelp,doubleCritMinimum,dropDoubleCritCopies,
-                              radialStatsImage,radialStatsContours,compareRadial)                                        # radialStatsImage,radialStatsContours,compareRadial 03/03/23
+                              radialStatsImage,radialStatsImageEllipse,radialStatsContours,radialStatsContoursEllipse,compareRadial)                                        # radialStatsImage,radialStatsContours,compareRadial 03/03/23
 def resizeImage(img,frac):
     width = int(img.shape[1] * frac)
     height = int(img.shape[0] * frac)
@@ -672,7 +672,7 @@ typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typ
 # l_(...) are local storage variable that contain info from current time.
 # l_(...)_old are global variables that contain info from previous time. its technically global to acces across two time steps, but are local by idea.
 # (...)_r stands for recovered
-g_Centroids, g_Rect_parms, g_Areas, g_Masks, g_Images, g_old_new_IDs, g_bubble_type, g_child_contours = {}, {}, {}, {}, {}, {}, {}, {}
+g_Centroids, g_Rect_parms, g_Ellipse_parms, g_Areas, g_Masks, g_Images, g_old_new_IDs, g_bubble_type, g_child_contours = {}, {}, {}, {}, {}, {}, {}, {}, {}
 l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_areas_hull_old, l_RBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
 l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old, l_DBub_centroids_old, l_DBub_areas_hull_old, l_DBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
 l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old, l_FBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
@@ -682,7 +682,7 @@ g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull = {},{},{}
 g_contours,  frozenBubs, frozenBubsTimes,  l_bubble_type_old = {}, {}, {}, {}
 l_Centroids_old, l_Areas_old,l_Areas_hull_old, l_BoundingRectangle_params, l_BoundingRectangle_params_old = {}, {}, {}, {}, {}
 g_predict_displacement, g_predict_area_hull  = {}, {}; frozenIDs, frozenIDs_old  = [],[]
-l_masks_old, l_images_old, l_rect_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old = {}, {}, {}, {}, {}, {}
+l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old = {}, {}, {}, {}, {}, {}, {}
 def mainer(index):
     global globalCounter, g_contours, frozenBubs, frozenBubsTimes, l_Centroids_old, l_Areas_old, l_Areas_hull_old, l_BoundingRectangle_params, l_BoundingRectangle_params_old
 
@@ -690,9 +690,9 @@ def mainer(index):
     global l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old,  l_DBub_centroids_old, l_DBub_areas_hull_old, l_DBub_old_new_IDs_old
     global l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old, l_FBub_old_new_IDs_old
     global g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull
-    global g_Centroids,g_Rect_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,l_bubble_type_old,g_child_contours
+    global g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,l_bubble_type_old,g_child_contours
     global g_predict_displacement, g_predict_area_hull, frozenIDs, frozenIDs_old
-    global l_masks_old, l_images_old, l_rect_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old
+    global l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old
     
  
     orig0           = X_data[index]
@@ -1194,7 +1194,11 @@ def mainer(index):
                 
                 
                 cvr = 0.90
-                OGband, OGDistr = radialStatsImage(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], cvr, oldID, globalCounter, debug = 1)   
+                #OGband, OGDistr = radialStatsImage(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], cvr, oldID, globalCounter, debug = 0)
+                ellipseParams = l_ellipse_parms_old[oldID]
+                a,b = ellipseParams[1]
+                isEllipse = 1 if np.sqrt(1-(min(a,b)/max(a,b))**2) > 0.5 else 0 #;print(np.sqrt(1-(min(a,b)/max(a,b))**2))
+                OGband, OGDistr = radialStatsImageEllipse(isEllipse,oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], ellipseParams, cvr, oldID, globalCounter, debug = 0)
                     #clusterPerms(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], oldID, globalCounter ,debug = 1)
                 #----------------- looking for new else bubs related to old else bubs ---------------------
                 for mainNewID, subNewIDs in jointNeighborsWoFrozen.items():
@@ -1212,9 +1216,11 @@ def mainer(index):
                     elif dist2 > 70 or areaCrit > 15:
                         0#;print('dist 2. soft break')
                     else:
-                        if (globalCounter == 3):
+                        if (3 == 3):
                             cvr2 = 0.8
-                            SlaveBand, SlaveDistr = radialStatsContours(l_contours,subNewIDs,oldCentroid, cvr2, err,debug = 0)
+                            debug = 1 if globalCounter == 2 and oldID == 2 else 0
+                            #SlaveBand, SlaveDistr = radialStatsContours(l_contours,subNewIDs,oldCentroid, cvr2, err,debug = 0)
+                            SlaveBand, SlaveDistr = radialStatsContoursEllipse(isEllipse,l_contours,subNewIDs,oldCentroid, ellipseParams, cvr2, err, oldID, globalCounter, debug = 0)
                             ogInterval  = np.array([0,OGband[1]+OGband[2]]).reshape(1,2)                            # set min radius to 0, interval = [0,rmin+dr]. so all inside contours are automatically incorporated.
                             slIntervals = np.array([np.array( [b[1], b[1] + b[2]] ) for b in SlaveBand.values()])   # [[rmin1, rmin1 + dr1],[..],..]
                             slWidths    = np.array([b[2] for b in SlaveBand.values()],int)                          # [dr1,dr2,..]
@@ -1228,17 +1234,18 @@ def mainer(index):
                             if len(passRest) > 0:
                                 restIDs     = np.array(subNewIDs)[passRest]
                                 restIDsPerms = sum([list(itertools.combinations(restIDs, r)) for r in range(1,len(restIDs)+1)],[])
-                                combs = [tuple(baseIDs)]
+                                combs = [tuple(baseIDs)] if len(baseIDs) > 0 else []
                                 [combs.append(tuple(baseIDs) + perm) for perm in restIDsPerms]
 
                                 permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations2(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], combs, l_Centroids, l_Areas,
                                                     predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = 1, doHull = 1)
-                                compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr, permIDsol2, cyclicColor, globalCounter, oldID)
+                                if debug == 1: compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr, permIDsol2, cyclicColor, globalCounter, oldID)
                                 
-                            1 + 1
-                        debug = 1 if (globalCounter == 5 and oldID == 5111) else 0 #, permCentroid
-                        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], subNewIDs, l_Centroids, l_Areas,
-                                                    predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = debug, doHull = 1)
+                            else:
+                                permIDsol2 = baseIDs.tolist(); permDist2 = dist2; permRelArea2 = areaCrit
+                        #debug = 1 if (globalCounter == 5 and oldID == 5111) else 0 #, permCentroid
+                        #permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], subNewIDs, l_Centroids, l_Areas,
+                        #                            predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = debug, doHull = 1)
                         if len(permIDsol2)>0:
                             
                             print(f'\ndist-dist. Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, permIDsol2: {permIDsol2}, permDist2: {permDist2}')
@@ -1717,27 +1724,29 @@ def mainer(index):
     
     # ========================== DUMP all data in global storage ==============================
     # collect all time step info (except bubbleIDsTypes, use new g_bubble_type )
-    l_masks_old       = {**l_RBub_masks_old,        **l_DBub_masks_old,         **l_FBub_masks_old}
-    l_images_old      = {**l_RBub_images_old,       **l_DBub_images_old,        **l_FBub_images_old}
-    l_rect_parms_old  = {**l_RBub_rect_parms_old,   **l_DBub_rect_parms_old,    **l_FBub_rect_parms_old}
-    l_centroids_old   = {**l_RBub_centroids_old,    **l_DBub_centroids_old,     **l_FBub_centroids_old}
-    l_old_new_IDs_old = {**l_RBub_old_new_IDs_old,  **l_DBub_old_new_IDs_old,   **l_FBub_old_new_IDs_old}
-    l_areas_hull_old  = {**l_RBub_areas_hull_old,   **l_DBub_areas_hull_old,    **l_FBub_areas_hull_old}
+    l_masks_old         = {**l_RBub_masks_old,        **l_DBub_masks_old,         **l_FBub_masks_old}
+    l_images_old        = {**l_RBub_images_old,       **l_DBub_images_old,        **l_FBub_images_old}
+    l_rect_parms_old    = {**l_RBub_rect_parms_old,   **l_DBub_rect_parms_old,    **l_FBub_rect_parms_old}
+    l_centroids_old     = {**l_RBub_centroids_old,    **l_DBub_centroids_old,     **l_FBub_centroids_old}
+    l_old_new_IDs_old   = {**l_RBub_old_new_IDs_old,  **l_DBub_old_new_IDs_old,   **l_FBub_old_new_IDs_old}
+    l_areas_hull_old    = {**l_RBub_areas_hull_old,   **l_DBub_areas_hull_old,    **l_FBub_areas_hull_old} # l_DBub_areas_hull_old has extra IDs
+    l_ellipse_parms_old = {ID:cv2.fitEllipse(cv2.convexHull(np.vstack(l_contours[l_old_new_IDs_old[ID]]))) for ID in l_centroids_old}
 
     for key in list(l_masks_old.keys()):
         if key not in list(g_Masks.keys()):
             g_Masks[key]            = {}
             g_Images[key]           = {}
             g_Rect_parms[key]       = {}
+            g_Ellipse_parms[key]    = {}
             g_Centroids[key]        = {}
             g_old_new_IDs[key]      = {}
             
         g_Masks[key][globalCounter]         = l_masks_old[key]
         g_Images[key][globalCounter]        = l_images_old[key]
         g_Rect_parms[key][globalCounter]    = l_rect_parms_old[key]
+        g_Ellipse_parms[key][globalCounter] = l_ellipse_parms_old[key]
         g_Centroids[key][globalCounter]     = l_centroids_old[key]
         g_old_new_IDs[key][globalCounter]   = l_old_new_IDs_old[key]
-        
         # --------- take care of prediction storage: g_predict_area_hull & g_predict_displacement --------------
         if globalCounter == 0 or (key not in g_predict_area_hull and key in l_areas_hull_old):
             g_predict_area_hull[key]        = {globalCounter:[l_areas_hull_old[key],  l_areas_hull_old[key],  l_areas_hull_old[key]*0.2]}
@@ -2139,6 +2148,7 @@ for globalCounter in range(globalCounter):
         clr = colorSet[currentType]
         thc = thcSet[currentType]
         [cv2.drawContours(  blank,   g_contours[globalCounter], cid, clr, thc) for cid in currentCntrIds]
+        cv2.ellipse(blank, g_Ellipse_parms[ID][globalCounter], (255,255,255), 1)
         if len(g_old_new_IDs[ID][globalCounter])> 1:
             cnt = np.vstack([g_contours[globalCounter][A] for A in g_old_new_IDs[ID][globalCounter]])
     

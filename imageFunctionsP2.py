@@ -189,7 +189,7 @@ def boundRectAngle(rect1,rect2, maxAngle, debug  = 0, info= ''):
 
 def cntParentChildHierarchy(image, mode, minArea, minAreaChild, CPareaRatio):
     childrenCNTRS, whereChildrenAreaFiltered = [],np.array([],dtype=object)
-    contours, hierarchy = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours, hierarchy = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)#CHAIN_APPROX_NONE, CHAIN_APPROX_SIMPLE
     whereParents0 = np.argwhere(hierarchy[:,:,3]==-1)[:,1] #flag -1> cnt /w no parents (no owner)
     
     parentSizeSel = [i for i in whereParents0 if cv2.contourArea(contours[i]) > minArea]
@@ -461,6 +461,58 @@ def radialStatsImage(refCentroid, mask, rectParams, cover_area, ID, globalCounte
         fig.suptitle(f'gc: {globalCounter}, bID: {ID}', fontsize=16)
         plt.show()
     return np.array([avg, rmin, dr],int), dic
+
+def radialStatsImageEllipse(isEllipse,refCentroid, mask, rectParams, ellipseParams, cover_area, ID, globalCounter, debug = 0):
+    x,y,w,h         = rectParams
+    localCentroid   = np.array(refCentroid,dtype = int) - np.array([x,y],dtype = int)
+    xs, ys          = np.meshgrid(np.arange(0,w,1), np.arange(0,h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
+    xsl,ysl         = xs-localCentroid[0], ys-localCentroid[1]
+    if isEllipse == 0:
+        zs              = np.sqrt((xs-localCentroid[0])**2 + (ys-localCentroid[1])**2).astype(int)
+        dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))} 
+    else:
+        a2,b2           = ellipseParams[1]                          # a2 = major diameter = 2* half diameters
+        theta           = np.radians(180-ellipseParams[2])          # empirically, might be wrong? hope not.
+        c, s            = np.cos(theta), np.sin(theta)
+
+        xsl2  = c*xsl-s*ysl;ysl2  = s*xsl+c*ysl                     # rotate points w.r.t ellipse orientation. Cant find a proper way to matrix muliply with meshgrid
+
+        alphas          = np.sqrt((xsl2*2/a2)**2 + (ysl2*2/b2)**2)  # finds at what scaled ellipse point (x,y) is located: (x/(alpha*a))^2 + (y/(alpha*b))^2 = 1 => (x/a)^2 + (y/b)^2 = alpha^2
+        zs              = (alphas*a2/2).astype(int)                 # circle has only r, ellipse major and minor axis, ref major.
+
+    dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))}       # sort all radiusses
+    for i,xses in enumerate(xs[0]):                                 # get radius of each pixel, add to counter. 
+        for j,yses in enumerate(ys):
+            if mask[yses[0],xses] == 255:                           # count only those inside contour (color = 255)
+                radi = zs[j][i]
+                dic[radi] += 1
+               # radi2 = alphasR[j][i]
+                #dic2[radi2] += 1
+
+    xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))
+    #xvals2, weights2  = np.array(list(dic2.keys())), np.array(list(dic2.values()))
+    avg             = np.average(xvals, weights=weights).astype(int)
+    rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)
+
+    if debug == 1:
+        #fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=False, sharey=False)
+        #axes[0].scatter(xvals,weights, label=f'Radial pixel distribution ID:{ID}')
+        #axes[0].fill_between(xvals,weights,0,where= (xvals<=rmin +dr) & (xvals>=rmin))
+        #axes[1].scatter(np.arange(len(xvals)),xvals, label=f'Radial pixel distribution ID:{ID}')
+        dmin, dmax      = np.min(weights), np.max(weights)
+        mask2 = mask.copy()
+        for i,xses in enumerate(xs[0]):
+            for j,yses in enumerate(ys):
+                if mask[yses[0],xses] == 255:
+                    radi                    = zs[j][i]
+                    clr                     = rescaleTo255(dmin,dmax,dic[radi])             # select a grayscale value based on number of pixel at that radius
+                    mask2[yses[0],xses]   = clr
+
+        cv2.imshow(f'gc: {globalCounter}, oldID: {ID}',mask2)
+        #fig.suptitle(f'gc: {globalCounter}, bID: {ID}', fontsize=16)
+        plt.show()
+    return np.array([avg, rmin, dr],int), dic
+
 # radialStatsContours() -  same as radialStatsImage() but for collection of $IDsOfInterest contours from list $bodyCntrs
 
 def radialStatsContours(bodyCntrs,IDsOfInterest,refCentroid, cover_area, img, debug = 0):
@@ -529,6 +581,85 @@ def radialStatsContours(bodyCntrs,IDsOfInterest,refCentroid, cover_area, img, de
         
     return output, output_dist
     # possible optimization, draw pixels on one bigger blank mask and iterate though offset $rectParams locally.
+
+def radialStatsContoursEllipse(isEllipse,bodyCntrs,IDsOfInterest,refCentroid, ellipseParams, cover_area, img, pltID, globalCounter, debug = 0):
+
+    output = {ID:np.zeros(3,int) for ID in IDsOfInterest}                                          # future return dict {ID:[avg_r,stdev_r]}
+    output_dist = {}
+    if debug == 1:
+        imgGray = img.copy()*0 #cv2.cvtColor(img.copy()*0, cv2.COLOR_BGR2GRAY) 
+        n = len(IDsOfInterest)
+        axes = plt.subplots(int(np.ceil(np.sqrt(n))), int(np.ceil(n/np.ceil(np.sqrt(n)))), figsize=(16, 9), sharex=True, sharey=False)[1]
+        if n>1:
+            axes = axes.reshape(-1)
+        else: axes = [axes]
+ 
+    for k,ID in enumerate(IDsOfInterest):
+        #area0           = cv2.contourArea(bodyCntrs[ID])
+        x,y,w,h         = cv2.boundingRect(bodyCntrs[ID])
+        xs, ys          = np.meshgrid(np.arange(x,x+w,1), np.arange(y,y+h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
+        xsl,ysl         = xs-refCentroid[0], ys-refCentroid[1]
+        if isEllipse == 0:
+            zs              = np.sqrt(xsl**2 + ysl**2).astype(int)      # calculate L2 norms from reference centroid.
+            dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))} 
+        else:
+            a2,b2           = ellipseParams[1]                          # a2 = major diameter = 2* half
+            theta           = np.radians(180-ellipseParams[2])          # empirically, might be wrong? 
+            c, s            = np.cos(theta), np.sin(theta)
+        
+            xsl2  = c*xsl-s*ysl;ysl2  = s*xsl+c*ysl                     # rotate points w.r.t ellipse o
+        
+            alphas          = np.sqrt((xsl2*2/a2)**2 + (ysl2*2/b2)**2)  # finds at what scaled ellipse 
+            zs              = (alphas*a2/2).astype(int)                 # circle has only r, ellipse ma
+        #zs              = np.sqrt((xs-refCentroid[0])**2 + (ys-refCentroid[1])**2).astype(int)  
+        rmin, rmax      = np.min(zs), np.max(zs)                                            # rmin/max of whole image, so 0 pixel count for some r values.
+        dic = {rad:0 for rad in np.arange(rmin,rmax+1,1)}                                   # if there is a discontinuity, because of casting to int, 0-count rads will be dropped anyway. EG (1.05, 1.99, 3.01)- > (1,1,3)
+        
+        #dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))}                          # order (sort) should not be important if not drawing a continious relation [r1,n1],[r2,n2],...
+        subSubMask      = np.zeros((h,w),np.uint8)                                          # stencil for determining if pixel is part of a bubble
+        cv2.drawContours( subSubMask, bodyCntrs, ID, 255, -1, offset = (-x,-y))
+        
+        for i,xses in enumerate(xs[0]):                                                     # get radius of each pixel, add to counter. 
+            for j,yses in enumerate(ys):
+                if subSubMask[yses[0]-y,xses-x] == 255:                                     # count only those inside contour (color = 255)
+                    radi = zs[j][i]
+                    dic[radi] += 1
+                    #clr = rescaleTo255(rmin,rmax,radi)
+                    #imgGray[yses[0],xses] = clr
+    
+        xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))           # cast to numpy to do statistics
+        avg             = np.average(xvals, weights=weights)     .astype(int)                            # weighted average
+        #stdev           = np.sqrt(numpy.average((xvals-avg)**2, weights=weights))            # stdev of weighted data. theres no ready function in numpy.
+        rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)      #;print(a,b)(x,fx,meanVal,cover_area,debug= 1)
+        dmin, dmax      = min(dic.values()),max(dic.values())
+        output[ID]      = np.array([avg, rmin, dr],int)
+        output_dist[ID] = dic
+        if debug == 1:
+            
+            axes[k].plot(xvals,weights)
+            axes[k].vlines(avg, min(dic.values()), max(dic.values()), linestyles ="dashed", colors ="k")
+            axes[k].fill_between(xvals,weights,0,where= (xvals<=rmin +dr) & (xvals>=rmin))
+            axes[k].set_xlabel('radius, pix')
+            axes[k].set_ylabel('sum of pixels')
+            axes[k].set_title(f'Radial pixel distribution ID:{ID}')
+            
+            for i,xses in enumerate(xs[0]):
+                for j,yses in enumerate(ys):
+                    if subSubMask[yses[0]-y,xses-x] == 255:
+                        radi                    = zs[j][i]
+                        clr                     = rescaleTo255(dmin,dmax,dic[radi])             # select a grayscale value based on number of pixel at that radius
+                        imgGray[yses[0],xses]   = clr
+            x0,y0 = bodyCntrs[ID][0][0]
+            cv2.putText(imgGray, str(ID), (x0,y0), cv2.FONT_HERSHEY_SIMPLEX, 0.3, 0, 3, cv2.LINE_AA)
+            cv2.putText(imgGray, str(ID), (x0,y0), cv2.FONT_HERSHEY_SIMPLEX, 0.3, 255, 1, cv2.LINE_AA)
+            
+    if debug == 1:
+        cv2.circle(imgGray, tuple(map(int,refCentroid)), 3, (255,0,0), -1)
+        cv2.imshow(f'gc: {globalCounter}, oldID: {pltID}',imgGray)
+        plt.tight_layout()
+        plt.show()
+    return output, output_dist
+
 def compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr,solution,cyclicColor,globalCounter,oldID):
     subNewIDs = np.array(list(SlaveDistr.keys()))
     rmin  = 10000;rmax = 0

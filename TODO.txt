@@ -18,6 +18,7 @@ distCheck2Sigma, areaCrit make them update from statistis as calc
 lastNStepsFrozenHullAreas - check if this actually works- FB from much earier steps are identified
 l_bubble_type is done multiple times. may be relict of when fb were managed with RB and Dist B
 
+l_areas_hull_old    = {**l_RBub_areas_hull_old,   **l_DBub_areas_hull_old,    **l_FBub_areas_hull_old}- has more IDs than other!!
 check these lines long-term!:
 	assert type(fID) == list, ' you need a line below! '
 

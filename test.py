@@ -891,8 +891,8 @@ cv2.line(img, (30,100), (200,50), 0, 3)
 cv2.circle(img, (200,200), 25, 255, -1)
 cv2.circle(img, (260,100), 15, 255, -1)
 
-bodyCntrs, hierarchy = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-IDsOfInterest = range(0,len(bodyCntrs))
+#bodyCntrs, hierarchy = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+#IDsOfInterest = range(0,len(bodyCntrs))
 
 def radialStatsContoursEllipse(isElliplse,bodyCntrs,IDsOfInterest,refCentroid, ellipseParams, cover_area, img, debug = 0):
 
@@ -971,7 +971,7 @@ def radialStatsContoursEllipse(isElliplse,bodyCntrs,IDsOfInterest,refCentroid, e
         plt.tight_layout()
         plt.show()
     return output, output_dist
-SlaveBand, SlaveDistr = radialStatsContoursEllipse(1,bodyCntrs,IDsOfInterest,refCentroid, ellipseParams, cover_area, img, debug = 1)
+#SlaveBand, SlaveDistr = radialStatsContoursEllipse(1,bodyCntrs,IDsOfInterest,refCentroid, ellipseParams, cover_area, img, debug = 1)
 # Displaying the image 
 #elipse = cv2.fitEllipse(contours[0])
 #x,y = (160, 100)
@@ -1023,7 +1023,13 @@ def compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr,solution,cyclicColor,gl
     fig.suptitle(f'gc: {globalCounter}, oldID: {oldID}, ids: {subNewIDs}')
     plt.show()
 
-compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr, IDsOfInterest, cyclicColor, globalCounter, 1)
+#compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr, IDsOfInterest, cyclicColor, globalCounter, 1)
+sm = sum( [[ ],[ ]] ,[] );print(sm)
+
+
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyallwindows()
+
+    g_Centroids
+    predictCentroidDiff_local

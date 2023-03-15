@@ -554,8 +554,8 @@ np.random.seed(1);np.random.shuffle(colorList);np.random.seed()
 def cyclicColor(index):
     return colorList[index % len(colorList)].tolist()
 
-def getOverlap(a, b):
-    return np.maximum(0, np.minimum(a[:,1], b[:,1]) - np.maximum(a[:,0], b[:,0]))
+def getOverlap(a, b, mode): # if mode = 1, return intersection interval width, if mode  = 0, intersection right coordinate.
+    return np.maximum(0, np.minimum(a[:,1], b[:,1]) - mode*np.maximum(a[:,0], b[:,0]))
 
 toList = lambda x: [x] if type(x) != list else x
 
@@ -573,7 +573,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 200 #  53+3+5
-dataNum             = 6  # 7+5   
+dataNum             = 7  # 7+5   
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -862,9 +862,11 @@ def mainer(index):
     if globalCounter >= 1:                                                                                  # << uses centroids as it goes, any changes due to back-tracking are not accounted.
         for oldID, oldCentroid in l_RBub_centroids_old.items():                                             # take ring bubble global IDs from previous frame
             trajectory                          = np.array(list(g_Centroids[oldID].values()))               # whole path: centroids = centroids(timeStep)
-            _,_, distCheck2, distCheck2Sigma    = g_predict_displacement[oldID][globalCounter-1]            # retrieve last value of mean displacement and stdev
-            sigmasDeltas                        = [a[2:] for a in g_predict_displacement[oldID].values()]   # ???
-            predVec_old                         = g_predict_displacement[oldID][globalCounter-1][0]         # ??? last centroid or last predicted centroid
+            # g_predict_displacement is an evaluation on how good predictor works. [centroid predicted-actual dist, c-c mean, c-c stdev]
+            # after predicting next point for trajectory, some statistical certainty measure is given by distCheck2 & distCheck2Sigma around that point.
+            #                                   = g_predict_displacement[oldID][globalCounter-1][0]         # ??? last centroid or last predicted centroid
+            predVec_old, _, distCheck2, distCheck2Sigma    = g_predict_displacement[oldID][globalCounter-1]  # 
+            sigmasDeltas                        = [a[2:] for a in g_predict_displacement[oldID].values()]   # history for debug plot.. i guess
             predictCentroid = distStatPredictionVect2(trajectory, sigmasDeltas = sigmasDeltas[-1], sigmasDeltasHist = g_predict_displacement[oldID],
                                         numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  debugVecPredict, savePath = predictVectorPathFolder,
                                         predictvec_old = predVec_old, bubID = oldID, timestep = globalCounter, zerothDisp = [-3,0])
@@ -881,7 +883,7 @@ def mainer(index):
                 #relArea = abs(oldArea - newArea)/oldArea
                 #print(f'oldID:{oldID}; newID:{newID}, dist2:{dist2:0.1f}, areaCrit:{areaCrit:0.2f}')
                 if dist2 <= distCheck2 + 5*distCheck2Sigma and  areaCrit < 3:                               # distance and area change check
-                    predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), np.around(dist2,2)]# update/store pred-actual c-c dist 
+                    predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), int(dist2)]        # update/store pred-actual c-c dist  #np.around(dist2,2) 15/03/23
                     RBOldNewDist = np.append(RBOldNewDist,[[oldID,newID]],axis=0)                           # store a match
                     l_bubble_type[oldID] = typeRing                                                         # ???? ===== store type may be not needed. idk
                     print(f' resolved oldID:{oldID}- newID:{newID} relation with pC-cDist:{dist2:0.1f} and  areaCrit:{areaCrit:0.2f}')
@@ -956,7 +958,7 @@ def mainer(index):
                     dist = np.linalg.norm(np.diff([tempC,oldC],axis=0),axis=1)[0]
                     pCentr = predictCentroidDiff_local[i][0]
                     dist2 = np.linalg.norm(np.array(pCentr) - np.array(tempC))
-                    predictCentroidDiff_local[i] = [pCentr, np.around(dist2,2)]
+                    predictCentroidDiff_local[i] = [pCentr, int(dist2)] #np.around(dist2,2) 15/03/23
                     oldFoundRings.remove(i)
                     print(f'Recovered old ring {i}, oldFoundRings (remaining unresolved): {oldFoundRings}')  if debugOnly(12) else 0
                         
@@ -1165,7 +1167,7 @@ def mainer(index):
             elseOldNewDoubleCriteriumSubIDs     = {}
             elseOldNewDist                      = []
             jointNeighborsWoFrozen              = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items() if mainNewID not in frozenIDs}
-            jointNeighborsOnlyFrozen            = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items() if mainNewID in frozenIDs}
+            #jointNeighborsOnlyFrozen            = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items() if mainNewID in frozenIDs}
             # frozenIDs_old_glob-> double for. grab ID from local old IDS, and for loop check if its in oldLocIDs of some old global IDs
             #oldLocIDs = frozenIDsInfo[:,0] if len(frozenIDsInfo)>0 else np.array([]) # !!!!! check this 10/02/23. added because it was missing for next line
             # 10/02/23 grabbing frozenIDs_old (frID) from  frozenOldGlobNewLoc. replaced oldLocIDs -> oldGlobID beacuse now have access to this info
@@ -1175,12 +1177,11 @@ def mainer(index):
             oldDistanceCentroidsWoFrozen = {key:val for key,val in l_DBub_centroids_old.items() if key not in list(l_FBub_old_new_IDs_old.keys()) + resolvedFrozenGlobalIDs}
             for oldID, oldCentroid in oldDistanceCentroidsWoFrozen.items():
                 trajectory = list(g_Centroids[oldID].values())
-                #distCheck = distStatPrediction(trajectory = trajectory,startAmp0 = 30, expAmp = 10, halfLife = 2, numsigmas = 2, plot=0,extraStr = f'E:ID {oldID} ')
-                _,_, distCheck2, distCheck2Sigma  = g_predict_displacement[oldID][globalCounter-1]
+                predVec_old, _, distCheck2, distCheck2Sigma  = g_predict_displacement[oldID][globalCounter-1]
                 sigmasDeltas = [a[2:] for a in g_predict_displacement[oldID].values()]
-                #predictCentroid = distStatPredictionVect(trajectory, zerothDisp = [-1,0], sigmasDeltas = sigmasDeltas, numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 1, mode = 1,debug = testPred, maxNumPlots = 4)
                 print(f'oldID: {oldID}, distCheck2: {distCheck2}, distCheck2Sigma: {distCheck2Sigma}')
-                predVec_old = g_predict_displacement[oldID][globalCounter-1][0]
+                #predVec_old = g_predict_displacement[oldID][globalCounter-1][0]
+                #debugVecPredict = 1 if oldID == 5 and globalCounter >= 3 else 0
                 predictCentroid = distStatPredictionVect2(trajectory, sigmasDeltas = sigmasDeltas[-1], sigmasDeltasHist = g_predict_displacement[oldID],
                                         numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  debugVecPredict, savePath = predictVectorPathFolder,
                                         predictvec_old = predVec_old, bubID = oldID, timestep = globalCounter, zerothDisp = [-3,0])
@@ -1199,6 +1200,9 @@ def mainer(index):
                 a,b = ellipseParams[1]
                 isEllipse = 1 if np.sqrt(1-(min(a,b)/max(a,b))**2) > 0.5 else 0 #;print(np.sqrt(1-(min(a,b)/max(a,b))**2))
                 OGband, OGDistr = radialStatsImageEllipse(isEllipse,oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], ellipseParams, cvr, oldID, globalCounter, debug = 0)
+                # OGband : [area-weighted average radiuss, interval beginning, interval width], interval- narrowest interval at which some % (90%) of total area is located.
+                OGRightBandCoord = OGband[1]+OGband[2]
+                #OGAreaUpToAndIncludingBand = sum([numPix for ID,numPix in OGDistr.items() if ID <= OGRightBandCoord])
                     #clusterPerms(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], oldID, globalCounter ,debug = 1)
                 #----------------- looking for new else bubs related to old else bubs ---------------------
                 for mainNewID, subNewIDs in jointNeighborsWoFrozen.items():
@@ -1210,43 +1214,68 @@ def mainer(index):
                         
                     if dist2 <= distCheck2 + 5*distCheck2Sigma and areaCrit < 3:
                         print(f'dist-dist. Perfect match: {oldID} <-> mainNewID: {mainNewID}:{subNewIDs}, dist2: {dist2:0.1f}, areaCrit: {areaCrit:0.1f}')
-                        predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), np.around(dist2,2)]
+                        predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), int(dist2)] #np.around(dist2,2) 15/03/23
                         elseOldNewDoubleCriterium.append([oldID,mainNewID,dist2,areaCrit])
                         elseOldNewDoubleCriteriumSubIDs[mainNewID] = subNewIDs
                     elif dist2 > 70 or areaCrit > 15:
                         0#;print('dist 2. soft break')
                     else:
-                        if (3 == 3):
-                            cvr2 = 0.8
-                            debug = 1 if globalCounter == 2 and oldID == 2 else 0
-                            #SlaveBand, SlaveDistr = radialStatsContours(l_contours,subNewIDs,oldCentroid, cvr2, err,debug = 0)
-                            SlaveBand, SlaveDistr = radialStatsContoursEllipse(isEllipse,l_contours,subNewIDs,oldCentroid, ellipseParams, cvr2, err, oldID, globalCounter, debug = 0)
-                            ogInterval  = np.array([0,OGband[1]+OGband[2]]).reshape(1,2)                            # set min radius to 0, interval = [0,rmin+dr]. so all inside contours are automatically incorporated.
-                            slIntervals = np.array([np.array( [b[1], b[1] + b[2]] ) for b in SlaveBand.values()])   # [[rmin1, rmin1 + dr1],[..],..]
-                            slWidths    = np.array([b[2] for b in SlaveBand.values()],int)                          # [dr1,dr2,..]
-                            overlap     = getOverlap(ogInterval,slIntervals)                                        # how much area inside 
-                            rOverlap    = np.divide(overlap,slWidths)                                               # overlap area/interval area-> 1: fully inside ogInterval, 0: no overlap.
-                            passBase    = np.where(rOverlap >= 0.9)[0]                                              # returns tuple of dim (x,)
-                            passRest    = np.where((rOverlap > 0.05) & (rOverlap < 0.9))[0]
-                            print(np.vstack((subNewIDs,rOverlap)))
-                            baseIDs     = np.array(subNewIDs)[passBase]
-                            
-                            if len(passRest) > 0:
-                                restIDs     = np.array(subNewIDs)[passRest]
-                                restIDsPerms = sum([list(itertools.combinations(restIDs, r)) for r in range(1,len(restIDs)+1)],[])
-                                combs = [tuple(baseIDs)] if len(baseIDs) > 0 else []
-                                [combs.append(tuple(baseIDs) + perm) for perm in restIDsPerms]
+                        cvr2 = 0.8
+                        debug = 1 if globalCounter == -1  else 0 #and oldID == 2
+                        #SlaveBand, SlaveDistr = radialStatsContours(l_contours,subNewIDs,oldCentroid, cvr2, err,debug = 0)
+                        SlaveBand, SlaveDistr = radialStatsContoursEllipse(isEllipse,l_contours,subNewIDs,predictCentroid, ellipseParams, cvr2, err, oldID, globalCounter, debug = 0)
+                        ogInterval  = np.array([0,OGband[1]+OGband[2]]).reshape(1,2)                            # set min radius to 0, interval = [0,rmin+dr]. so all inside contours are automatically incorporated.
+                        slIntervals = np.array([np.array( [b[1], b[1] + b[2]] ) for b in SlaveBand.values()])   # [[rmin1, rmin1 + dr1],[..],..]
+                        slWidths    = np.array([b[2] for b in SlaveBand.values()],int)                          # [dr1,dr2,..]
+                        overlap     = getOverlap(ogInterval,slIntervals,1)                                        # how much area inside 
+                        rOverlap    = np.divide(overlap,slWidths)                                               # overlap area/interval area-> 1: fully inside ogInterval, 0: no overlap.
+                        passBase    = np.where(rOverlap >= 0.9)[0]                                              # returns tuple of dim (x,)
+                        passRest    = np.where((rOverlap > 0.05) & (rOverlap < 0.9))[0]
+                        print(np.vstack((subNewIDs,rOverlap)))
+                        baseIDs     = np.array(subNewIDs,int)[passBase]
+                        #slIntervals2= np.array([[36, 52],[14, 47],[42, 67]])
+                        #overlap2     = getOverlap(ogInterval,slIntervals2,0)
+                        #SlaveDistr2 = SlaveDistr.copy()
+                        #SlaveDistr2[66] = {47:1,48:2,49:10,50:3,51:2}
+                        #bandLeft = np.array([sum([numPix for ID,numPix in SlaveDistr2[ID].items() if ID <= OGband[1]+OGband[2]]) for ID in [20,22,66]],int)
+                        #bandRight = np.array([sum([numPix for ID,numPix in SlaveDistr2[ID].items() if ID > OGband[1]+OGband[2]]) for ID in [20,22,66]],int)
 
-                                permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations2(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], combs, l_Centroids, l_Areas,
-                                                    predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = 1, doHull = 1)
-                                if debug == 1: compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr, permIDsol2, cyclicColor, globalCounter, oldID)
+                        # left band means r from [0,OG interval right coord], right band means  [OG interval right coord, rest]
+                        restIDs     = np.array(subNewIDs,int)[passRest]
                                 
-                            else:
-                                permIDsol2 = baseIDs.tolist(); permDist2 = dist2; permRelArea2 = areaCrit
+                        if len(restIDs) > 0:
+                            usefulIDs   = np.array(subNewIDs,int)[np.concatenate((passRest,passBase))]                                          # grab resolved IDs and ones in question
+                            bandRightRs = {ID:[ID for ID,numPix in SlaveDistr[ID].items() if ID > OGRightBandCoord] for ID in usefulIDs}       # take Rs past OG right band coord
+                            #bandLeft = np.array([sum([numPix for ID,numPix in SlaveDistr2[ID].items() if ID <= OGband[1]+OGband[2]]) for ID in [20,22,66]],int)
+                            bandRightCumSum = {ID:np.cumsum([a for r,a in SlaveDistr[ID].items() if r > OGRightBandCoord]) for ID in usefulIDs} # cum sum of right band
+                            bandRightCumSum = {ID:arr for ID,arr in bandRightCumSum.items() if len(arr) > 0}                                    # intefall fully within OG will be empty.
+                            aa = {ID:bandRightRs[ID][np.argmin(np.abs(cumSumArea- cvr2*cumSumArea[-1]))] for ID,cumSumArea in bandRightCumSum.items()} # grab r at which area reaches 80%, in case contour is stretched thin at dist.
+                            maxRightInterval = max([br - OGRightBandCoord for ID,br in aa.items() if ID in baseIDs])                            # take widest resolved right band*0.8 interval as a reference
+                            preResolvedRest = [ID for ID,br in aa.items() if ID not in baseIDs and (br - OGRightBandCoord)*0.8 < maxRightInterval]# if Rest interval width is within 80% of maxRightInterval, consider it resolved.
+                            restIDs = [ID for ID in restIDs if ID not in preResolvedRest]
+                            baseIDs = np.concatenate((baseIDs,preResolvedRest)).astype(int)
+
+                        if len(restIDs) > 0:
+                            combs = [tuple(baseIDs)] if len(baseIDs) > 0 else []                                                                # this is the base list of IDs, they are 100% included eg [1,2]
+                            restIDsPerms = sum([list(itertools.combinations(restIDs, r)) for r in range(1,len(restIDs)+1)],[])                  # these are permuations possible neighbors [3,4]-> [[3],[4],[3,4]]
+                            [combs.append(tuple(baseIDs) + perm) for perm in restIDsPerms]                                                      # add base to combos of neighbors -> [[1,2],[1,2,3],[1,2,4],[1,2,3,4]]
+
+                            permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations2(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], combs, l_Centroids, l_Areas,
+                                                predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = 1, doHull = 1)
+                                
+                                
+                        else:
+                            permIDsol2 = baseIDs.tolist();
+                            newCentroid, newArea = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in baseIDs], hullArea = 1)
+                            permDist2 = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))                                               # distance between cluster and predicted centroids
+                            permRelArea2 = np.abs(newArea-oldMeanArea)/ oldAreaStd
+                            
+                            
+                        if debug == 1: compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr, permIDsol2, cyclicColor, globalCounter, oldID)
                         #debug = 1 if (globalCounter == 5 and oldID == 5111) else 0 #, permCentroid
                         #permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_BoundingRectangle_params, l_rect_parms_old[oldID], subNewIDs, l_Centroids, l_Areas,
                         #                            predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = debug, doHull = 1)
-                        if len(permIDsol2)>0:
+                        if len(permIDsol2)>0 and permDist2 < distCheck2 +2* distCheck2Sigma and permRelArea2 < 5:
                             
                             print(f'\ndist-dist. Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, permIDsol2: {permIDsol2}, permDist2: {permDist2}')
                             #pDist = np.linalg.norm(np.array(newCentroid) - np.array(oldCentroid)).astype(np.uint32)
@@ -1378,7 +1407,7 @@ def mainer(index):
                 print("RBOldNewDist, ( new RB added) (distance relations < distCheck):\n",RBOldNewDist)
                 print("elseOldNewDist, (found RB removed) (Else IDs pass dist)\n", elseOldNewDist)
     
-            newFoundBubsElse = [elem for elem in newFoundBubsElse if elem not in newFoundBubsRings] # <<<<<<<<<<<   added in case missing RB is not resolved. should rething structure
+            newFoundBubsElse = [elem for elem in newFoundBubsElse if elem not in newFoundBubsRings] # <<<<<<<<<<<   added in case missing RB is not resolved. should rethink structure
                 
             if len(oldFoundElse)>0: print(f'{globalCounter}:--------- Begin recovery of Else bubbles: {oldFoundElse} --------')
             else:                   print(f'{globalCounter}:----------------- No Else bubble to recover ---------------------')
@@ -1749,7 +1778,7 @@ def mainer(index):
         g_old_new_IDs[key][globalCounter]   = l_old_new_IDs_old[key]
         # --------- take care of prediction storage: g_predict_area_hull & g_predict_displacement --------------
         if globalCounter == 0 or (key not in g_predict_area_hull and key in l_areas_hull_old):
-            g_predict_area_hull[key]        = {globalCounter:[l_areas_hull_old[key],  l_areas_hull_old[key],  l_areas_hull_old[key]*0.2]}
+            g_predict_area_hull[key]        = {globalCounter:[l_areas_hull_old[key],  l_areas_hull_old[key],  int(l_areas_hull_old[key]*0.2)]}
         else:
             updateValue                     = l_areas_hull_old[key]
             historyLen                      = len(g_predict_area_hull[key])
@@ -1764,12 +1793,12 @@ def mainer(index):
                 prevStd                         = g_predict_area_hull[key][timeStep][2]
                 hullAreaMean, hullAreaStd       = updateStat(historyLen, prevMean, prevStd, updateValue) # just fancy way of updating mean and sdtev w/o recalc whole path data. most likely does not impact anything
 
-            g_predict_area_hull[key][globalCounter] = [updateValue, hullAreaMean, hullAreaStd]
+            g_predict_area_hull[key][globalCounter] = [updateValue, int(hullAreaMean), int(hullAreaStd)]
         # == if there is no entry in g_predict_displacement and guess ==
         if key not in g_predict_displacement : # and key not in predictCentroidDiff_local
-            pCentroid                       = g_Centroids[key][globalCounter] 
+            pCentroid                       = l_centroids_old[key]# g_Centroids[key][globalCounter] # 15/03/23 replace g_ to l_
             pDistByType                     = [14,30]
-            updateValue                     =  pDistByType[0] if key in l_RBub_masks_old else pDistByType[1]
+            updateValue                     = pDistByType[0] if key in l_RBub_masks_old else pDistByType[1]
             pc2CMean                        = updateValue
             pc2CStd                         = 0
             g_predict_displacement[key] = {globalCounter: [pCentroid, updateValue, np.around(pc2CMean,2), np.around(pc2CStd,2)]}
@@ -1787,7 +1816,7 @@ def mainer(index):
                 prevMean                        = g_predict_displacement[key][timeStep][2]
                 prevStd                         = g_predict_displacement[key][timeStep][3]
                 pc2CMean, pc2CStd               = updateStat(historyLen, prevMean, prevStd, updateValue)
-            g_predict_displacement[key][globalCounter] = [pCentroid, np.around(updateValue,2), np.around(pc2CMean,2), np.around(pc2CStd,2)]
+            g_predict_displacement[key][globalCounter] = [pCentroid, int(updateValue), int(pc2CMean), int(pc2CStd)]# 15/03/23 [pCentroid, np.around(updateValue,2), np.around(pc2CMean,2), np.around(pc2CStd,2)]
 
         # --whereChildrenAreaFiltered is reliant on knowing parent. some mumbo-jumbo to work around
         # -  maybe its better to combine RBOldNewDist and elseOldNewDist and extract global-local IDS there

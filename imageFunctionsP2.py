@@ -676,7 +676,7 @@ def compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr,solution,cyclicColor,gl
                 vals[r-rmin] += subVal # if dom = [rmin,rmin+1,...] distr: {{rmin:val},..}, val should go to vals[rmin-rmin] => vals[0]
         
 
-    fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=True, sharey=False)
+    fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=False, sharey=False)
     t = 8
     ogDom = list(OGDistr.keys())
     ogVals = list(OGDistr.values())
@@ -1124,7 +1124,7 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
             sMod2 = alpha*sMod
             spline0, _ = interpolate.splprep(splitSubsetComponents, u = t, s = sMod2, k = k)
 
-            extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0))
+            extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0),int)
             dv0 = np.diff(extrapolatedPoint0).reshape(max(2,numDims))
             z = np.polyfit(*splitSubsetComponents[:,-3:], 1);#print(f'z:{z}')
             x0,x1 = splitSubsetComponents[0,-min(numPointsInTraj,3)], splitSubsetComponents[0,-1]
@@ -1139,7 +1139,7 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
         alpha = smoothingScale
         sMod2 = alpha*sMod
         spline0, _ = interpolate.splprep(splitSubsetComponents, u = t, s = sMod2, k = k)
-        extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0))
+        extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0),int)
         returnVec = extrapolatedPoint0[:,-1]
 
     if debug == 1:

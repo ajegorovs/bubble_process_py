@@ -1418,3 +1418,54 @@ def updateStat(count, mean, std, newValue):
         (mean, variance) = (mean, M2 / count)
         return (mean, np.sqrt(variance))
 
+def tempStore(contourIDs, contours, mask, image, dataSets):
+    gatherPoints                    = np.vstack([contours[ID] for ID in contourIDs])#;print(distCntrSubset.shape)
+    x,y,w,h                         = cv2.boundingRect(gatherPoints)#;print([x,y,w,h])
+    tempID                          = min(contourIDs)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
+                
+    baseSubMask,baseSubImage        = mask.copy()[y:y+h, x:x+w], image.copy()[y:y+h, x:x+w]
+    subSubMask                      = np.zeros((h,w),np.uint8)
+    [cv2.drawContours( subSubMask, contours, ID, 255, -1, offset = (-x,-y)) for ID in contourIDs]
+    
+    baseSubMask[subSubMask == 0]    = 0
+                
+    baseSubImage[subSubMask == 0]   = 0
+
+    hullArea = getCentroidPosContours(bodyCntrs = [contours[k] for k in contourIDs], hullArea = 1)[1]
+    centroid = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
+
+    for storage, data in zip(dataSets,[baseSubMask , baseSubImage, contourIDs, ([x,y,w,h]), centroid, hullArea]):
+        storage[tempID] = data
+
+
+
+#typeTemp                        = typeRing if any(item in newFoundBubsRings for item in new) else typeElse
+#print(f'typeTemp {typeTemp}: {typeStrFromTypeID[typeTemp]}')
+#centroidsTemp                   = {ID: g_Centroids[ID][globalCounter-1][0] for ID in old} # ID is inteherted to bubble closer to free surface (minimal x coord)
+#selectID                        = min(centroidsTemp, key=centroidsTemp.get)
+
+#if typeTemp == typeRing:
+#     dataSets = [l_RBub_r_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull]
+#else: 
+#    dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull]
+def tempStore2(contourIDs, contours, globalID, mask, image, dataSets):
+    # smallest x centroid survives. ID:Cx -> smallest Cx ID
+                    
+    gatherPoints                    = np.vstack([contours[k] for k in contourIDs])
+    x,y,w,h                         = cv2.boundingRect(gatherPoints)#;print([x,y,w,h])
+    baseSubMask,baseSubImage        = mask.copy()[y:y+h, x:x+w], image.copy()[y:y+h, x:x+w]
+                    
+    subSubMask                      = np.zeros((h,w),np.uint8)
+    [cv2.drawContours( subSubMask, contours, ID, 255, -1, offset = (-x,-y)) for ID in contourIDs]
+    baseSubMask[subSubMask == 0]    = 0
+                    
+    baseSubImage[subSubMask == 0]   = 0
+                    
+    centroid = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
+    hullArea = getCentroidPosContours(bodyCntrs = [contours[k] for k in contourIDs], hullArea = 1)[1]
+    
+    for storage, data in zip(dataSets,[baseSubMask , baseSubImage, contourIDs, ([x,y,w,h]), centroid, hullArea]):
+        storage[globalID] = data
+
+    #l_bubble_type[selectID]                 = typeTemp   #<<<< inspect here for duplicates
+    #g_bubble_type[selectID][globalCounter]  = typeTemp

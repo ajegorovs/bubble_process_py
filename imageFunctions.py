@@ -423,3 +423,352 @@ def maskSegmentAndHull(img, mask, minArea, graphics, name):
 #     else:
 #         yee =  cv2.vconcat([yee,bebe])
 #     k += 1
+# 17/03/23 removed cause it took up much space and wasnt used at all
+def maskProcSegments(img, mask, lowThreshold, graphics, exportGraphics, drawBG, name):
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    dilate = 5
+    img = convertRGB2Gray(img.copy())
+    imgBG = convertRGB2Gray(drawBG.copy())
+    if graphics == 1 or exportGraphics == 1:
+        imgRGB = convertGray2RGB(imgBG.copy())
+        overlayColor = [0,255,255]
+        textColor = [0,0,255]
+        textColorFull = [0,165,255]
+        textColorEmpty = [0,255,0]
+        overlayOpacityMultiplier = 0.55
+        nReports = 4
+        reportList = np.zeros((nReports,mask.shape[0],mask.shape[1]),dtype=np.uint8)
+        # reportListRGB = np.zeros((nReports,mask.shape[0],mask.shape[1],3),dtype=np.uint8)
+        reportListRGB = [imgRGB for A in range(nReports)]
+        # cv2.imshow('aa',reportListRGB2[0])
+        
+            
+    # print(reportList[0].shape)
+    contours, _ = cv2.findContours(mask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+    hulls = list()
+    m = 0
+    M = np.full((mask.shape[0],mask.shape[1],3),overlayColor,dtype=np.uint8)
+    
+        
+    if plotAreaRep == 1:
+        fig, ax = plt.subplots()
+        ax.set_facecolor('#eafff5')
+        ax.set_title(' arRemList')
+        # clrs = ['b','g','r','c','m','y']
+        cmap = plt.get_cmap('gnuplot')
+        clrs = [cmap(i) for i in np.linspace(0, 1, len(contours))]   
+    # flowchart:
+    # f-n gets rough mask where clusters are joined using hull
+    # each body is examined:
+    # 1) on an expanded selection
+    # 2) rough submask 10->255 where more detailed
+    # 3) advanced thresholding is conducted or submasked region
+    # 4) dilate-erode morphology is used to close gaps
+    cSel = [i for i in range(len(contours)) if cv2.contourArea(contours[i]) > 200]
+    # print(cSel)
+    contours = [contours[i] for i in cSel]
+    # print(f'# conrs= {len(contours)}')
+    for c in contours:
+        # print(cv2.contourArea(c))
+        # 1) Full size blanks for bubble and mask. full beacause selection will be dilated.
+        maskSelection = mask.copy() * 0 
+        selFull = mask.copy() * 0
+        x, y, w, h = cv2.boundingRect(c)
+        # in case dilate goes out of border, selection should be modified.
+        if dilate > 0 : 
+            # x0, y0, w0, h0 = x, y, w, h
+            x, y, w, h = getPaddedSegmentCoords(mask, x, y, w, h, dilate)
+        if graphics == 1 or exportGraphics == 1: tempRGB = imgRGB[y:y+h,x:x+w]
+        # on full size black blank draw A single controur and dilate it    
+        maskSelection = cv2.drawContours(maskSelection.copy(), [c], -1, 255, -1)
+        
+        # maskSelection = cv2.dilate(maskSelection.copy(),np.ones((dilate,dilate),np.uint8),iterations = 1)
+        # redraw bubble only on expanded (dialated) mask area
+            
+        selFull[maskSelection == 255] = img[maskSelection == 255]
+        # take only working area
+        subImage = selFull[y:y+h,x:x+w]
+        temp1 = subImage.copy() * 0
+
+        # cv2.imshow(f'm {m}',   maskedBlend(convertGray2RGB(img),(255,255,0),mask,0.1))
+
+        # 2) rough secondary mask- intensity higher than 10 -> 255. works for us
+        _,th0 = cv2.threshold(subImage.copy(),lowThreshold,255,cv2.THRESH_BINARY)
+        # th0test = cv2.morphologyEx(th0.copy(), cv2.MORPH_OPEN, np.ones((13,13)), iterations = 1)
+        # cv2.imshow(f'm {m}',th0)
+        # reportList[1][y:y+h,x:x+w] = th0
+        # add extra closing to remove sharp corners and small holes
+        kerSize = 11
+        # if np.sum(th0test) == 0: #higher threshold can delete object
+        #     m += 1
+        #     break
+        # if m==5:cv2.imshow(f'm {m}',th0test)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kerSize,kerSize))
+        th03 = cv2.copyMakeBorder(th0.copy(), kerSize, kerSize, kerSize, kerSize, cv2.BORDER_CONSTANT, None, 0)
+        th03 = cv2.morphologyEx(th03, cv2.MORPH_CLOSE, kernel, iterations = 1)
+        th03 = th03[kerSize:-kerSize,kerSize:-kerSize]
+         
+        # temp1[th0 == 255] = subImage[th0 == 255] # without closing
+        temp1[th03 == 255] = subImage[th03 == 255]
+        alpha = 0.5
+        th00 = cv2.addWeighted(th03, alpha, th0, 1 - alpha,0)
+        
+        
+        # 3) image thresholding is performed
+        locBinsAll = [cv2.ximgproc.BINARIZATION_NIBLACK,cv2.ximgproc.BINARIZATION_SAUVOLA,cv2.ximgproc.BINARIZATION_WOLF,cv2.ximgproc.BINARIZATION_NICK]
+        globBin = cv2.THRESH_BINARY | cv2.THRESH_OTSU
+        thrInput = np.uint8(temp1)
+        # th = cv2.ximgproc.niBlackThreshold(thrInput,255,globBin,31,0.1, _, locBinsAll[2])
+        th = cv2.ximgproc.niBlackThreshold(thrInput,255,globBin,37,0.79, _, locBinsAll[2])
+        if 1==122:
+            aa = convertGray2RGB(thrInput)
+            thrInput = cv2.edgePreservingFilter(aa,None,1,200,0.5)
+            thrInput2 = convertRGB2Gray(thrInput)
+            th = cv2.ximgproc.niBlackThreshold(thrInput2,255,globBin,37,0.79, _, locBinsAll[2])    
+            # cv2.imshow('orig',aa)
+            # uu = cv2.hconcat([cv2.edgePreservingFilter(aa,None,1,200,0.5),aa.copy()])
+        # cv2.imshow(f'm{m}', th)
+        global runTh
+        # print(f'm= {m}, sum= {np.sum(th)}')
+        if m == testThreshold:
+            runTh = True
+            global xxx
+            xxx = imgBG[y:y+h,x:x+w]
+            # xxx = thrInput2
+        if m == 21:
+            # c = 255/(np.log(1 + np.max(subImage)))
+            gamma = 1.4
+            uu = orig[y:y+h,x:x+w]
+            tr = np.array(255*( uu/ 255) ** gamma, dtype = 'uint8')
+            # cv2.imshow('00', np.uint8(log_transformed))
+            init_ls = checkerboard_level_set(thrInput.shape, 4)
+
+            ls = morphological_chan_vese(uu, iterations=2, init_level_set=init_ls,
+                                         smoothing=3)
+            cv2.imshow('aa', cv2.hconcat([(ls*255).astype(np.uint8),uu,tr]))
+            
+        if 1==21:
+            ss = cv2.morphologyEx(th.copy(), cv2.MORPH_OPEN, np.ones((3,3),np.uint8))
+            cntrHull, _ = cv2.findContours(ss,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+            cont = np.vstack(cntrHull)
+            hull = cv2.convexHull(cont)
+            uni_hull = []
+            uni_hull.append(hull) # <- array as first element of list
+            xx = cv2.drawContours(  th.copy() * 0,   uni_hull, -1, 255, -1)
+            yy = cv2.drawContours(  th.copy() * 0,   cntrHull, -1, 255, -1)
+            zz = xx-yy
+            
+            zz = cv2.addWeighted(zz, 0.5, xx, 1 - 0.5,0)
+            hulls.append(zz)
+        if 11==1:
+            zz = cv2.morphologyEx(th.copy(), cv2.MORPH_OPEN, np.ones((3,3),np.uint8))
+            # dlt = 200
+            # zz = cv2.copyMakeBorder(zz.copy(), dlt, dlt, dlt, dlt, cv2.BORDER_CONSTANT, None, 0)
+            cntrHull, _ = cv2.findContours(zz,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+            minRect = [cv2.minAreaRect(c) for i,c in enumerate(cntrHull)]
+            
+
+            for i,c in enumerate(cntrHull):
+                box = cv2.boxPoints(minRect[i])
+                # print(minRect[i])
+                box = np.intp(box)
+                cv2.drawContours(zz, [box], 0, 124)
+                print(cv2.contourArea(box))
+                print(box)
+
+
+            # [cv2.drawContours(zz, [np.intp(cv2.boxPoints(A))], 0, 124) for A in minRect]
+            # [cv2.polylines(zz, c, True, 125, 1) for c in minRect]
+
+            hulls.append(zz)
+        # remove small white speckles
+        # th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
+        
+        # 4) REMOVED (joining neighbor bubbles) dilate-erode morphology is used to close gaps. 
+        # sub-image is expanded to prevent growing wall bound objects
+        # dilate = 3
+        # dilIter = 3
+        # dlt = dilate * dilIter + 1
+        # th2 = cv2.copyMakeBorder(th.copy(), dlt, dlt, dlt, dlt, cv2.BORDER_CONSTANT, None, 0)
+        # th2 = cv2.dilate(th2.copy(),np.ones((dilate,dilate),np.uint8),iterations = dilIter)
+        # th2 = cv2.erode(th2.copy(),np.ones((dilate,dilate),np.uint8),iterations = dilIter)
+        
+        # th2 = th2[dlt:-dlt,dlt:-dlt]
+        # reportList[3][y:y+h,x:x+w] = th2
+        
+        # if plotAreaRep == 1 and  drw ==0:
+        # drw = 1
+        checkErd = 4
+        # temp = np.sum(cv2.erode(th.copy(),np.ones((checkErd,checkErd),np.uint8),iterations = 1))
+        # print(f'm= {m}, sum= {temp}')
+        
+        if m == inspectBubbleDecay:  drw = 1
+        else:       drw = 0 
+        bubbleTypeAVG, arRemList, coefs = bubbleTypeCheck(image = th, index = m,erode = checkErd,close = 1,
+                                        areaRemainingThreshold = 0.75, graphics = drw)
+        # print(coefs)
+        if coefs[0]== None:# bubbleTypeCheck fails if there is only 1 iteration
+            m += 1
+            break
+        # print(f'm= {m}, arRemList= {arRemList}')
+        # print(coefs)
+        # print(arRemList)
+        if plotAreaRep == 1:
+            ax.plot(arRemList,linewidth  = 3,c = clrs[m],label= '#{}; {:.4f}'.format(m,coefs[0]))
+            # fx = arRemList[1:]
+            xx = np.arange(1,len(arRemList),1)
+            # zz = np.polyfit(xx, fx, 1)#list(range(1,len(y)+1,1))
+            ax.plot(xx,coefs[0]*xx +coefs[1],'--',c = clrs[m])
+            ax.legend(loc ="lower left")
+            ax.set_title('Relative area loss per iteration')
+            ax.set_ylim(0,1)
+            # print(np.full(len(arRemList),np.average(arRemList)))
+            # plt.legend([f'obj #{m}'])
+        if bubbleTypeAVG <= 0.1:
+            # bp, dlt = partialBubble(image = th, graphics = 0, m=m)
+            # reportList[4][y:y+h,x:x+w] = bp[dlt:-dlt,dlt:-dlt]
+            thcl = cv2.morphologyEx(th.copy(), cv2.MORPH_OPEN,
+                                                   np.ones((3,3),np.uint8))
+            tempFull  = hullGeneral(thcl)
+            
+         
+        if bubbleTypeAVG >= 0.9:# can join reflection with bubble or erode it
+            tempFull = cv2.morphologyEx(th.copy(), cv2.MORPH_OPEN,
+                                                   np.ones((3,3),np.uint8))
+            tempFull = maskDilateErode(img = tempRGB,mask = tempFull,
+                                       kernel = 13,iters = 1, order = 2, graphics = 0,
+                                       name = 'global '+str(m))
+            # cv2.imshow(str(m)+" tempFull",tempFull)
+            cntrHull, _ = cv2.findContours(tempFull,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+            if len(cntrHull) > 1:
+                areas = [cv2.contourArea(cntr) for cntr in cntrHull]
+                cntrHull = [cntrHull[np.argmax(areas)]]
+                tempFull = cv2.drawContours(tempFull.copy() *0, cntrHull, -1, 255,-1)
+                # cv2.imshow(str(m)+" tempFull",tempFull)
+            if 1 == 1:
+                # check if main contur takes up most of the frame. if not detect hull parasites
+                x1, y1, w1, h1 = cv2.boundingRect(cntrHull[0])
+                # cv2.rectangle(tempFull,(x1,y1),(x1+w1,y1+h1),127,1)
+                # cv2.rectangle(tempFull,(0,0),(x+w,y+h),127,1)
+                # print(f'{1/np.sqrt(h*w/(h1*w1))}')
+                # print(f'h1/h = {h1/h}, w1/w = {w1/w}')
+                scale = min(h1/h,w1/w)
+                if scale <= 0.65:
+                    dd          = 26
+                    origCntBrdr   = cv2.copyMakeBorder(tempFull.copy(), dd, dd, dd, dd, cv2.BORDER_CONSTANT, None, 0)
+                    origCntBrdrDil   = cv2.dilate(origCntBrdr.copy(),np.ones((dd,dd),np.uint8),iterations = 1)
+                    origRawBrdr          = cv2.copyMakeBorder(th.copy(), dd, dd, dd, dd, cv2.BORDER_CONSTANT, None, 0)
+                    isolatedMain         = cv2.bitwise_and(origCntBrdrDil.copy(),origRawBrdr.copy())
+                    isolatedRest         = cv2.absdiff( origRawBrdr , isolatedMain)
+                    isolatedRestOpn         = cv2.morphologyEx(isolatedRest, cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
+                    isolatedRestCls         = cv2.morphologyEx(isolatedRestOpn, cv2.MORPH_CLOSE, np.ones((5,5),np.uint8))
+                    isolatedRestHull         = hullGeneral(image=isolatedRestCls)
+                    # cv2.imshow('asd',cv2.hconcat([origCntBrdrDil,origRawBrdr,isolatedMain,isolatedRest,isolatedRestOpn,isolatedRestCls,isolatedRestHull]))
+                    # tt7         = isolatedRestHull[dd:-dd,dd:-dd]
+                    combineAllBrdr    = cv2.bitwise_or(origCntBrdr,isolatedRestHull)
+                    if 1==12:
+                        nms = ['origCntBrdrDil','origRawBrdr','isolatedMain','isolatedRest','isolatedRestOpn','isolatedRestCls','isolatedRestHull','combineAllBrdr']
+                        imgs = [origCntBrdrDil,origRawBrdr,isolatedMain,isolatedRest,isolatedRestOpn,isolatedRestCls,isolatedRestHull,combineAllBrdr]
+                        imgs = [cv2.putText(img, nms[i], (4,10), font, 0.3, 127, 1, cv2.LINE_AA) for i,img in enumerate(imgs)]
+                        cv2.imshow('closed multi '+str(m),cv2.hconcat(imgs))
+                    tempFull = combineAllBrdr[dd:-dd,dd:-dd]
+                # print(f'area old  = {w * h}')
+                # print(f'area new  = {w1 * h1}')
+        if 0.1<bubbleTypeAVG<0.9:
+            # print('0.1<criterium<0.9')
+            # tempFull = cv2.putText(th.copy(), '0.1<crt<0.9', (30,30), font, 0.2, 128, 1, cv2.LINE_AA)
+            tempFull = th.copy()
+        # print(coefs[0])    
+        if coefs[0] >= -0.01:
+            init_ls = checkerboard_level_set(th.shape, 4)
+            temp = orig[y:y+h,x:x+w]
+            ls = morphological_chan_vese(temp, iterations=10, init_level_set=init_ls, smoothing=3)
+            ls = np.uint8(ls*255)
+            # sometimes chain returns inverted image + some defects in the corners. sol-ns: 
+            # 1) extract biggest contour
+            # 2) (our) check mean border color, most likely w/o A bubble
+            maskLs = np.zeros(th.shape,dtype=np.uint8)
+            maskLs[10:h-10,10:w-10]=1
+            ma = np.ma.array(ls, mask=maskLs)
+            if ma.mean()<=128:
+                tempFull = ls
+            else:
+                tempFull = removeBorderComponents(cv2.bitwise_not(ls),1,1)
+            #----tempFull---------------------
+            # tempFull = tempFull *0
+                
+            # cv2.imshow(f'{m}', cv2.hconcat([tempFull,temp,ls,cv2.bitwise_not(ls)]))
+            # cv2.imshow(f'2m {m}', maskLs)
+            # print( ma.mean()) 
+         
+        if m==testEdgePres:
+            aa = convertGray2RGB(orig[y:y+h,x:x+w])
+            # cv2.imshow('orig',aa)
+            gg = cv2.edgePreservingFilter(aa,None,1,200,0.5)
+            gg = cv2.blur(gg, (3,3),cv2.BORDER_REFLECT)
+            # uu = cv2.hconcat([gg,aa.copy()])
+            uu = convertRGB2Gray(gg)
+            # ss = resizeToMaxHW(uu,1600,900)
+            maskLs = np.zeros(uu.shape,dtype=np.uint8)
+            maskLs[10:h-10,10:w-10]=1
+            ma = np.ma.array(uu, mask=maskLs)
+            mn = np.mean(ma)
+            print(mn)
+            d = 6
+            _,hh = cv2.threshold(uu,int(mn)+d,255,cv2.THRESH_BINARY)
+            bb = cv2.hconcat([uu,hh])
+            
+            _,hh2 = cv2.threshold(orig[y:y+h,x:x+w],int(mn)+d,255,cv2.THRESH_BINARY)
+            bb2 = cv2.hconcat([orig[y:y+h,x:x+w],hh2])
+            gugu = resizeToMaxHW(cv2.vconcat([bb2,bb]),1200,600)
+            cv2.imshow('asdasstyl',gugu)
+        
+        if graphics == 1 or exportGraphics == 1:
+            
+            if m ==0:
+                alpha = 0.5
+                msk = cv2.addWeighted(err.copy(), alpha, mask, 1 - alpha,0)
+                reportListRGB[0] = maskedBlend(reportListRGB[0],overlayColor,msk.copy(),overlayOpacityMultiplier)
+            if coefs[0] >= -0.01: textColor = textColorFull
+            else: textColor = textColorEmpty
+        
+            for c, subMask in enumerate([th00,th,tempFull]):
+                
+                blank = mask.copy() * 0
+                c += 1
+                blank[y:y+h,x:x+w] = subMask
+                reportListRGB[c] = maskedBlend(reportListRGB[c],overlayColor,blank.copy(),overlayOpacityMultiplier)
+                reportListRGB[c] = cv2.putText(reportListRGB[c], str(m), (x+4,y+12), font, 0.3, textColor, 1, cv2.LINE_AA)
+                reportListRGB[c] = cv2.rectangle(reportListRGB[c],(x-1,y-1),(x+w,y+h),textColor,1)
+                if c >= 2:
+                    reportListRGB[c] = cv2.putText(reportListRGB[c], "{:01.2f}".format(bubbleTypeAVG), (x+4,y+h-4), font, 0.3, textColor, 1, cv2.LINE_AA)
+                    reportListRGB[c] = cv2.putText(reportListRGB[c], "{:01.4f}".format(coefs[0]), (x+2,y-4), font, 0.3, textColor, 1, cv2.LINE_AA)
+                    
+                    
+        m += 1
+    if graphics == 1 or exportGraphics == 1:
+        reportNames = [f'{thresh0}+ => 255 and hull', f' >{lowThreshold}+ => 255 threshold, closing by r{kerSize}','local threshold','new']
+
+        reportSet = [cv2.putText(c, reportNames[A], (30,30), font, 0.8, (0,255,255), 2, cv2.LINE_AA) for A,c in enumerate(reportListRGB)]
+        
+        c = [resizeToMaxHW(img,1200,900) for img in reportSet] 
+        def on_trackbar2(var):
+            on_trackbar(var,reportSet)
+    if graphics == 1:
+        if drawFileName == 1:
+            # reportSet[0] = cv2.putText(reportSet[0], os.path.basename(imageLinks[imgNum]) , (30,55), font, 0.8, (0,255,255), 2, cv2.LINE_AA)
+            title_window = f'file: { os.path.basename(imageLinks[imgNum])}'
+        else: title_window = f'image # {imgNum}'
+        def on_trackbar(val,array):
+            cv2.imshow(title_window, array[val])
+        cv2.namedWindow(title_window,cv2.WINDOW_AUTOSIZE)
+        cv2.createTrackbar("report #", title_window , 0, nReports-1, on_trackbar2)
+        on_trackbar2(0)
+        [cv2.imshow('hulls '+str(i), resizeToMaxHW(hulls[i],400,400)) for i in range(len(hulls))]
+    
+        
+    # cntrHull, _ = cv2.findContours(reportList[nReports-1],cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+    
+    # return reportSet[nReports-1]
+    # return cv2.drawContours( mean,   cntrHull, -1, (0,255,255), 1)
+    return reportList[nReports-1]

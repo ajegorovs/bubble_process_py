@@ -7,6 +7,7 @@ Created on Tue May 24 17:17:57 2022
 import glob, pickle, numpy as np, cv2, os, itertools
 from scipy import interpolate
 from matplotlib import pyplot as plt
+import alphashape
 
 def init(folder,imageNumber): # initialize some globals, so i dont have to pass them. EDIT: IDK wth does it do, looks like nothing
     global imageMainFolder,imgNum
@@ -1448,7 +1449,7 @@ def tempStore(contourIDs, contours, mask, image, dataSets):
 #     dataSets = [l_RBub_r_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull]
 #else: 
 #    dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull]
-def tempStore2(contourIDs, contours, globalID, mask, image, dataSets):
+def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0):
     # smallest x centroid survives. ID:Cx -> smallest Cx ID
                     
     gatherPoints                    = np.vstack([contours[k] for k in contourIDs])
@@ -1462,9 +1463,19 @@ def tempStore2(contourIDs, contours, globalID, mask, image, dataSets):
     baseSubImage[subSubMask == 0]   = 0
                     
     centroid = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
-    hullArea = getCentroidPosContours(bodyCntrs = [contours[k] for k in contourIDs], hullArea = 1)[1]
-    
-    for storage, data in zip(dataSets,[baseSubMask , baseSubImage, contourIDs, ([x,y,w,h]), centroid, hullArea]):
+    if concave == 0:
+        hull                            = cv2.convexHull(np.vstack(contours[contourIDs]))
+        hullArea                        = getCentroidPosContours(bodyCntrs = [hull])[1]
+        #hullArea = getCentroidPosContours(bodyCntrs = [contours[k] for k in contourIDs], hullArea = 1)[1]
+    else:
+        #points_2d = np.vstack([contours[ID] for ID in contourIDs]).reshape(-1,2)
+        points_2d = np.vstack(contours[contourIDs]).reshape(-1,2)
+        alpha_shape = alphashape.alphashape(points_2d, 0.05)
+        if alpha_shape.geom_type == 'Polygon':
+                xx,yy         = alpha_shape.exterior.coords.xy
+                hull        = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
+                hullArea    = cv2.contourArea(hull)
+    for storage, data in zip(dataSets,[baseSubMask , baseSubImage, contourIDs, ([x,y,w,h]), centroid, hullArea, hull]):
         storage[globalID] = data
 
     #l_bubble_type[selectID]                 = typeTemp   #<<<< inspect here for duplicates

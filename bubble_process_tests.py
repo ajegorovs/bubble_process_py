@@ -325,8 +325,8 @@ def extractManualMask(): # either draw red masks over or using Paint, set bg col
 
 #typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge,typeRecoveredFrozen = np.int8(0),np.int8(1),np.int8(2),np.int8(3), np.int8(4), np.int8(5), np.int8(6), np.int8(7)
 
-[typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge,typeRecoveredFrozen] = np.array([0,1,2,3,4,5,6,7])
-typeStrFromTypeID = {tID:tStr for tID,tStr in zip(np.array([0,1,2,3,4,5,6,7]),['Full','Ring', 'RecoveredRing', 'Else', 'Frozen', 'RecoveredElse', 'PreMerge', 'RecoveredFrozen'])}
+[typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge,typeRecoveredFrozen,typeMerge] = np.array([0,1,2,3,4,5,6,7,8])
+typeStrFromTypeID = {tID:tStr for tID,tStr in zip(np.array([0,1,2,3,4,5,6,7,8]),['Full','Ring', 'RecoveredRing', 'Else', 'Frozen', 'RecoveredElse', 'PreMerge', 'RecoveredFrozen', 'Merge'])}
 # g_(...) are global storage variable that contain info from all processed times.
 # l_(...) are local storage variable that contain info from current time.
 # l_(...)_old are global variables that contain info from previous time. its technically global to acces across two time steps, but are local by idea.
@@ -335,19 +335,21 @@ g_Centroids, g_Rect_parms, g_Ellipse_parms, g_Areas, g_Masks, g_Images, g_old_ne
 l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_areas_hull_old, l_RBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
 l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old, l_DBub_centroids_old, l_DBub_areas_hull_old, l_DBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
 l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old, l_FBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
+l_MBub_masks_old, l_MBub_images_old, l_MBub_rect_parms_old, l_MBub_centroids_old, l_MBub_areas_hull_old, l_MBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
 frozenGlobal,frozenGlobal_LocalIDs = {},{}
 
 g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull = {},{},{}
-g_contours,  frozenBubs, frozenBubsTimes,  l_bubble_type_old = {}, {}, {}, {}
+g_contours, g_contours_hull,  frozenBubs, frozenBubsTimes,  l_bubble_type_old = {}, {}, {}, {}, {}
 l_Centroids_old, l_Areas_old,l_Areas_hull_old, l_BoundingRectangle_params, l_BoundingRectangle_params_old = {}, {}, {}, {}, {}
 g_predict_displacement, g_predict_area_hull  = {}, {}; frozenIDs, frozenIDs_old  = [],[]
 l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old = {}, {}, {}, {}, {}, {}, {}
 def mainer(index):
-    global globalCounter, g_contours, frozenBubs, frozenBubsTimes, l_Centroids_old, l_Areas_old, l_Areas_hull_old, l_BoundingRectangle_params, l_BoundingRectangle_params_old
+    global globalCounter, g_contours, g_contours_hull, frozenBubs, frozenBubsTimes, l_Centroids_old, l_Areas_old, l_Areas_hull_old, l_BoundingRectangle_params, l_BoundingRectangle_params_old
 
     global l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_old_new_IDs_old, ringCntrIDs
     global l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old,  l_DBub_centroids_old, l_DBub_areas_hull_old, l_DBub_old_new_IDs_old
     global l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old, l_FBub_old_new_IDs_old
+    global l_MBub_masks_old, l_MBub_images_old, l_MBub_rect_parms_old, l_MBub_centroids_old, l_MBub_areas_hull_old, l_MBub_old_new_IDs_old
     global g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull
     global g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,l_bubble_type_old,g_child_contours
     global g_predict_displacement, g_predict_area_hull, frozenIDs, frozenIDs_old
@@ -370,11 +372,12 @@ def mainer(index):
 
     global debugVecPredict,contoursFilter_RectParams_dropIDs_old
     mergeCandidates,mergeCandidatesSubcontourIDs = {},{}
-    l_bubble_type= {}
+    l_bubble_type, l_contours_hull, l_RBub_contours_hull, l_DBub_contours_hull, l_FBub_contours_hull, l_MBub_contours_hull      = {}, {}, {}, {}, {}, {}
     l_RBub_masks, l_RBub_images, l_RBub_rect_parms, l_RBub_centroids, l_RBub_areas_hull, l_RBub_old_new_IDs             = {}, {}, {}, {}, {}, {}
     l_DBub_masks, l_DBub_images, l_DBub_rect_parms, l_DBub_centroids, l_DBub_areas_hull, l_DBub_old_new_IDs             = {}, {}, {}, {}, {}, {}
     l_RBub_r_masks, l_RBub_r_images, l_RBub_r_rect_parms,l_RBub_r_centroids, l_RBub_r_areas_hull, l_RBub_r_old_new_IDs  = {}, {}, {}, {}, {}, {}
     l_DBub_r_masks, l_DBub_r_images, l_DBub_r_rect_parms,l_DBub_r_centroids, l_DBub_r_areas_hull, l_DBub_r_old_new_IDs  = {}, {}, {}, {}, {}, {}
+    l_MBub_masks, l_MBub_images, l_MBub_rect_parms, l_MBub_centroids, l_MBub_areas_hull, l_MBub_old_new_IDs             = {}, {}, {}, {}, {}, {}
     l_FBub_masks, l_FBub_images, l_FBub_rect_parms, l_FBub_centroids, l_FBub_areas_hull                                 = {}, {}, {}, {}, {}
     predictCentroidDiff_local = {}
     # get contours from binary image. filter out useless. 
@@ -450,11 +453,11 @@ def mainer(index):
             [cv2.drawContours( subSubMask, l_contours, ID, 255, -1, offset = (-x,-y)) for ID in newLocalIDs]
             baseSubMask[subSubMask == 0]        = 0
             baseSubImage[subSubMask == 0]       = 0
-
+            hull                            = cv2.convexHull(np.vstack(l_contours[newLocalIDs]))       
             l_FBub_masks[oldLocalID]            = baseSubMask
             l_FBub_images[oldLocalID]           = baseSubImage
-            l_FBub_areas_hull[oldLocalID]       = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in newLocalIDs], hullArea = 1)[1]
-            
+            l_FBub_areas_hull[oldLocalID]       = getCentroidPosContours(bodyCntrs = [hull])[1] # getCentroidPosContours(bodyCntrs = [l_contours[k] for k in newLocalIDs], hullArea = 1)[1]
+            l_FBub_contours_hull[oldLocalID]      = hull
             #findOldGlobIds = []; [findOldGlobIds.append(globID) for globID, locIDs in l_old_new_IDs_old.items() if oldLocalID in locIDs]
             if type(oldLocalID) == str:                                                                # if old ID already has global ID (str -> global, int -> local)
                 if int(oldLocalID) in l_old_new_IDs_old or oldLocalID in lastNStepsFrozenRectParams:   # in case oldLocalID is old Else bubble ~='7' 11/02/23 or frozen from N step back 18/02/23
@@ -496,8 +499,8 @@ def mainer(index):
         # 1.1 ------------- GRAB RING BUBBLES RB ----------------------
     #for (cntPi,cntP) in enumerate(l_contours[whereParentAreaFiltered]): #subset contours
     for (newID,cntP) in zip(whereParentAreaFiltered,l_contours[whereParentAreaFiltered]):
-
-        cpr,_ = getCentroidPosContours(bodyCntrs = [cntP],holesCntrs=[])
+        hull            = cv2.convexHull(cntP)       
+        cpr, hullArea   = getCentroidPosContours(bodyCntrs = [hull])
         if newID in whereChildrenAreaFiltered:
             # save outer ring bubble mask to temp storage for next iteration
             x,y,w,h                         = cv2.boundingRect(cntP)
@@ -506,14 +509,15 @@ def mainer(index):
             subSubMask                      = cv2.drawContours( np.zeros((h,w),np.uint8),   [cntP], -1, 255, -1,offset = (-x,-y))
             baseSubMask[subSubMask == 0]    = 0
             baseSubImage[subSubMask == 0]   = 0
-                    
             l_RBub_masks[newID]             = baseSubMask
             l_RBub_images[newID]            = baseSubImage
             l_RBub_rect_parms[newID]        = [x,y,w,h]
             l_RBub_centroids[newID]         = cpr 
             l_RBub_old_new_IDs[newID]       = [newID]
-            _, hullArea                     = getCentroidPosContours(bodyCntrs = [cntP],holesCntrs=[], hullArea = 1)
+            l_RBub_contours_hull[newID]     = hull
+            #_, hullArea                     = getCentroidPosContours(bodyCntrs = [cntP],holesCntrs=[], hullArea = 1)
             l_RBub_areas_hull[newID]        = hullArea
+            
                 
 
     # -----------------recover old-new ring bubble relations--------------------------
@@ -537,14 +541,16 @@ def mainer(index):
 
             for newID, newCentroid in list(l_RBub_centroids.items()):                                       # iterate though current frame's RBs
                 dist2       = np.linalg.norm(np.array(predictCentroid) - np.array(newCentroid))             # distance between predictect from history centroid and new centroid
-                newArea     = getCentroidPosContours(bodyCntrs = [l_contours[newID]], hullArea = 1)[1]      # hull area of new RB
+                hull        = cv2.convexHull(np.vstack(l_contours[cntP]))       
+                newArea     = getCentroidPosContours(bodyCntrs = [hull])[1] # getCentroidPosContours(bodyCntrs = [l_contours[newID]], hullArea = 1)[1]      # hull area of new RB
                 areaCrit    = np.abs(newArea-oldMeanArea)/ oldAreaStd                                       # calculate relative area change, 0= no change, 0.5 = +/- 50 % increase
                 #relArea = abs(oldArea - newArea)/oldArea
                 #print(f'oldID:{oldID}; newID:{newID}, dist2:{dist2:0.1f}, areaCrit:{areaCrit:0.2f}')
                 if dist2 <= distCheck2 + 5*distCheck2Sigma and  areaCrit < 3:                               # distance and area change check
-                    predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), int(dist2)]        # update/store pred-actual c-c dist  #np.around(dist2,2) 15/03/23
-                    RBOldNewDist = np.append(RBOldNewDist,[[oldID,newID]],axis=0)                           # store a match
-                    l_bubble_type[oldID] = typeRing                                                         # ???? ===== store type may be not needed. idk
+                    predictCentroidDiff_local[oldID]    = [tuple(map(int,predictCentroid)), int(dist2)]     # update/store pred-actual c-c dist  #np.around(dist2,2) 15/03/23
+                    RBOldNewDist                        = np.append(RBOldNewDist,[[oldID,newID]],axis=0)    # store a match
+                    l_bubble_type[oldID]                = typeRing                                          # ???? ===== store type may be not needed. idk
+                    l_RBub_contours_hull[oldID]           = hull
                     print(f' resolved oldID:{oldID}- newID:{newID} relation with pC-cDist:{dist2:0.1f} and  areaCrit:{areaCrit:0.2f}')
                 else:
                     accumulateFailParams.append([[oldID,newID],[int(dist2),int(distCheck2),int(distCheck2Sigma)],[np.around(areaCrit,2)]]) # store fails
@@ -606,8 +612,12 @@ def mainer(index):
                     l_RBub_r_rect_parms[i]          = [xt,yt,wt,ht]
                     l_RBub_r_centroids[i]           = tempC
                     l_RBub_r_old_new_IDs[i]         = overlapingContourIDList
-                    l_RBub_r_areas_hull[i]          = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in overlapingContourIDList], hullArea = 1)[1]
-                    
+                    hull                            = cv2.convexHull(np.vstack(l_contours[overlapingContourIDList]))       
+                    #hullArea                        = getCentroidPosContours(bodyCntrs = [hull])[1]
+                    l_RBub_contours_hull[i]            = hull
+            
+                    #l_RBub_r_areas_hull[i]          = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in overlapingContourIDList], hullArea = 1)[1]
+                    l_RBub_r_areas_hull[i]          = getCentroidPosContours(bodyCntrs = [hull])[1]
                     l_bubble_type[i]                = typeRecoveredRing
                     g_bubble_type[i][globalCounter] = typeRecoveredRing
                     oldC = l_centroids_old[i];#print(f'**** oldC:{oldC}, tempC:{tempC}')
@@ -764,11 +774,14 @@ def mainer(index):
 
                     #cv2.imshow(f'{mainID}',subSubMask)
                     tempID                          = min(overlapingContourIDList)
+                    hull                            = cv2.convexHull(np.vstack(l_contours[overlapingContourIDList]))       
+                    hullArea                        = getCentroidPosContours(bodyCntrs = [hull])[1]
+                    l_DBub_contours_hull[tempID]         = hull
                     l_DBub_masks[tempID]            = baseSubMask
                     l_DBub_images[tempID]           = baseSubImage
                     l_DBub_old_new_IDs[tempID]      = overlapingContourIDList
                     l_DBub_rect_parms[tempID]       = ([xt,yt,wt,ht])
-                    hullArea                        = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in overlapingContourIDList], hullArea = 1)[1]
+                    #hullArea                        = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in overlapingContourIDList], hullArea = 1)[1]
                     l_DBub_centroids[tempID]        = getCentroidPos(inp = baseSubMask, offset = (xt,yt), mode=0, mask=[])
                     l_DBub_areas_hull[tempID]       = hullArea
                 
@@ -777,6 +790,10 @@ def mainer(index):
             else:
                 for key, cntrIDlist in jointNeighbors.items():
                     tempStore(cntrIDlist, l_contours, err, orig, [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull])
+                    hull                            = cv2.convexHull(np.vstack(l_contours[cntrIDlist]))       
+                    hullArea                        = getCentroidPosContours(bodyCntrs = [hull])[1]
+                    l_DBub_contours_hull[min(cntrIDlist)]         = hull
+                    
                     #cv2.imshow(f'2, {key}',subSubMask)
                 
                     
@@ -830,19 +847,27 @@ def mainer(index):
                     #clusterPerms(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], oldID, globalCounter ,debug = 1)
                 #----------------- looking for new else bubs related to old else bubs ---------------------
                 for mainNewID, subNewIDs in jointNeighborsWoFrozen.items():
-                    newCentroid, newArea = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in subNewIDs], hullArea = 1)             # likely that this cluster is a bubble. get its params
+                    hull                            = cv2.convexHull(np.vstack(l_contours[subNewIDs]))       
+                    #newCentroid, newArea = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in subNewIDs], hullArea = 1)             # likely that this cluster is a bubble. get its params
+                    newCentroid, newArea = getCentroidPosContours(bodyCntrs = [hull])                                                       # likely that this cluster is a bubble. get its params
+                    
                     #relArea = abs(areaCheck - newArea)/areaCheck
                     #dist = np.linalg.norm(np.array(newCentroid) - np.array(oldCentroid))
                     dist2 = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))                                               # distance between cluster and predicted centroids
                     areaCrit = np.abs(newArea-oldMeanArea)/ oldAreaStd
-                        
+                    
+                    # ==== if OG cluster matches perfectly, take it as a solution ====
                     if dist2 <= distCheck2 + 5*distCheck2Sigma and areaCrit < 3:
                         print(f'dist-dist. Perfect match: {oldID} <-> mainNewID: {mainNewID}:{subNewIDs}, dist2: {dist2:0.1f}, areaCrit: {areaCrit:0.1f}')
-                        predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), int(dist2)] #np.around(dist2,2) 15/03/23
+                        predictCentroidDiff_local[oldID]            = [tuple(map(int,predictCentroid)), int(dist2)] #np.around(dist2,2) 15/03/23
                         elseOldNewDoubleCriterium.append([oldID,mainNewID,dist2,areaCrit])
                         elseOldNewDoubleCriteriumSubIDs[mainNewID] = subNewIDs
+                        l_DBub_contours_hull[mainNewID]                  = hull
+                    # ==== if either distance or area are too different skip further checks, do nothing (do 0, skip else) ====
                     elif dist2 > 70 or areaCrit > 15:
                         0#;print('dist 2. soft break')
+                    # ==== if (else) no perfect match and dist/area are not violated do permutation analysis ====
+                    # ==== get best case [permIDsol2, permDist2, permRelArea2], if they look ok, then save ====
                     else:
                         cvr2 = 0.8
                         debug = 1 if globalCounter == -1  else 0 #and oldID == 2
@@ -857,13 +882,7 @@ def mainer(index):
                         passRest    = np.where((rOverlap > 0.05) & (rOverlap < 0.9))[0]
                         print(np.vstack((subNewIDs,rOverlap)))
                         baseIDs     = np.array(subNewIDs,int)[passBase]
-                        #slIntervals2= np.array([[36, 52],[14, 47],[42, 67]])
-                        #overlap2     = getOverlap(ogInterval,slIntervals2,0)
-                        #SlaveDistr2 = SlaveDistr.copy()
-                        #SlaveDistr2[66] = {47:1,48:2,49:10,50:3,51:2}
-                        #bandLeft = np.array([sum([numPix for ID,numPix in SlaveDistr2[ID].items() if ID <= OGband[1]+OGband[2]]) for ID in [20,22,66]],int)
-                        #bandRight = np.array([sum([numPix for ID,numPix in SlaveDistr2[ID].items() if ID > OGband[1]+OGband[2]]) for ID in [20,22,66]],int)
-
+                        
                         # left band means r from [0,OG interval right coord], right band means  [OG interval right coord, rest]
                         restIDs     = np.array(subNewIDs,int)[passRest]
                                 
@@ -903,26 +922,33 @@ def mainer(index):
                             
                             print(f'\ndist-dist. Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, permIDsol2: {permIDsol2}, permDist2: {permDist2}')
                             #pDist = np.linalg.norm(np.array(newCentroid) - np.array(oldCentroid)).astype(np.uint32)
-                            predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), np.around(permDist2,2)]
+                            hull                                                = cv2.convexHull(np.vstack(l_contours[permIDsol2]))       
+                            l_DBub_contours_hull[min(permIDsol2)]                    = hull
+                            predictCentroidDiff_local[oldID]                    = [tuple(map(int,predictCentroid)), np.around(permDist2,2)]
+                            elseOldNewDoubleCriteriumSubIDs[min(permIDsol2)]    = permIDsol2
                             elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),dist2,permRelArea2])
-                            elseOldNewDoubleCriteriumSubIDs[min(permIDsol2)] = permIDsol2
+                            
                 
                 #----------------- looking for new rings related to old else bubs ---------------------
                 print('checking ring-dist relations...')
                 for unresNewRBID in newFoundBubsRings:
                     #assert 11<0, "going into untested code!!!!! (for unresNewRBID in newFoundBubsRings)"
-                    subNewIDs = unresNewRBID#l_old_new_IDs_old[]
-                    newCentroid, newArea = getCentroidPosContours(bodyCntrs = [l_contours[unresNewRBID]], hullArea = 1)
+                    subNewIDs               = unresNewRBID#l_old_new_IDs_old[]
+                    hull                    = cv2.convexHull(np.vstack(l_contours[unresNewRBID]))       
+                    newCentroid, newArea    = getCentroidPosContours(bodyCntrs = [hull]) 
+                    #newCentroid, newArea = getCentroidPosContours(bodyCntrs = [l_contours[unresNewRBID]], hullArea = 1)
                     #relArea = abs(areaCheck - newArea)/areaCheck
-                    dist2 = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid)).astype(np.uint32)
-                    areaCrit = np.abs(newArea-oldMeanArea)/ oldAreaStd
+                    dist2                   = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid)).astype(np.uint32)
+                    areaCrit                = np.abs(newArea-oldMeanArea)/ oldAreaStd
                     if dist2 <= distCheck2 + 5*distCheck2Sigma and  areaCrit < 3:
                         print(f'\nrb-dist. Perfect match: {oldID} <-> unresNewRBID: {unresNewRBID}, dist2: {dist2:0.1f}, areaCrit: {areaCrit:0.1f}')
-                        predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), dist2]
+                        predictCentroidDiff_local[oldID]                = [tuple(map(int,predictCentroid)), dist2]
+                        elseOldNewDoubleCriteriumSubIDs[unresNewRBID]   = [subNewIDs]
+                        l_bubble_type[oldID]                            = typeRing          # not clear which ID is used, l_ should have new ID.
+                        l_RBub_contours_hull[unresNewRBID]                = hull
                         elseOldNewDoubleCriterium.append([oldID,unresNewRBID,dist2,areaCrit])
-                        elseOldNewDoubleCriteriumSubIDs[unresNewRBID] = [subNewIDs]
                         newFoundBubsRings.remove(unresNewRBID)
-                        l_bubble_type[oldID] = typeRing
+                        
                     elif dist2 > 70 or areaCrit > 15:
                         0#;print('dist 2. soft break') # if values are completely wack, dont try to do permutations
                     else:
@@ -931,11 +957,13 @@ def mainer(index):
                                                     predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = debug)
                         if len(permIDsol2)>0:
                             print(f'\nrb-dist. Permutation reconstruct. oldID: {oldID}, subNewIDs: {subNewIDs}, permIDsol2: {permIDsol2}, permDist2: {permDist2}')
-                            predictCentroidDiff_local[oldID] = [tuple(map(int,predictCentroid)), permDist2]
+                            predictCentroidDiff_local[oldID]                    = [tuple(map(int,predictCentroid)), permDist2]
+                            elseOldNewDoubleCriteriumSubIDs[min(permIDsol2)]    = permIDsol2
+                            l_bubble_type[oldID]                                = typeRing
+                            l_RBub_contours_hull[unresNewRBID]                    = hull
                             elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),dist2,permRelArea2])
-                            elseOldNewDoubleCriteriumSubIDs[min(permIDsol2)] = permIDsol2
                             newFoundBubsRings.remove(unresNewRBID)
-                            l_bubble_type[oldID] = typeRing
+                            
             # in case elseOldNewDoubleCriterium  has multiple options, select most likely
             print(elseOldNewDoubleCriterium)
             if len(elseOldNewDoubleCriterium)>0:
@@ -971,6 +999,9 @@ def mainer(index):
                 distCntrSubset                  = np.vstack([l_contours[ID] for ID in cntrIDlist])#;print(distCntrSubset.shape)
                 x,y,w,h                         = cv2.boundingRect(distCntrSubset)#;print([x,y,w,h])
                 tempID                          = min(cntrIDlist)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
+                hull                            = cv2.convexHull(np.vstack(l_contours[cntrIDlist]))       
+                hullArea                        = getCentroidPosContours(bodyCntrs = [hull])[1]
+                l_DBub_contours_hull[tempID]      = hull
                 
                 baseSubMask,baseSubImage        = err.copy()[y:y+h, x:x+w], orig.copy()[y:y+h, x:x+w]
                 subSubMask                      = np.zeros((h,w),np.uint8)
@@ -985,7 +1016,7 @@ def mainer(index):
                 l_DBub_old_new_IDs[tempID]      = cntrIDlist
                 l_DBub_rect_parms[tempID]       = ([x,y,w,h])
                 l_DBub_centroids[tempID]        = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
-                l_DBub_areas_hull[tempID]       = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in cntrIDlist], hullArea = 1)[1]
+                l_DBub_areas_hull[tempID]       = hullArea # getCentroidPosContours(bodyCntrs = [l_contours[k] for k in cntrIDlist], hullArea = 1)[1]
             #print('l_DBub_centroids',l_DBub_centroids)
             #cv2.imshow('gfx debug 22: jointNeighbors',blank) if debugOnlyGFX(22) else 0
                 
@@ -1078,14 +1109,17 @@ def mainer(index):
                     else:
                         tempC = getCentroidPos(inp = tempMask, offset = (xt,yt), mode=0, mask=[])
                            
-
+                    hull                            = cv2.convexHull(np.vstack(l_contours[overlapingContourIDList]))       
+                    hullArea                        = getCentroidPosContours(bodyCntrs = [hull])[1]
+                    l_DBub_contours_hull[i]      = hull
+                
                     l_DBub_r_masks[i]               = tempMask  # l_DBub_r_masks keys are used for _old/global storage
                     l_DBub_r_images[i]              = baseSubImage
                     l_DBub_r_rect_parms[i]          = [xt,yt,wt,ht]
                     l_DBub_r_centroids[i]           = tempC
                     l_DBub_r_old_new_IDs[i]         = overlapingContourIDList
                     
-                    l_DBub_r_areas_hull[i]          = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in overlapingContourIDList], hullArea = 1)[1]
+                    l_DBub_r_areas_hull[i]          = hullArea # getCentroidPosContours(bodyCntrs = [l_contours[k] for k in overlapingContourIDList], hullArea = 1)[1]
 
                     g_bubble_type[i][globalCounter] = typeRecoveredElse
                     l_bubble_type[i]                = typeRecoveredElse
@@ -1122,12 +1156,15 @@ def mainer(index):
             if len(jointNeighbors)> 0:
                 for ID,cntrIDs in jointNeighbors.items():
                     tempMask, baseSubImage, [xt,yt,wt,ht], tempC = getMasksParams(l_contours,cntrIDs,err,orig)
+                    hull                            = cv2.convexHull(np.vstack(l_contours[cntrIDs]))       
+                    l_DBub_contours_hull[ID]         = hull
+                
                     l_DBub_masks[ID]        = tempMask
                     l_DBub_images[ID]       = baseSubImage
                     l_DBub_rect_parms[ID]   = [xt,yt,wt,ht]
                     l_DBub_centroids[ID]    = tempC
                     l_DBub_old_new_IDs[ID]  = cntrIDs
-                    l_DBub_areas_hull[ID]   = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in cntrIDs], hullArea = 1)[1]
+                    l_DBub_areas_hull[ID]   = getCentroidPosContours(bodyCntrs = [hull])[1] # getCentroidPosContours(bodyCntrs = [l_contours[k] for k in cntrIDs], hullArea = 1)[1]
                 newFoundBubsElse = newFoundBubsElse + [elem for elem in list(jointNeighbors.keys()) if elem not in newFoundBubsElse]
                         
             print('mergeCandidates',mergeCandidates) if debugOnly(22) else 0
@@ -1175,50 +1212,72 @@ def mainer(index):
             #print(f'new: {new}')
             #if len(new)<len(old) and len(new)>0: # merge
             if len(old) > 1:                                # 17/03/23 changed condition from top. idk what that ment. now two or more oldIDs is enough evidence for merge.
-                typeTemp        = typeRing if any(item in newFoundBubsRings for item in new) else typeElse
-                print(f'typeTemp {typeTemp}: {typeStrFromTypeID[typeTemp]}')
                 
-                if typeTemp == typeRing:
-                    dataSets    = [l_RBub_r_masks,l_RBub_r_images,l_RBub_r_old_new_IDs,l_RBub_r_rect_parms,l_RBub_r_centroids,l_RBub_r_areas_hull]
-                else: 
-                    dataSets    = [l_DBub_r_masks,l_DBub_r_images,l_DBub_r_old_new_IDs,l_DBub_r_rect_parms,l_DBub_r_centroids,l_DBub_r_areas_hull]
                 
-                centroidsTemp                   = {ID: g_Centroids[ID][globalCounter-1][0] for ID in old} # ID is inteherted to bubble closer to free surface (minimal x coord)
-                selectID                        = min(centroidsTemp, key=centroidsTemp.get)
-                
-                tempStore2(new, l_contours, selectID, err, orig, dataSets)
+                # if smallest bubble is merged into big one- keep big one, drop small. rethink case with 3 bubbles.
+                # if smaller bubble has at least 20% of big bubble's area, end them both and create new object. set old ones to pre-merge type
+                #id1,id2 = old
+                #area1,area2 = l_areas_hull_old[id1],l_areas_hull_old[id2]
+                # =========== CASE for 2 bubbles merging =================
+                areaList        = np.array([l_areas_hull_old[ID] for ID in old])
+                #areaSmallestID  = np.argmin(areaList)                                   # which ID has a smallest hull area?
+                areaLargestID   = np.argmax(areaList)
+                areaRatio       = areaList/areaList[areaLargestID]
+                areaThreshold   = 0.2
+                areaTest        = np.where(areaRatio<areaThreshold,1,0)
+                hasSmallBsMerge = any(areaTest)
 
-                l_bubble_type[selectID]                 = typeTemp   #<<<< inspect here for duplicates
-                g_bubble_type[selectID][globalCounter]  = typeTemp
+                if hasSmallBsMerge == True:
+                    typeTemp        = typeRing if any(item in newFoundBubsRings for item in new) else typeElse      # maybe drop or change ring+ big area.
+                    print(f'typeTemp {typeTemp}: {typeStrFromTypeID[typeTemp]}')
+                
+                    if typeTemp == typeRing:
+                        dataSets    = [l_RBub_r_masks,l_RBub_r_images,l_RBub_r_old_new_IDs,l_RBub_r_rect_parms,l_RBub_r_centroids,l_RBub_r_areas_hull,l_RBub_contours_hull]
+                    else: 
+                        dataSets    = [l_DBub_r_masks,l_DBub_r_images,l_DBub_r_old_new_IDs,l_DBub_r_rect_parms,l_DBub_r_centroids,l_DBub_r_areas_hull,l_DBub_contours_hull]
+                
+                    centroidsTemp                   = {ID: g_Centroids[ID][globalCounter-1][0] for ID in old} # ID is inteherted to bubble closer to free surface (minimal x coord)
+                    selectID                        = min(centroidsTemp, key=centroidsTemp.get)
+                
+                    tempStore2(new, l_contours, selectID, err, orig, dataSets)
+
+                    l_bubble_type[selectID]                 = typeTemp   #<<<< inspect here for duplicates
+                    g_bubble_type[selectID][globalCounter]  = typeTemp
+
+                    for ID in [elem for elem in old if elem != selectID]:               # looks like its for a case with 2+ buble merge    
+                        g_bubble_type[ID][globalCounter-1] = typePreMerge
+                        g_Centroids[ID][globalCounter] = dataSets[4][selectID]          # dropped IDs inherit merged bubble centroid, so visuall they merge.
+                # ===== IF there are about same size merge bubbles, create new ID, hull is concave
+                else:
+                    dataSets  = [l_MBub_masks, l_MBub_images,l_MBub_old_new_IDs, l_MBub_rect_parms, l_MBub_centroids, l_MBub_areas_hull, l_MBub_contours_hull]
+                    tempStore2(new, l_contours, min(new), err, orig, dataSets, concave = 1)
+                    for ID in old:
+                        g_bubble_type[ID][globalCounter-1] = typePreMerge               # since all olds get ripped change their type as a terminator
+                # new object will have an id of merged bubble for N frames, during which hull will be done via alphashape. think what crit can say that shape became static
+
+                
                     
-                for ID in [elem for elem in old if elem != selectID]:
-                    g_bubble_type[ID][globalCounter-1] = typePreMerge
-                    g_Centroids[ID][globalCounter] = dataSets[4][selectID] # <<<<< ALERT! ends dead trajectory at merge center.
-                    # <<< this is only visual stuff, might break something, if g_Centroids used as ref.
-                    
-                print(f'old IDs: {old}, main_old {selectID}, new IDs: {new}, type: {typeTemp}')
+                #print(f'old IDs: {old}, main_old {selectID}, new IDs: {new}, type: {typeTemp}')
                 newFoundBubsRings = [elem for elem in newFoundBubsRings if elem not in new]
                 newFoundBubsElse = [elem for elem in newFoundBubsElse if elem not in new]
                 print(f'newFoundBubsRings, (updated) unrecovered RBs: {newFoundBubsRings}')
                 print(f'newFoundBubsElse, (updated) unrecovered RBs: {newFoundBubsElse}')
-                if globalCounter == 6:
-                    id1,id2 = old
-                    area1,area2 = l_areas_hull_old[id1],l_areas_hull_old[id2] 
-                    hAreas = []
-                    points_2d = np.vstack([l_contours[ID] for ID in new]).reshape(-1,2)
-                    #points_2d = np.array(cnt).reshape(-1,2)
-                    blank = convertGray2RGB(err.copy())
-                    import alphashape
-                    for i,alpha in enumerate(np.arange(0.05, 0,-0.01)):
+                #if globalCounter == -1:
+                #    hAreas = []
+                #    points_2d = np.vstack([l_contours[ID] for ID in new]).reshape(-1,2)
+                #    #points_2d = np.array(cnt).reshape(-1,2)
+                #    blank = convertGray2RGB(err.copy())
+                #    import alphashape
+                #    for i,alpha in enumerate(np.arange(0.05, 0,-0.01)):
                 
-                        alpha_shape = alphashape.alphashape(points_2d, alpha)
-                        if alpha_shape.geom_type == 'Polygon':
-                            x,y = alpha_shape.exterior.coords.xy
-                            hull = np.array(list(zip(x,y)),np.int32).reshape((-1,1,2))
-                            hAreas.append(cv2.contourArea(hull)/(area1+area2))
-                            cv2.drawContours(  blank,   [hull], -1, cyclicColor(i), 1)
-                            #break
-                    cv2.imshow('alpas',blank)
+                #        alpha_shape = alphashape.alphashape(points_2d, alpha)
+                #        if alpha_shape.geom_type == 'Polygon':
+                #            x,y = alpha_shape.exterior.coords.xy
+                #            hull = np.array(list(zip(x,y)),np.int32).reshape((-1,1,2))
+                #            hAreas.append(cv2.contourArea(hull)/(area1+area2))
+                #            cv2.drawContours(  blank,   [hull], -1, cyclicColor(i), 1)
+                #            #break
+                #    cv2.imshow('alpas',blank)
         
     # ================================= Save first iteration ======================================  
     if globalCounter == 0 :
@@ -1233,6 +1292,7 @@ def mainer(index):
             g_bubble_type[tempID]               = {}
             g_bubble_type[tempID][0]            = typeRing
             l_RBub_areas_hull_old[tempID]       = l_RBub_areas_hull[newKey]
+            l_contours_hull[tempID]             = l_RBub_contours_hull[newKey]
             
         
         startID = len(l_RBub_masks)+1
@@ -1248,6 +1308,7 @@ def mainer(index):
             l_DBub_centroids_old[globalID]      = l_DBub_centroids[localID]
             l_DBub_old_new_IDs_old[globalID]    = l_DBub_old_new_IDs[localID]
             l_DBub_areas_hull_old[globalID]     = l_DBub_areas_hull[localID]
+            l_contours_hull[globalID]            = l_DBub_contours_hull[localID]
         l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old = {},{},{},{},{}            
         l_FBub_old_new_IDs_old = {}
         #print('g_bubble_type',g_bubble_type)
@@ -1256,9 +1317,10 @@ def mainer(index):
             
     # ================================= Save other iterations ====================================== 
     if globalCounter >= 1:
-            
-        l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old,  l_DBub_centroids_old, l_DBub_old_new_IDs_old = {}, {}, {}, {}, {}
+        l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_old_new_IDs_old = {}, {}, {}, {}, {}
+        l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old, l_DBub_centroids_old, l_DBub_old_new_IDs_old = {}, {}, {}, {}, {}
         l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old = {},{},{},{},{}
+        l_MBub_masks_old, l_MBub_images_old, l_MBub_rect_parms_old, l_MBub_centroids_old, l_MBub_areas_hull_old, l_MBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
         # print('l_DBub_centroids',l_DBub_centroids)
         
         # ============== frozen tricks ============
@@ -1280,6 +1342,7 @@ def mainer(index):
             l_FBub_centroids_old[gKey]              = l_FBub_centroids[key] 
             l_FBub_areas_hull_old[gKey]             = l_FBub_areas_hull[key]
             l_bubble_type[gKey]                     = typeFrozen if str(gKey) not in lastNStepsFrozenCentroids else typeRecoveredFrozen
+            l_contours_hull[gKey]                   = l_FBub_contours_hull[key]
             if globalCounter not in frozenGlobal:
                 frozenGlobal[globalCounter]             = []
                 g_FBub_rect_parms[globalCounter]        = {}
@@ -1303,6 +1366,7 @@ def mainer(index):
             l_DBub_centroids_old[old]           = l_DBub_centroids[new]
             l_DBub_old_new_IDs_old[old]         = l_DBub_old_new_IDs[new]
             l_DBub_areas_hull_old[old]          = l_DBub_areas_hull[new]
+            l_contours_hull[old]                = l_DBub_contours_hull[new]
                 
         for key in l_DBub_r_masks.keys(): # holds global keys
             l_DBub_masks_old[key]           = l_DBub_r_masks[key]
@@ -1311,9 +1375,8 @@ def mainer(index):
             l_DBub_centroids_old[key]       = l_DBub_r_centroids[key] 
             l_DBub_old_new_IDs_old[key]     = l_DBub_r_old_new_IDs[key]
             l_DBub_areas_hull_old[key]      = l_DBub_r_areas_hull[key]
-            
+            l_contours_hull[key]            = l_DBub_contours_hull[key]
                 
-        l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_old_new_IDs_old = {},{},{},{},{}
             
         for [cPi,cCi] in RBOldNewDist: # contains relation indices that satisfy dinstance
             l_bubble_type[cPi]                  = typeRing
@@ -1325,6 +1388,8 @@ def mainer(index):
             l_RBub_centroids_old[cPi]           = l_RBub_centroids[cCi]
             l_RBub_old_new_IDs_old[cPi]         = l_RBub_old_new_IDs[cCi]
             l_RBub_areas_hull_old[cPi]          = l_RBub_areas_hull[cCi]
+            l_RBub_contours_hull[cPi]             = l_contours_hull[cCi]
+            l_contours_hull[cPi]                = l_RBub_contours_hull[cCi]
                 
         for key in l_RBub_r_masks.keys(): # holds global keys
             l_RBub_masks_old[key]               = l_RBub_r_masks[key]
@@ -1333,6 +1398,7 @@ def mainer(index):
             l_RBub_centroids_old[key]           = l_RBub_r_centroids[key]
             l_RBub_old_new_IDs_old[key]         = l_RBub_r_old_new_IDs[key]
             l_RBub_areas_hull_old[key]          = l_RBub_r_areas_hull[key]
+            l_contours_hull[key]                = l_RBub_contours_hull[key]
                             
         if globalCounter == 1222:
             [cv2.imshow(f'c {globalCounter}, i: {i}', img) for i, img in list(l_RBub_masks_old.items())]
@@ -1351,6 +1417,7 @@ def mainer(index):
             l_RBub_centroids_old[gID]           = l_RBub_centroids[localID]
             l_RBub_old_new_IDs_old[gID]         = l_RBub_old_new_IDs[localID]
             l_RBub_areas_hull_old[gID]          = l_RBub_areas_hull[localID]
+            l_contours_hull[gID]                = l_RBub_contours_hull[localID]
             l_bubble_type[gID]                  = typeRing
             g_bubble_type[gID]                  = {}
             g_bubble_type[gID][globalCounter]   = typeRing
@@ -1370,17 +1437,35 @@ def mainer(index):
             l_DBub_centroids_old[gID]           = l_DBub_centroids[localID]
             l_DBub_old_new_IDs_old[gID]         = l_DBub_old_new_IDs[localID]
             l_DBub_areas_hull_old[gID]          = l_DBub_areas_hull[localID]
-        
+            l_contours_hull[gID]                = l_DBub_contours_hull[localID]
+        # ------------ NEW UNRESOLVED MERGE ADDED TO STORAGE WITH NEW ID --------------
+        startID += (len(l_MBub_old_new_IDs_old)+1)
+        for gID,localID in zip(range(startID,startID+len(l_MBub_old_new_IDs),1), l_MBub_old_new_IDs):#enumerate(newFoundBubsElse): 
+            l_bubble_type[gID]                  = typeMerge
+            g_bubble_type[gID]                  = {}
+            g_bubble_type[gID][globalCounter]   = typeMerge
+            
+            l_MBub_masks_old[gID]               = l_MBub_masks[localID]
+            l_MBub_images_old[gID]              = l_MBub_images[localID]
+            l_MBub_rect_parms_old[gID]          = l_MBub_rect_parms[localID]
+            l_MBub_centroids_old[gID]           = l_MBub_centroids[localID]
+            l_MBub_old_new_IDs_old[gID]         = l_MBub_old_new_IDs[localID]
+            l_MBub_areas_hull_old[gID]          = l_MBub_areas_hull[localID]
+            l_contours_hull[gID]                = l_MBub_contours_hull[localID]
+        if globalCounter == 6:
+            with open('concaveContour.pickle', 'wb') as handle:
+                         pickle.dump(l_MBub_contours_hull[localID], handle)
     
     
     # ========================== DUMP all data in global storage ==============================
     # collect all time step info (except bubbleIDsTypes, use new g_bubble_type )
-    l_masks_old         = {**l_RBub_masks_old,        **l_DBub_masks_old,         **l_FBub_masks_old}
-    l_images_old        = {**l_RBub_images_old,       **l_DBub_images_old,        **l_FBub_images_old}
-    l_rect_parms_old    = {**l_RBub_rect_parms_old,   **l_DBub_rect_parms_old,    **l_FBub_rect_parms_old}
-    l_centroids_old     = {**l_RBub_centroids_old,    **l_DBub_centroids_old,     **l_FBub_centroids_old}
-    l_old_new_IDs_old   = {**l_RBub_old_new_IDs_old,  **l_DBub_old_new_IDs_old,   **l_FBub_old_new_IDs_old}
-    l_areas_hull_old    = {**l_RBub_areas_hull_old,   **l_DBub_areas_hull_old,    **l_FBub_areas_hull_old} # l_DBub_areas_hull_old has extra IDs
+    l_masks_old         = {**l_RBub_masks_old,        **l_DBub_masks_old,         **l_FBub_masks_old,           **l_MBub_masks_old}
+    l_images_old        = {**l_RBub_images_old,       **l_DBub_images_old,        **l_FBub_images_old,          **l_MBub_images_old}
+    l_rect_parms_old    = {**l_RBub_rect_parms_old,   **l_DBub_rect_parms_old,    **l_FBub_rect_parms_old,      **l_MBub_rect_parms_old}
+    l_centroids_old     = {**l_RBub_centroids_old,    **l_DBub_centroids_old,     **l_FBub_centroids_old,       **l_MBub_centroids_old}
+    l_old_new_IDs_old   = {**l_RBub_old_new_IDs_old,  **l_DBub_old_new_IDs_old,   **l_FBub_old_new_IDs_old,     **l_MBub_old_new_IDs_old}
+    l_areas_hull_old    = {**l_RBub_areas_hull_old,   **l_DBub_areas_hull_old,    **l_FBub_areas_hull_old,      **l_MBub_areas_hull_old} # l_DBub_areas_hull_old has extra IDs
+    l_contours_hull_old = l_contours_hull
     l_ellipse_parms_old = {ID:cv2.fitEllipse(cv2.convexHull(np.vstack(l_contours[l_old_new_IDs_old[ID]]))) for ID in l_centroids_old}
 
     for key in list(l_masks_old.keys()):
@@ -1391,13 +1476,14 @@ def mainer(index):
             g_Ellipse_parms[key]    = {}
             g_Centroids[key]        = {}
             g_old_new_IDs[key]      = {}
-            
+            g_contours_hull[key]    = {}
         g_Masks[key][globalCounter]         = l_masks_old[key]
         g_Images[key][globalCounter]        = l_images_old[key]
         g_Rect_parms[key][globalCounter]    = l_rect_parms_old[key]
         g_Ellipse_parms[key][globalCounter] = l_ellipse_parms_old[key]
         g_Centroids[key][globalCounter]     = l_centroids_old[key]
         g_old_new_IDs[key][globalCounter]   = l_old_new_IDs_old[key]
+        g_contours_hull[key][globalCounter] = l_contours_hull_old[key]
         # --------- take care of prediction storage: g_predict_area_hull & g_predict_displacement --------------
         if globalCounter == 0 or (key not in g_predict_area_hull and key in l_areas_hull_old):
             g_predict_area_hull[key]        = {globalCounter:[l_areas_hull_old[key],  l_areas_hull_old[key],  int(l_areas_hull_old[key]*0.2)]}
@@ -1766,7 +1852,7 @@ for globalCounter in range(globalCounter):
     #ori = blank.copy()
     blank = cv2.subtract(np.uint8(blank), np.uint8(mean))
     blank = convertGray2RGB(blank)
-    typeStrings = ["N","RB", "rRB", "E", "F","rE","pm","rF"]
+    typeStrings = ["N","RB", "rRB", "E", "F","rE","pm","rF","M"]
     splitStrings =  {}
     for ID in activeIDs:
         temp = [0,len(g_old_new_IDs[ID][globalCounter])]
@@ -1794,33 +1880,14 @@ for globalCounter in range(globalCounter):
             if globalCounter in g_child_contours[ID]:
                 [cv2.drawContours(  blank,   g_contours[globalCounter], cid, (0,255,0), 1) for cid in g_child_contours[ID][globalCounter]]
         # aa = [cid for cid in g_child_contours[ID][globalCounter] if globalCounter in g_child_contours[ID]]
-        colorSet = [(),(0,0,255),(0,100,190),(255,0,0),(125,0,125),(255,0,125),(0,255,0),(125,0,125)]
-        thcSet = [(), 2, 1, 2, 2, 2 ,2, 2]
+        colorSet = [(),(0,0,255),(0,100,190),(255,0,0),(125,0,125),(255,0,125),(0,255,0),(125,0,125),(100,255,100)]
+        thcSet = [(), 2, 1, 2, 2, 2 ,2, 2,2]
         clr = colorSet[currentType]
         thc = thcSet[currentType]
         [cv2.drawContours(  blank,   g_contours[globalCounter], cid, clr, thc) for cid in currentCntrIds]
         cv2.ellipse(blank, g_Ellipse_parms[ID][globalCounter], (255,255,255), 1)
         if len(g_old_new_IDs[ID][globalCounter])> 1:
-            cnt = np.vstack([g_contours[globalCounter][A] for A in g_old_new_IDs[ID][globalCounter]])
-    
-            points_2d = np.array(cnt).reshape(-1,2)
-            # print(len(points_2d))
-            # initAlpha = 0.03
-            for alpha in np.arange(0.03, 0,-0.01):
-                
-                alpha_shape = alphashape.alphashape(points_2d, alpha)
-                if alpha_shape.geom_type == 'Polygon':
-                    x,y = alpha_shape.exterior.coords.xy
-                    hull = np.array(list(zip(x,y)),np.int32).reshape((-1,1,2))
-                    cv2.drawContours(  blank,   [hull], -1, (125,0,180), 1)
-                    break
-            #     for elem in alpha_shape.geoms:
-            # # mycoordslist = [list(x.exterior.coords) for x in geom.geoms]
-            #         x,y = elem.exterior.coords.xy
-            #         hull = np.array(list(zip(x,y)),np.int32).reshape((-1,1,2))
-            #         cv2.drawContours(  blank,   [hull], -1, (125,0,180), 1)
-            #     cv2.imshow('asd',blank)
-    #cv2.imshow('asd',blank)    
+            cv2.drawContours(  blank,   [g_contours_hull[ID][globalCounter]], -1, clr, 1)
     fontScale = 0.7;thickness = 4;
     for k,ID in enumerate(activeIDs):
         moveX = 0

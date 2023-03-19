@@ -6,8 +6,11 @@ General comments/ideas:
 - statistics on bubble parameters were supposed to converge from more relaxed inital limits to something stationary.
 	this might not be the best option, since bubbles may start to change rapidly.
 
+19/03/23:
+	add hull data to storage for drawing. due to alphashape
+	radialEllipse stuff is not needed if there is a perfect match. should make a local switch to do it once if required.
 16/02/23:
-change boundRectAngle to atan2
+	change boundRectAngle to atan2
 15/02/23:
 
 Global:

@@ -785,251 +785,34 @@ def rescaleTo255(rmin,rmax,x):
     return int(255*(rmin-x)/(rmin-rmax))
 from matplotlib import pyplot as plt
 
-arr = np.array([ 5, 31])
-arr2 = {23: np.array([50, 43, 13]), 25: np.array([33, 17, 31])}
-
-dm = 500
-numP = 110
-dPhi = 2*np.pi/numP
-img = np.zeros((dm,dm),np.uint8)
 
 
-center_coordinates = np.array((120, 100),int)
-mjAx = 80
-eps = 0.6
-axesLength = np.array((mjAx, mjAx*np.sqrt(1-eps**2)),int)
-  
-angle = 15
-  
-startAngle = 0
-  
-endAngle = 360
-   
-# Red color in BGR
-color = 255
-   
-# Line thickness of 5 px
-thickness = -1
-   
-# Using cv2.ellipse() method
-# Draw a ellipse with red line borders of thickness of 5 px
-img = cv2.ellipse(img, center_coordinates, axesLength,
-           angle, startAngle, endAngle, color, thickness)
-   
+with open('concaveContour.pickle', 'rb') as handle:
+    cnt = pickle.load(handle)
+xt,yt,wt,ht = cv2.boundingRect(cnt)
+cnt = cnt + [-xt,-yt]
+hull = cv2.convexHull(cnt, returnPoints = False)
+hull2 = cv2.convexHull(cnt, returnPoints = True)
+defects = cv2.convexityDefects(cnt, hull)
 
-
-
-axesLength = np.array(axesLength*0.4,int)
-img = cv2.ellipse(img, center_coordinates, axesLength,
-           angle, startAngle, endAngle, 0, -1)
-
-contours, hierarchy = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-cntr = contours[0]
-ellipseParams          = cv2.fitEllipse(cntr)
-rectParams      = cv2.boundingRect(cntr)
-x,y,w,h         = rectParams
-mask = img[y:y+h,x:x+w]
-refCentroid = center_coordinates
-
-ID = 1
-globalCounter = 1
-
-def radialStatsImageEllipse(isElliplse,refCentroid, mask, rectParams, ellipseParams, cover_area, ID, globalCounter, debug = 0):
-    x,y,w,h         = rectParams
-    localCentroid   = np.array(refCentroid,dtype = int) - np.array([x,y],dtype = int)
-    xs, ys          = np.meshgrid(np.arange(0,w,1), np.arange(0,h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
-    xsl,ysl         = xs-localCentroid[0], ys-localCentroid[1]
-    if isElliplse == 0:
-        zs              = np.sqrt((xs-localCentroid[0])**2 + (ys-localCentroid[1])**2).astype(int)
-        dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))} 
-    else:
-        a2,b2           = ellipseParams[1]                          # a2 = major diameter = 2* half diameters
-        theta           = np.radians(180-ellipseParams[2])          # empirically, might be wrong? hope not.
-        c, s            = np.cos(theta), np.sin(theta)
-
-        xsl2  = c*xsl-s*ysl;ysl2  = s*xsl+c*ysl                     # rotate points w.r.t ellipse orientation. Cant find a proper way to matrix muliply with meshgrid
-
-        alphas          = np.sqrt((xsl2*2/a2)**2 + (ysl2*2/b2)**2)  # finds at what scaled ellipse point (x,y) is located: (x/(alpha*a))^2 + (y/(alpha*b))^2 = 1 => (x/a)^2 + (y/b)^2 = alpha^2
-        zs              = (alphas*a2/2).astype(int)                 # circle has only r, ellipse major and minor axis, ref major.
-
-    dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))}       # sort all radiusses
-    for i,xses in enumerate(xs[0]):                                 # get radius of each pixel, add to counter. 
-        for j,yses in enumerate(ys):
-            if mask[yses[0],xses] == 255:                           # count only those inside contour (color = 255)
-                radi = zs[j][i]
-                dic[radi] += 1
-               # radi2 = alphasR[j][i]
-                #dic2[radi2] += 1
-
-    xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))
-    #xvals2, weights2  = np.array(list(dic2.keys())), np.array(list(dic2.values()))
-    avg             = np.average(xvals, weights=weights).astype(int)
-    rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)
-
-    if debug == 1:
-        #fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=False, sharey=False)
-        #axes[0].scatter(xvals,weights, label=f'Radial pixel distribution ID:{ID}')
-        #axes[0].fill_between(xvals,weights,0,where= (xvals<=rmin +dr) & (xvals>=rmin))
-        #axes[1].scatter(np.arange(len(xvals)),xvals, label=f'Radial pixel distribution ID:{ID}')
-        dmin, dmax      = np.min(weights), np.max(weights)
-        mask2 = mask.copy()
-        for i,xses in enumerate(xs[0]):
-            for j,yses in enumerate(ys):
-                if mask[yses[0],xses] == 255:
-                    radi                    = zs[j][i]
-                    clr                     = rescaleTo255(dmin,dmax,dic[radi])             # select a grayscale value based on number of pixel at that radius
-                    mask2[yses[0],xses]   = clr
-
-        cv2.imshow('rng',mask2)
-        #fig.suptitle(f'gc: {globalCounter}, bID: {ID}', fontsize=16)
-        plt.show()
-    return np.array([avg, rmin, dr],int), dic
-cover_area = 0.9
-OGband, OGDistr = radialStatsImageEllipse(1,refCentroid, mask, rectParams, ellipseParams, cover_area, ID, globalCounter, debug = 0)
-cv2.line(img, (70,0), (200,300), 0, 5) 
-cv2.line(img, (30,100), (200,50), 0, 3) 
-cv2.circle(img, (200,200), 25, 255, -1)
-cv2.circle(img, (260,100), 15, 255, -1)
-
-#bodyCntrs, hierarchy = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-#IDsOfInterest = range(0,len(bodyCntrs))
-
-def radialStatsContoursEllipse(isElliplse,bodyCntrs,IDsOfInterest,refCentroid, ellipseParams, cover_area, img, debug = 0):
-
-    output = {ID:np.zeros(3,int) for ID in IDsOfInterest}                                          # future return dict {ID:[avg_r,stdev_r]}
-    output_dist = {}
-    if debug == 1:
-        imgGray = img.copy()*0 #cv2.cvtColor(img.copy()*0, cv2.COLOR_BGR2GRAY) 
-        n = len(IDsOfInterest)
-        axes = plt.subplots(int(np.ceil(np.sqrt(n))), int(np.ceil(n/np.ceil(np.sqrt(n)))), figsize=(16, 9), sharex=True, sharey=False)[1]
-        if n>1:
-            axes = axes.reshape(-1)
-        else: axes = [axes]
+img = np.zeros((ht,wt,3))
+cv2.drawContours( img,   [cnt], -1, (255,0,0), 2)
+cv2.drawContours( img,   [hull2], -1, (255,0,255), 1)
+r = int(wt/3/2* 1.1)
+r2 = int(0.7*r)
+cv2.circle(img,tuple((r+10,r+35)),r,[0,255,255],1)
+cv2.circle(img,tuple((r+10,r+35)),r2,[2555,255,120],1)
+for i in range(defects.shape[0]):
+    s,e,f,d = defects[i,0]
+    if d >= (0.7*r)*256:
+        start = np.array(tuple(cnt[s][0])) 
+        end = np.array(tuple(cnt[e][0])) 
+        far = np.array(tuple(cnt[f][0])) 
+        cv2.line(img,start,end,[0,255,0],2)
+        cv2.circle(img,far,5,[0,0,255],-1)
  
-    for k,ID in enumerate(IDsOfInterest):
-        #area0           = cv2.contourArea(bodyCntrs[ID])
-        x,y,w,h         = cv2.boundingRect(bodyCntrs[ID])
-        xs, ys          = np.meshgrid(np.arange(x,x+w,1), np.arange(y,y+h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
-        xsl,ysl         = xs-refCentroid[0], ys-refCentroid[1]
-        if isElliplse == 0:
-            zs              = np.sqrt(xsl**2 + ysl**2).astype(int)      # calculate L2 norms from reference centroid.
-            dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))} 
-        else:
-            a2,b2           = ellipseParams[1]                          # a2 = major diameter = 2* half
-            theta           = np.radians(180-ellipseParams[2])          # empirically, might be wrong? 
-            c, s            = np.cos(theta), np.sin(theta)
-        
-            xsl2  = c*xsl-s*ysl;ysl2  = s*xsl+c*ysl                     # rotate points w.r.t ellipse o
-        
-            alphas          = np.sqrt((xsl2*2/a2)**2 + (ysl2*2/b2)**2)  # finds at what scaled ellipse 
-            zs              = (alphas*a2/2).astype(int)                 # circle has only r, ellipse ma
-        #zs              = np.sqrt((xs-refCentroid[0])**2 + (ys-refCentroid[1])**2).astype(int)  
-        rmin, rmax      = np.min(zs), np.max(zs)                                            # rmin/max of whole image, so 0 pixel count for some r values.
-        dic = {rad:0 for rad in np.arange(rmin,rmax+1,1)}                                   # if there is a discontinuity, because of casting to int, 0-count rads will be dropped anyway. EG (1.05, 1.99, 3.01)- > (1,1,3)
-        
-        #dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))}                          # order (sort) should not be important if not drawing a continious relation [r1,n1],[r2,n2],...
-        subSubMask      = np.zeros((h,w),np.uint8)                                          # stencil for determining if pixel is part of a bubble
-        cv2.drawContours( subSubMask, bodyCntrs, ID, 255, -1, offset = (-x,-y))
-        
-        for i,xses in enumerate(xs[0]):                                                     # get radius of each pixel, add to counter. 
-            for j,yses in enumerate(ys):
-                if subSubMask[yses[0]-y,xses-x] == 255:                                     # count only those inside contour (color = 255)
-                    radi = zs[j][i]
-                    dic[radi] += 1
-                    #clr = rescaleTo255(rmin,rmax,radi)
-                    #imgGray[yses[0],xses] = clr
-    
-        xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))           # cast to numpy to do statistics
-        avg             = np.average(xvals, weights=weights)     .astype(int)                            # weighted average
-        #stdev           = np.sqrt(numpy.average((xvals-avg)**2, weights=weights))            # stdev of weighted data. theres no ready function in numpy.
-        rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)      #;print(a,b)(x,fx,meanVal,cover_area,debug= 1)
-        dmin, dmax      = min(dic.values()),max(dic.values())
-        output[ID]      = np.array([avg, rmin, dr],int)
-        output_dist[ID] = dic
-        if debug == 1:
-            
-            axes[k].plot(xvals,weights)
-            axes[k].vlines(avg, min(dic.values()), max(dic.values()), linestyles ="dashed", colors ="k")
-            axes[k].fill_between(xvals,weights,0,where= (xvals<=rmin +dr) & (xvals>=rmin))
-            axes[k].set_xlabel('radius, pix')
-            axes[k].set_ylabel('sum of pixels')
-            axes[k].set_title(f'Radial pixel distribution ID:{ID}')
-            
-            for i,xses in enumerate(xs[0]):
-                for j,yses in enumerate(ys):
-                    if subSubMask[yses[0]-y,xses-x] == 255:
-                        radi                    = zs[j][i]
-                        clr                     = rescaleTo255(dmin,dmax,dic[radi])             # select a grayscale value based on number of pixel at that radius
-                        imgGray[yses[0],xses]   = clr
-            x0,y0 = bodyCntrs[ID][0][0]
-            cv2.putText(imgGray, str(ID), (x0,y0), cv2.FONT_HERSHEY_SIMPLEX, 0.3, 0, 3, cv2.LINE_AA)
-            cv2.putText(imgGray, str(ID), (x0,y0), cv2.FONT_HERSHEY_SIMPLEX, 0.3, 255, 1, cv2.LINE_AA)
-            
-    if debug == 1:
-        cv2.circle(imgGray, tuple(map(int,refCentroid)), 3, (255,0,0), -1)
-        cv2.imshow('a',imgGray)
-        plt.tight_layout()
-        plt.show()
-    return output, output_dist
-#SlaveBand, SlaveDistr = radialStatsContoursEllipse(1,bodyCntrs,IDsOfInterest,refCentroid, ellipseParams, cover_area, img, debug = 1)
-# Displaying the image 
-#elipse = cv2.fitEllipse(contours[0])
-#x,y = (160, 100)
-#img = cv2.circle(img, (x,y), 3,  60, -1)
-#a2,b2 = elipse[1]
-#alpha = np.sqrt((x/a2/2)**2 + (y/b2/2)**2) 
-#axesLength_new = np.array(axesLength*alpha, int)
-#img = cv2.ellipse(img, center_coordinates, axesLength_new,
-#           angle, startAngle, endAngle, 180, 2)
-
-#cv2.imshow("asd", img) 
-def compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr,solution,cyclicColor,globalCounter,oldID):
-    subNewIDs = np.array(list(SlaveDistr.keys()))
-    rmin  = 10000;rmax = 0
-    for ID,distr in SlaveDistr.items():
-        arr = np.array(list(distr.keys()))
-        dMin = np.min(arr);dMax = np.max(arr)
-        rmin = min(rmin,dMin);rmax = max(rmax,dMax)
-    #print(rmin,rmax)
-    domain = np.arange(rmin,rmax+1,1)
-    vals = np.zeros(len(domain))
-    for ID,distr in SlaveDistr.items():
-        if ID in solution:
-            for r,subVal in distr.items():
-                vals[r-rmin] += subVal # if dom = [rmin,rmin+1,...] distr: {{rmin:val},..}, val should go to vals[rmin-rmin] => vals[0]
-        
-
-    fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=True, sharey=False)
-    t = 8
-    ogDom = list(OGDistr.keys())
-    ogVals = list(OGDistr.values())
-    axes[0].plot(ogDom,ogVals,lw = 2,color=np.array(cyclicColor(0))/255,linestyle='dashed')
-    _,r,dr = OGband
-    #axes[0].plot([r,r+dr],[max(ogVals)+ t,max(ogVals)+ t],lw = 3,color=np.array(cyclicColor(0))/255)
-    axes[0].fill_between(ogDom,ogVals,0,where= (ogDom<=r +dr) & (ogDom>=r),color=np.array(cyclicColor(0))/255)
-    r1 = np.array([rr+0.5*drr for _,rr,drr in SlaveBand.values()])
-    ordr = np.argsort(r1)
-    for i,subID in enumerate(subNewIDs[ordr]):
-        i += 1
-        dom = list(SlaveDistr[subID].keys())
-        val = list(SlaveDistr[subID].values())
-        axes[0].plot(dom,val,c=np.array(cyclicColor(i))/255, lw = 3, label = str(subID))
-        _,r,dr = SlaveBand[subID]
-        axes[0].plot([r,r+dr],[-t*(i+1),-t*(i+1)],color=np.array(cyclicColor(i))/255, lw = 4)
-    axes[0].legend()
-    axes[1].scatter(ogDom,ogVals,s = 12,label = "original")
-    axes[1].scatter(domain,vals,s = 12,label = str(solution))
-    axes[1].legend()
-    fig.suptitle(f'gc: {globalCounter}, oldID: {oldID}, ids: {subNewIDs}')
-    plt.show()
-
-#compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr, IDsOfInterest, cyclicColor, globalCounter, 1)
-sm = sum( [[ ],[ ]] ,[] );print(sm)
-
+cv2.imshow('final_img',img)
 
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyallwindows()
-
-    g_Centroids
-    predictCentroidDiff_local

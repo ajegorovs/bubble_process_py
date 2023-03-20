@@ -786,32 +786,38 @@ def rescaleTo255(rmin,rmax,x):
 from matplotlib import pyplot as plt
 
 
+if 1 == -1:
+    with open('concaveContour.pickle', 'rb') as handle:
+        cnt = pickle.load(handle)
+    xt,yt,wt,ht = cv2.boundingRect(cnt)
+    cnt = cnt + [-xt,-yt]
+    hull = cv2.convexHull(cnt, returnPoints = False)
+    hull2 = cv2.convexHull(cnt, returnPoints = True)
+    defects = cv2.convexityDefects(cnt, hull)
 
-with open('concaveContour.pickle', 'rb') as handle:
-    cnt = pickle.load(handle)
-xt,yt,wt,ht = cv2.boundingRect(cnt)
-cnt = cnt + [-xt,-yt]
-hull = cv2.convexHull(cnt, returnPoints = False)
-hull2 = cv2.convexHull(cnt, returnPoints = True)
-defects = cv2.convexityDefects(cnt, hull)
-
-img = np.zeros((ht,wt,3))
-cv2.drawContours( img,   [cnt], -1, (255,0,0), 2)
-cv2.drawContours( img,   [hull2], -1, (255,0,255), 1)
-r = int(wt/3/2* 1.1)
-r2 = int(0.7*r)
-cv2.circle(img,tuple((r+10,r+35)),r,[0,255,255],1)
-cv2.circle(img,tuple((r+10,r+35)),r2,[2555,255,120],1)
-for i in range(defects.shape[0]):
-    s,e,f,d = defects[i,0]
-    if d >= (0.7*r)*256:
-        start = np.array(tuple(cnt[s][0])) 
-        end = np.array(tuple(cnt[e][0])) 
-        far = np.array(tuple(cnt[f][0])) 
-        cv2.line(img,start,end,[0,255,0],2)
-        cv2.circle(img,far,5,[0,0,255],-1)
+    img = np.zeros((ht,wt,3))
+    cv2.drawContours( img,   [cnt], -1, (255,0,0), 2)
+    cv2.drawContours( img,   [hull2], -1, (255,0,255), 1)
+    r = int(wt/3/2* 1.1)
+    r2 = int(0.7*r)
+    cv2.circle(img,tuple((r+10,r+35)),r,[0,255,255],1)
+    cv2.circle(img,tuple((r+10,r+35)),r2,[2555,255,120],1)
+    for i in range(defects.shape[0]):
+        s,e,f,d = defects[i,0]
+        if d >= (0.7*r)*256:
+            start = np.array(tuple(cnt[s][0])) 
+            end = np.array(tuple(cnt[e][0])) 
+            far = np.array(tuple(cnt[f][0])) 
+            cv2.line(img,start,end,[0,255,0],2)
+            cv2.circle(img,far,5,[0,0,255],-1)
  
-cv2.imshow('final_img',img)
+    cv2.imshow('final_img',img)
+
+
+trj = [(10,0),(0,0)]
+mss = [10,10]
+centrd = np.average(trj, weights=mss, axis = 1).astype(int)
+
 
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key

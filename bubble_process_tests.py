@@ -970,7 +970,12 @@ def mainer(index):
                 #print(dropDoubleCritCopies(elseOldNewDoubleCriterium))
                 elseOldNewDoubleCriterium = dropDoubleCritCopies(elseOldNewDoubleCriterium)
 
-                
+             # ========== FIND previous merged bubbles on new frame assess if they are still in state of merging
+             #for oldID merged
+             #  get area
+             #  get predicted centroid (pre merge weighted centroid should be added to prediction storage)
+             #    for remaining new clusters
+             #      check 
             #doubleCritMinimum
             #if globalCounter == 15:
             #    blank  = np.full(err.shape,128, np.uint8)
@@ -1482,6 +1487,7 @@ def mainer(index):
             l_bubble_type[gID]                  = typeMerge
             g_bubble_type[gID]                  = {}
             g_bubble_type[gID][globalCounter]   = typeMerge
+            g_MBub_info[gID]                  = {}
             g_MBub_info[gID][globalCounter]     = l_MBub_info[localID]
 
             l_MBub_masks_old[gID]               = l_MBub_masks[localID]

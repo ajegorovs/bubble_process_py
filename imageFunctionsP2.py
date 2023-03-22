@@ -1449,6 +1449,15 @@ def tempStore(contourIDs, contours, mask, image, dataSets):
 #     dataSets = [l_RBub_r_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull]
 #else: 
 #    dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull]
+def alphashapeHullCentroidArea(contours, contourIDs, param):
+    points_2d = np.vstack(contours[contourIDs]).reshape(-1,2)
+    alpha_shape = alphashape.alphashape(points_2d, param)
+    if alpha_shape.geom_type == 'Polygon':
+            xx,yy                   = alpha_shape.exterior.coords.xy
+            hull                    = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
+            centroid, area    =  getCentroidPosContours(bodyCntrs = [hull])
+    return hull, centroid, area 
+
 def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0):
     # smallest x centroid survives. ID:Cx -> smallest Cx ID
                     
@@ -1475,7 +1484,7 @@ def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0
                 xx,yy         = alpha_shape.exterior.coords.xy
                 hull        = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
                 hullArea    = cv2.contourArea(hull)
-    for storage, data in zip(dataSets,[baseSubMask , baseSubImage, contourIDs, ([x,y,w,h]), centroid, hullArea, hull]):
+    for storage, data in zip(dataSets,[baseSubMask , baseSubImage, contourIDs, ([x,y,w,h]), centroid, int(hullArea), hull]):
         storage[globalID] = data
 
     #l_bubble_type[selectID]                 = typeTemp   #<<<< inspect here for duplicates

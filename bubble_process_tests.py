@@ -54,7 +54,7 @@ from imageFunctionsP2 import (initImport, init, bubbleTypeCheck,
                               distStatPredictionVect,distStatPredictionVect2,updateStat,overlappingRotatedRectangles,
                               multiContourBoundingRect,stuckBubHelp,doubleCritMinimum,dropDoubleCritCopies,
                               radialStatsImage,radialStatsImageEllipse,radialStatsContours,radialStatsContoursEllipse,compareRadial,    # radialStatsImage,radialStatsContours,compareRadial 03/03/23
-                              tempStore,tempStore2)                                                                                                # tempStore 17/03/23                      
+                              tempStore,tempStore2,alphashapeHullCentroidArea)                                                          # tempStore 17/03/23   alphashapeHullCentroidArea 22/03/23                   
 def resizeImage(img,frac):
     width = int(img.shape[1] * frac)
     height = int(img.shape[0] * frac)
@@ -342,7 +342,7 @@ g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull = {},{},{}
 g_contours, g_contours_hull,  frozenBubs, frozenBubsTimes,  l_bubble_type_old = {}, {}, {}, {}, {}
 l_Centroids_old, l_Areas_old,l_Areas_hull_old, l_BoundingRectangle_params, l_BoundingRectangle_params_old = {}, {}, {}, {}, {}
 g_predict_displacement, g_predict_area_hull  = {}, {}; frozenIDs, frozenIDs_old  = [],[]
-l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old = {}, {}, {}, {}, {}, {}, {}
+l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old, l_contours_hull_old = {}, {}, {}, {}, {}, {}, {}, {}
 def mainer(index):
     global globalCounter, g_contours, g_contours_hull, frozenBubs, frozenBubsTimes, l_Centroids_old, l_Areas_old, l_Areas_hull_old, l_BoundingRectangle_params, l_BoundingRectangle_params_old
 
@@ -353,7 +353,7 @@ def mainer(index):
     global g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull
     global g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,l_bubble_type_old,g_child_contours
     global g_predict_displacement, g_predict_area_hull, frozenIDs, frozenIDs_old, l_MBub_info_old, g_MBub_info
-    global l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old
+    global l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old, l_contours_hull_old
     
  
     orig0           = X_data[index]
@@ -808,6 +808,9 @@ def mainer(index):
             elseOldNewDoubleCriteriumSubIDs     = {}
             elseOldNewDist                      = []
             jointNeighborsWoFrozen              = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items() if mainNewID not in frozenIDs}
+            jointNeighborsWoFrozen_hulls        = {ID: cv2.convexHull(np.vstack(l_contours[subNewIDs])) for ID, subNewIDs in jointNeighborsWoFrozen.items()}
+            jointNeighborsWoFrozen_bound_rect   = {ID: cv2.boundingRect(hull) for ID, hull in jointNeighborsWoFrozen_hulls.items()}
+            jointNeighborsWoFrozen_c_a          = {ID: getCentroidPosContours(bodyCntrs = [hull]) for ID, hull in jointNeighborsWoFrozen_hulls.items()}
             #jointNeighborsOnlyFrozen            = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items() if mainNewID in frozenIDs}
             # frozenIDs_old_glob-> double for. grab ID from local old IDS, and for loop check if its in oldLocIDs of some old global IDs
             #oldLocIDs = frozenIDsInfo[:,0] if len(frozenIDsInfo)>0 else np.array([]) # !!!!! check this 10/02/23. added because it was missing for next line
@@ -844,12 +847,17 @@ def mainer(index):
                 # OGband : [area-weighted average radiuss, interval beginning, interval width], interval- narrowest interval at which some % (90%) of total area is located.
                 OGRightBandCoord = OGband[1]+OGband[2]
                 #OGAreaUpToAndIncludingBand = sum([numPix for ID,numPix in OGDistr.items() if ID <= OGRightBandCoord])
-                    #clusterPerms(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], oldID, globalCounter ,debug = 1)
+                #clusterPerms(oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], oldID, globalCounter ,debug = 1)
+                overlapIDs = np.array(overlappingRotatedRectangles({oldID:l_rect_parms_old[oldID]},jointNeighborsWoFrozen_bound_rect),int)
+                intresectingFrozens = {new: jointNeighborsWoFrozen[new] for old, new in overlapIDs}
                 #----------------- looking for new else bubs related to old else bubs ---------------------
-                for mainNewID, subNewIDs in jointNeighborsWoFrozen.items():
-                    hull                            = cv2.convexHull(np.vstack(l_contours[subNewIDs]))       
+                for mainNewID, subNewIDs in intresectingFrozens.items():
+                    hull    = jointNeighborsWoFrozen_hulls[mainNewID]
+                    newCentroid, newArea = jointNeighborsWoFrozen_c_a[mainNewID]
+                    #hull                            = cv2.convexHull(np.vstack(l_contours[subNewIDs]))       
                     #newCentroid, newArea = getCentroidPosContours(bodyCntrs = [l_contours[k] for k in subNewIDs], hullArea = 1)             # likely that this cluster is a bubble. get its params
-                    newCentroid, newArea = getCentroidPosContours(bodyCntrs = [hull])                                                       # likely that this cluster is a bubble. get its params
+                    #newCentroid, newArea = getCentroidPosContours(bodyCntrs = [hull])                                                       # likely that this cluster is a bubble. get its params
+                    
                     
                     #relArea = abs(areaCheck - newArea)/areaCheck
                     #dist = np.linalg.norm(np.array(newCentroid) - np.array(oldCentroid))
@@ -860,9 +868,10 @@ def mainer(index):
                     if dist2 <= distCheck2 + 5*distCheck2Sigma and areaCrit < 3:
                         print(f'dist-dist. Perfect match: {oldID} <-> mainNewID: {mainNewID}:{subNewIDs}, dist2: {dist2:0.1f}, areaCrit: {areaCrit:0.1f}')
                         predictCentroidDiff_local[oldID]            = [tuple(map(int,predictCentroid)), int(dist2)] #np.around(dist2,2) 15/03/23
-                        elseOldNewDoubleCriterium.append([oldID,mainNewID,dist2,areaCrit])
-                        elseOldNewDoubleCriteriumSubIDs[mainNewID] = subNewIDs
-                        l_DBub_contours_hull[mainNewID]                  = hull
+                        elseOldNewDoubleCriteriumSubIDs[mainNewID]  = subNewIDs
+                        l_DBub_contours_hull[mainNewID]             = hull
+                        elseOldNewDoubleCriterium.append([oldID,mainNewID,np.around(dist2,2),np.around(areaCrit,2)])
+                        
                     # ==== if either distance or area are too different skip further checks, do nothing (do 0, skip else) ====
                     elif dist2 > 70 or areaCrit > 15:
                         0#;print('dist 2. soft break')
@@ -926,7 +935,7 @@ def mainer(index):
                             l_DBub_contours_hull[min(permIDsol2)]                    = hull
                             predictCentroidDiff_local[oldID]                    = [tuple(map(int,predictCentroid)), np.around(permDist2,2)]
                             elseOldNewDoubleCriteriumSubIDs[min(permIDsol2)]    = permIDsol2
-                            elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),dist2,permRelArea2])
+                            elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),np.around(dist2,2),np.around(permRelArea2,2)])
                             
                 
                 #----------------- looking for new rings related to old else bubs ---------------------
@@ -946,7 +955,7 @@ def mainer(index):
                         elseOldNewDoubleCriteriumSubIDs[unresNewRBID]   = [subNewIDs]
                         l_bubble_type[oldID]                            = typeRing          # not clear which ID is used, l_ should have new ID.
                         l_RBub_contours_hull[unresNewRBID]                = hull
-                        elseOldNewDoubleCriterium.append([oldID,unresNewRBID,dist2,areaCrit])
+                        elseOldNewDoubleCriterium.append([oldID,unresNewRBID,np.around(dist2,2),np.around(areaCrit,2)])
                         newFoundBubsRings.remove(unresNewRBID)
                         
                     elif dist2 > 70 or areaCrit > 15:
@@ -961,21 +970,63 @@ def mainer(index):
                             elseOldNewDoubleCriteriumSubIDs[min(permIDsol2)]    = permIDsol2
                             l_bubble_type[oldID]                                = typeRing
                             l_RBub_contours_hull[unresNewRBID]                    = hull
-                            elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),dist2,permRelArea2])
+                            elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),np.around(dist2,2),np.around(permRelArea2,2)])
                             newFoundBubsRings.remove(unresNewRBID)
                             
-            # in case elseOldNewDoubleCriterium  has multiple options, select most likely
+            
+            # ========== FIND previous merged bubbles on new frame assess if they are still in state of merging
+            #for oldID merged
+            for oldID, oldCentroid in l_MBub_centroids_old.items():
+                trajectory                                      = list(g_Centroids[oldID].values())
+                predVec_old, _, distCheck2, distCheck2Sigma     = g_predict_displacement[oldID][globalCounter-1]
+                sigmasDeltas                                    = [a[2:] for a in g_predict_displacement[oldID].values()]
+                print(f'oldID: {oldID}, distCheck2: {distCheck2}, distCheck2Sigma: {distCheck2Sigma}')
+                #predVec_old = g_predict_displacement[oldID][globalCounter-1][0]
+                #debugVecPredict = 1 if oldID == 5 and globalCounter >= 3 else 0
+                predictCentroid = distStatPredictionVect2(trajectory, sigmasDeltas = sigmasDeltas[-1], sigmasDeltasHist = g_predict_displacement[oldID],
+                                        numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  debugVecPredict, savePath = predictVectorPathFolder,
+                                        predictvec_old = predVec_old, bubID = oldID, timestep = globalCounter, zerothDisp = [-3,0])
+                oldMeanArea                         = g_predict_area_hull[oldID][globalCounter-1][1]
+                oldAreaStd                          = g_predict_area_hull[oldID][globalCounter-1][2]
+                areaCheck                           = oldMeanArea + 3*oldAreaStd 
+                predictCentroidDiff_local[oldID]    = [tuple(map(int,predictCentroid)), -1] # in case search fails, predictCentroid will be stored her
+                overlapIDs                          = np.array(overlappingRotatedRectangles({oldID:l_rect_parms_old[oldID]},jointNeighborsWoFrozen_bound_rect),int)
+                intresectingFrozens                 = {new: jointNeighborsWoFrozen[new] for _, new in overlapIDs}     
+                
+                for mainNewID, subNewIDs in intresectingFrozens.items():
+                    concave  = 1
+                    if concave == 1:
+                        hull,newCentroid, newArea   = alphashapeHullCentroidArea(l_contours, subNewIDs, 0.05)
+                    else:
+                        hull                        = jointNeighborsWoFrozen_hulls[mainNewID]
+                        newCentroid, newArea        = jointNeighborsWoFrozen_c_a[mainNewID]
+                    dist2                   = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))                                               # distance between cluster and predicted centroids
+                    areaCrit                = np.abs(newArea-oldMeanArea)/ oldAreaStd
+                    blank = convertGray2RGB(err.copy())
+                    cv2.drawContours(  blank,   [hull], -1, cyclicColor(1), 1)
+                    cv2.drawContours(  blank,   [l_contours_hull_old[oldID]], -1, cyclicColor(2), 1)
+                    cv2.imshow('asd',blank)
+                    # ==== if OG cluster matches perfectly, take it as a solution ====
+                    if dist2 <= distCheck2 + 5*distCheck2Sigma and areaCrit < 3:
+                        print(f'dist-dist. Perfect match: {oldID} <-> mainNewID: {mainNewID}:{subNewIDs}, dist2: {dist2:0.1f}, areaCrit: {areaCrit:0.1f}')
+                        predictCentroidDiff_local[oldID]            = [tuple(map(int,predictCentroid)), int(dist2)] #np.around(dist2,2) 15/03/23
+                        elseOldNewDoubleCriterium.append([oldID,mainNewID,np.around(dist2,2),np.around(areaCrit,2)])
+                        elseOldNewDoubleCriteriumSubIDs[mainNewID] = subNewIDs
+                        #l_DBub_contours_hull[mainNewID]                  = hull
+                    # ==== if either distance or area are too different skip further checks, do nothing (do 0, skip else) ====
+                    elif dist2 > 70 or areaCrit > 15:
+                        0#;print('dist 2. soft break')
+            #  get area
+            #  get predicted centroid (pre merge weighted centroid should be added to prediction storage)
+            #    for remaining new clusters
+            #      check 
+                            # in case elseOldNewDoubleCriterium  has multiple options, select most likely
             print(elseOldNewDoubleCriterium)
             if len(elseOldNewDoubleCriterium)>0:
                 #print(dropDoubleCritCopies(elseOldNewDoubleCriterium))
                 elseOldNewDoubleCriterium = dropDoubleCritCopies(elseOldNewDoubleCriterium)
 
-             # ========== FIND previous merged bubbles on new frame assess if they are still in state of merging
-             #for oldID merged
-             #  get area
-             #  get predicted centroid (pre merge weighted centroid should be added to prediction storage)
-             #    for remaining new clusters
-             #      check 
+             
             #doubleCritMinimum
             #if globalCounter == 15:
             #    blank  = np.full(err.shape,128, np.uint8)
@@ -990,9 +1041,9 @@ def mainer(index):
             removeFoundSubIDsAll    = sum(elseOldNewDoubleCriteriumSubIDs.values(),[])
             # delete new cluster IDs from original jointNeighbors, gather remaining and new found in jointNeighbors22
             jointNeighborsDelSubIDs = [ [subelem for subelem in elem if subelem not in removeFoundSubIDsAll] for elem in jointNeighborsWoFrozen.values()]
-            jointNeighbors_old      = jointNeighbors.copy()
+            jointNeighbors_old      = dict(sorted(jointNeighbors.copy().items()))
             jointNeighbors          = {**{min(vals):vals for vals in jointNeighborsDelSubIDs if len(vals) > 0},**elseOldNewDoubleCriteriumSubIDs}
-
+            jointNeighbors          =  dict(sorted(jointNeighbors.items()))
             #[elseOldNewDoubleCriterium.append([oldGlobIDs[oldLocID], newLocID, dist, rArea]) for oldLocID, newLocID, dist, rArea, *_ in frozenIDsInfo]
             print(f'Cluster groups (updated): {jointNeighbors}') if jointNeighbors != jointNeighbors_old else print('Cluster groups unchanged')
                 
@@ -1006,7 +1057,7 @@ def mainer(index):
                 tempID                          = min(cntrIDlist)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
                 hull                            = cv2.convexHull(np.vstack(l_contours[cntrIDlist]))       
                 hullArea                        = getCentroidPosContours(bodyCntrs = [hull])[1]
-                l_DBub_contours_hull[tempID]      = hull
+                l_DBub_contours_hull[tempID]    = hull
                 
                 baseSubMask,baseSubImage        = err.copy()[y:y+h, x:x+w], orig.copy()[y:y+h, x:x+w]
                 subSubMask                      = np.zeros((h,w),np.uint8)
@@ -1269,7 +1320,7 @@ def mainer(index):
                         rads = min([int((a+b)/4) for _,(a,b),_ in e_parms])                     # calculate their average radiuss, take smallest
                         temp = []
                         dfcts = []
-                        temp.append(old);temp.append(e_parms)
+                        temp.append(old);temp.append(np.sum([l_areas_hull_old[IDs] for IDs in old]))
                         img = convertGray2RGB(err.copy())
                         for i in range(defects.shape[0]):
                             s,e,f,d = defects[i,0]
@@ -1286,19 +1337,27 @@ def mainer(index):
                         #cv2.imshow(f'merge gc: {globalCounter}',img)
                         # predict centroid from area weighted pre-merge coordinates and currect centroid.
                         prevCentroid = np.average([l_centroids_old[IDs] for IDs in old], weights = [l_areas_hull_old[IDs] for IDs in old], axis = 0).astype(int)
-                        trajectory = [prevCentroid,l_MBub_centroids[selectID]]
-                        predVec_old, _, distCheck2, distCheck2Sigma  = [tuple(prevCentroid),0,15,2]#g_predict_displacement[oldID][globalCounter-1]
-                        
-                        sigmasDeltasHist = {globalCounter-1:[prevCentroid,0,15,2],globalCounter: [tuple(prevCentroid),0,15,2]}
-                        sigmasDeltas = [[15,2]]
-                        print(f'oldID: {oldID}, distCheck2: {distCheck2}, distCheck2Sigma: {distCheck2Sigma}')
-                        #predVec_old = g_predict_displacement[oldID][globalCounter-1][0]
-                        #debugVecPredict = 1 if oldID == 5 and globalCounter >= 3 else 0
-                        predictCentroid = distStatPredictionVect2(trajectory, sigmasDeltas = sigmasDeltas[-1], sigmasDeltasHist = sigmasDeltasHist,
-                                                numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  1, savePath = predictVectorPathFolder,
-                                                predictvec_old = predVec_old, bubID = selectID, timestep = globalCounter, zerothDisp = [-3,0])
+                        temp.append(prevCentroid);temp.append(e_parms)
                         l_MBub_info[selectID] = temp
+                        # selectID is new ID, we can fake -1 step as known by taking prevCentroid and offesting it
+                        #offset = np.array([10,0])
+                        #prevCentroidPredict                             = tuple(prevCentroid-offset)
+                        #if selectID not in g_predict_displacement: g_predict_displacement[oldID] = {}
+                        #g_predict_displacement[oldID][globalCounter-1]  = [prevCentroidPredict,10,10,0]
+                        #
+                        #predictCentroidDiff_local[selectID]             = [tuple(map(int,prevCentroidPredict)), int(np.linalg.norm(offset))]
                 
+                        #trajectory = [prevCentroid,l_MBub_centroids[selectID]]
+                        #predVec_old, _, distCheck2, distCheck2Sigma  = [tuple(prevCentroid),0,15,2]
+                        #
+                        #sigmasDeltasHist = {globalCounter-1:[prevCentroid,0,15,2],globalCounter: [tuple(prevCentroid),0,15,2]}
+                        #sigmasDeltas = [[15,2]]
+                        #print(f'oldID: {oldID}, distCheck2: {distCheck2}, distCheck2Sigma: {distCheck2Sigma}')
+                        #predictCentroid = distStatPredictionVect2(trajectory, sigmasDeltas = sigmasDeltas[-1], sigmasDeltasHist = sigmasDeltasHist,
+                        #                        numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug =  1, savePath = predictVectorPathFolder,
+                        #                        predictvec_old = predVec_old, bubID = selectID, timestep = globalCounter, zerothDisp = [-3,0])
+                        
+                        
                     
                 #print(f'old IDs: {old}, main_old {selectID}, new IDs: {new}, type: {typeTemp}')
                 newFoundBubsRings = [elem for elem in newFoundBubsRings if elem not in new]
@@ -1531,6 +1590,13 @@ def mainer(index):
         g_old_new_IDs[key][globalCounter]   = l_old_new_IDs_old[key]
         g_contours_hull[key][globalCounter] = l_contours_hull_old[key]
         # --------- take care of prediction storage: g_predict_area_hull & g_predict_displacement --------------
+        # -- some extra treatment for merged bubbles before regular ones ---
+        if  (key not in g_predict_area_hull and key in l_areas_hull_old and key in l_MBub_areas_hull_old):
+            localID                         = min(l_MBub_old_new_IDs_old[key])
+            #oldIDs                          = l_MBub_info[localID][0]
+            prevArea                        = l_MBub_info[localID][1]
+            prevCentroid                    = l_MBub_info[localID][2] 
+            g_predict_area_hull[key]        = {globalCounter-1:[prevArea,  prevArea,  int(prevArea*0.2)]}
         if globalCounter == 0 or (key not in g_predict_area_hull and key in l_areas_hull_old):
             g_predict_area_hull[key]        = {globalCounter:[l_areas_hull_old[key],  l_areas_hull_old[key],  int(l_areas_hull_old[key]*0.2)]}
         else:
@@ -1540,7 +1606,7 @@ def mainer(index):
             if historyLen == 1:
                 prevVals                        = [g_predict_area_hull[key][timeStep][0],updateValue]
                 hullAreaMean                    = np.mean(prevVals)
-                hullAreaStd                     = np.std(prevVals)
+                hullAreaStd                     = max(np.std(prevVals),hullAreaMean*0.15)                # std cant be very low, if it is, choose as 15% of mean instead
             else:
                 #timeStep = globalCounter-1 if key not in frozenKeys else frozenKeys[key];
                 prevMean                        = g_predict_area_hull[key][timeStep][1]
@@ -1548,18 +1614,34 @@ def mainer(index):
                 hullAreaMean, hullAreaStd       = updateStat(historyLen, prevMean, prevStd, updateValue) # just fancy way of updating mean and sdtev w/o recalc whole path data. most likely does not impact anything
 
             g_predict_area_hull[key][globalCounter] = [updateValue, int(hullAreaMean), int(hullAreaStd)]
-        # == if there is no entry in g_predict_displacement and guess ==
-        if key not in g_predict_displacement : # and key not in predictCentroidDiff_local
+        # === subsection for bubbles WITH NO history ===
+
+        # --- some extra treatment for merged bubs with no history ---
+        # --- first merged bubble has more info, so it should be taken care of before other first bubbles ---
+        if (key not in g_predict_displacement and key in l_MBub_centroids_old):
+            # this new merged bubble ID. Because merged bubbles have a history of atleast 1 frame (pre-merge), so predictor can start 1 frame earlier.
+            # last centroid can be estimated by area-weighted average centroid, second frame of merged bubble can already be estimated by linear extrapolation.
+            offset                                      = np.array([10,0])
+            prevCentroidPredict                         = prevCentroid-offset
+            distPredictReal                             = int(np.linalg.norm(prevCentroidPredict- l_MBub_centroids_old[key]))
+            g_predict_displacement[key]                 = {}
+            g_predict_displacement[key][globalCounter]  = [tuple(prevCentroidPredict),distPredictReal,distPredictReal,0]
+            g_Centroids[key][globalCounter-1]           = tuple(prevCentroid)
+            g_Centroids[key]                            = dict(sorted(g_Centroids[key].items()))               # added prev after current. should sort
+            #predictCentroidDiff_local[selectID]         = [tuple(prevCentroidPredict), distPredictReal]
+        # --- now take care of regular first bubbles. give them some aribrary displacement predictor error that should be lowered with new data ---
+        if key not in g_predict_displacement : 
             pCentroid                       = l_centroids_old[key]# g_Centroids[key][globalCounter] # 15/03/23 replace g_ to l_
             pDistByType                     = [14,30]
             updateValue                     = pDistByType[0] if key in l_RBub_masks_old else pDistByType[1]
             pc2CMean                        = updateValue
             pc2CStd                         = 0
             g_predict_displacement[key] = {globalCounter: [pCentroid, updateValue, np.around(pc2CMean,2), np.around(pc2CStd,2)]}
-        # == if there is an entry, then depending on number of data points do stat.
-        elif key in predictCentroidDiff_local:
-            pCentroid                       = predictCentroidDiff_local[key][0]
-            updateValue                     = predictCentroidDiff_local[key][1]
+            
+        # === subsection for bubbles WITH history ===
+        elif key in predictCentroidDiff_local:                                  # predictCentroidDiff_local is filled during old-new frame comparison.
+            pCentroid                       = predictCentroidDiff_local[key][0] # current frame prediction based on prev history
+            updateValue                     = predictCentroidDiff_local[key][1] # difference between current frame prediction and resolved centroid
             historyLen                      = len(g_predict_displacement[key])
             timeStep                        = globalCounter-1 if key not in lastNStepsFrozenLatestTimes else lastNStepsFrozenLatestTimes[key]
             if historyLen == 1:

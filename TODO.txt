@@ -6,8 +6,11 @@ General comments/ideas:
 - statistics on bubble parameters were supposed to converge from more relaxed inital limits to something stationary.
 	this might not be the best option, since bubbles may start to change rapidly.
 
+22/03.23:
+	l_BoundingRectangle_params is reated to frozen bubbles, check and change name, its confusing
+	DB recovered as RB do not change type. maybe intended, indeed there might be need for a type "momentum"
 19/03/23:
-	add hull data to storage for drawing. due to alphashape
+	x-add hull data to storage for drawing. due to alphashape
 	radialEllipse stuff is not needed if there is a perfect match. should make a local switch to do it once if required.
 16/02/23:
 	change boundRectAngle to atan2
@@ -26,3 +29,13 @@ check these lines long-term!:
 	assert type(fID) == list, ' you need a line below! '
 
 	newFoundBubsElse = [A for A in newFoundBubsElse if A not in elseOldNewDist[:,1] and A not in frozenOldGlobNewLoc.keys()]; frozenOldGlobNewLoc now mixed,and needs new gID for int FR
+
+	How Predictor works:
+	g_predict_displacement contains info- what was predicted on this frame, based on previous history and how different to real value on this frame.
+	end globalCounter = 0, we have new bubble IDs {1,2,3,..} (l_masks_old)
+	g_predict_displacement is empty/ does not have any of these IDs. 
+	g_predict_displacement[ID]={gc = 0:[value as IDs centroid, spoof distance value depending on bType, mean-same value, stdev-0]
+	globalCounter > 0: take old bubble and search for it. it means at current frame predict possible position from history
+	say, you resolved bubble, store predicted centroid and predicted-real distance in predictCentroidDiff_local
+	after main end storage key not in g_predict_displacement will fail. resolved bubs will be in predictCentroidDiff_local
+	do new entry g_predict_displacement[key][globalCounter] by updating mean atdev c-c distance

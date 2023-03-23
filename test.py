@@ -786,32 +786,68 @@ def rescaleTo255(rmin,rmax,x):
 from matplotlib import pyplot as plt
 
 
-if 1 == -1:
+if 1 == 1:
+    
+    with open('l_MBub_info.pickle', 'rb') as handle:
+        info = pickle.load(handle)
     with open('concaveContour.pickle', 'rb') as handle:
         cnt = pickle.load(handle)
+    with open('concaveContour2.pickle', 'rb') as handle:
+        cnt = pickle.load(handle)
     xt,yt,wt,ht = cv2.boundingRect(cnt)
-    cnt = cnt + [-xt,-yt]
-    hull = cv2.convexHull(cnt, returnPoints = False)
-    hull2 = cv2.convexHull(cnt, returnPoints = True)
-    defects = cv2.convexityDefects(cnt, hull)
+    cnt         = cnt + [-xt,-yt]                                         # grab convex hull of alphashape (concave) hull
+    hull        = cv2.convexHull(cnt, returnPoints = False)
+    hull2       = cv2.convexHull(cnt, returnPoints = True)
+    defects     = cv2.convexityDefects(cnt, hull)
+    old         = info[0]             
+    e_parms     = list(info[3].values())       # grab ellipse params for old contours that have merged
+    cntroid     = info[2]
+    cntroidE    = [np.array(c,int) for c,_,_ in e_parms]
+    dcc = np.diff(cntroidE,axis=0)[0]
+    tcc = np.matmul(np.array([[0, -1],[1, 0]]), dcc)  
+    tcc = tcc/np.linalg.norm(tcc)
+    rads = min([int((a+b)/4) for _,(a,b),_ in e_parms])                     # calculate their average radiuss, take smallest
 
+    dfcts = []
+    normals = []
+    rmv = []
     img = np.zeros((ht,wt,3))
-    cv2.drawContours( img,   [cnt], -1, (255,0,0), 2)
-    cv2.drawContours( img,   [hull2], -1, (255,0,255), 1)
-    r = int(wt/3/2* 1.1)
-    r2 = int(0.7*r)
-    cv2.circle(img,tuple((r+10,r+35)),r,[0,255,255],1)
-    cv2.circle(img,tuple((r+10,r+35)),r2,[2555,255,120],1)
+    img2 = np.zeros((ht,wt,3))
     for i in range(defects.shape[0]):
         s,e,f,d = defects[i,0]
-        if d >= (0.7*r)*256:
-            start = np.array(tuple(cnt[s][0])) 
-            end = np.array(tuple(cnt[e][0])) 
-            far = np.array(tuple(cnt[f][0])) 
+        if d >= (0.4*rads)*256:                                             # keep defects that are larger than 70% of minimal radiuss
+            start   = np.array(tuple(cnt[s][0])) 
+            end     = np.array(tuple(cnt[e][0]))
+            dir1    = end-start
+            dir1    = dir1/np.linalg.norm(dir1)
+            dir2    = np.matmul(np.array([[0, -1],[1, 0]]), dir1)           # rotate by 90 c-clockwise. normal direction
+            far     = np.array(tuple(cnt[f][0]))
+            far2    = np.array(far+dir2*d/256, int)
             cv2.line(img,start,end,[0,255,0],2)
+            cv2.line(img,far,far2,[255,125,0],1)
             cv2.circle(img,far,5,[0,0,255],-1)
+            rmv.append([s,e])
+            dfcts.append([start,end,far])
+            normals.append(dir2)
+    cv2.drawContours( img,   [cnt], -1, (255,0,0), 2)
+    cv2.drawContours( img,   [hull2], -1, (255,0,255), 1)
+    [cv2.ellipse(img, prm, (255,255,0), 1) for prm in e_parms]
+    cv2.imshow(f'merge gc: {1}',img)
+    angles = np.array([int(min(np.arccos(np.dot(tcc,v)), np.arccos(np.dot(tcc,-1*v)))*180/np.pi) for v in normals])
+    angTh = 25
+    whereBigAng = np.array(np.where(angles>angTh)).flatten()
  
-    cv2.imshow('final_img',img)
+    #removeTheseDef = [slice(rmv[i][0],rmv[i][1]) for i in whereBigAng]
+    removeTheseDef = [rmv[i] for i in whereBigAng]
+    rmv = [[0,0]] + removeTheseDef + [[-1,-1]]
+    #rmv = [[0, 0], [1, 2], [-1, -1]]    
+    zz = np.array([[1,1],[2,2],[3,3],[4,4],[5,5]])
+    #ss = [i for i in]
+    cntV2 = np.array(sum([list(cnt[rmv[i][1]:rmv[i+1][0]]) for i in range(len(rmv)-1)] ,[]))
+    cv2.drawContours( img2,   [cntV2], -1, (255,0,0), 2)
+    cv2.imshow(f'merge gc: {2}',img2)
+    #rm = np.hstack(ss2)
+
 
 
 trj = [(10,0),(0,0)]

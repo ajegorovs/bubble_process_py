@@ -1002,6 +1002,9 @@ def mainer(index):
                         newCentroid, newArea        = jointNeighborsWoFrozen_c_a[mainNewID]
                     dist2                   = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))                                               # distance between cluster and predicted centroids
                     areaCrit                = np.abs(newArea-oldMeanArea)/ oldAreaStd
+                    if globalCounter == 7:
+                        with open('concaveContour2.pickle', 'wb') as handle:
+                         pickle.dump(hull, handle)
                     blank = convertGray2RGB(err.copy())
                     cv2.drawContours(  blank,   [hull], -1, cyclicColor(1), 1)
                     cv2.drawContours(  blank,   [l_contours_hull_old[oldID]], -1, cyclicColor(2), 1)
@@ -1320,7 +1323,7 @@ def mainer(index):
                         rads = min([int((a+b)/4) for _,(a,b),_ in e_parms])                     # calculate their average radiuss, take smallest
                         temp = []
                         dfcts = []
-                        temp.append(old);temp.append(np.sum([l_areas_hull_old[IDs] for IDs in old]))
+                        temp.append(old);temp.append(np.sum([l_areas_hull_old[IDs] for IDs in old],dtype = int))
                         img = convertGray2RGB(err.copy())
                         for i in range(defects.shape[0]):
                             s,e,f,d = defects[i,0]
@@ -1337,8 +1340,11 @@ def mainer(index):
                         #cv2.imshow(f'merge gc: {globalCounter}',img)
                         # predict centroid from area weighted pre-merge coordinates and currect centroid.
                         prevCentroid = np.average([l_centroids_old[IDs] for IDs in old], weights = [l_areas_hull_old[IDs] for IDs in old], axis = 0).astype(int)
-                        temp.append(prevCentroid);temp.append(e_parms)
+                        temp.append(prevCentroid);temp.append({ID:e_parms[i] for i,ID in enumerate(old)})
                         l_MBub_info[selectID] = temp
+                        
+                        with open('l_MBub_info.pickle', 'wb') as handle:
+                            pickle.dump(temp, handle)
                         # selectID is new ID, we can fake -1 step as known by taking prevCentroid and offesting it
                         #offset = np.array([10,0])
                         #prevCentroidPredict                             = tuple(prevCentroid-offset)
@@ -1572,6 +1578,7 @@ def mainer(index):
     l_areas_hull_old    = {**l_RBub_areas_hull_old,   **l_DBub_areas_hull_old,    **l_FBub_areas_hull_old,      **l_MBub_areas_hull_old} # l_DBub_areas_hull_old has extra IDs
     l_contours_hull_old = l_contours_hull
     l_ellipse_parms_old = {ID:cv2.fitEllipse(cv2.convexHull(np.vstack(l_contours[l_old_new_IDs_old[ID]]))) for ID in l_centroids_old}
+    l_ellipse_parms_old = {ID:((int(cx),int(cy)),(int(a),int(b)),int(p)) for ID,((cx,cy),(a,b),p) in l_ellipse_parms_old.items()}
 
     for key in list(l_masks_old.keys()):
         if key not in list(g_Masks.keys()):

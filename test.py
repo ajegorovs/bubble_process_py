@@ -797,7 +797,6 @@ if 1 == 1:
     xt,yt,wt,ht = cv2.boundingRect(cnt)
     cnt         = cnt + [-xt,-yt]                                         # grab convex hull of alphashape (concave) hull
     hull        = cv2.convexHull(cnt, returnPoints = False)
-    hull2       = cv2.convexHull(cnt, returnPoints = True)
     defects     = cv2.convexityDefects(cnt, hull)
     old         = info[0]             
     e_parms     = list(info[3].values())       # grab ellipse params for old contours that have merged
@@ -830,7 +829,7 @@ if 1 == 1:
             dfcts.append([start,end,far])
             normals.append(dir2)
     cv2.drawContours( img,   [cnt], -1, (255,0,0), 2)
-    cv2.drawContours( img,   [hull2], -1, (255,0,255), 1)
+    cv2.drawContours( img,   [cnt[hull.flatten()]], -1, (255,0,255), 1)
     [cv2.ellipse(img, prm, (255,255,0), 1) for prm in e_parms]
     cv2.imshow(f'merge gc: {1}',img)
     angles = np.array([int(min(np.arccos(np.dot(tcc,v)), np.arccos(np.dot(tcc,-1*v)))*180/np.pi) for v in normals])

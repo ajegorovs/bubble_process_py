@@ -1419,10 +1419,10 @@ def updateStat(count, mean, std, newValue):
         (mean, variance) = (mean, M2 / count)
         return (mean, np.sqrt(variance))
 
-def tempStore(contourIDs, contours, mask, image, dataSets):
+def tempStore(contourIDs, contours, globalID, mask, image, dataSets):
     gatherPoints                    = np.vstack([contours[ID] for ID in contourIDs])#;print(distCntrSubset.shape)
     x,y,w,h                         = cv2.boundingRect(gatherPoints)#;print([x,y,w,h])
-    tempID                          = min(contourIDs)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
+    #tempID                          = min(contourIDs)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
                 
     baseSubMask,baseSubImage        = mask.copy()[y:y+h, x:x+w], image.copy()[y:y+h, x:x+w]
     subSubMask                      = np.zeros((h,w),np.uint8)
@@ -1436,7 +1436,7 @@ def tempStore(contourIDs, contours, mask, image, dataSets):
     centroid = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
 
     for storage, data in zip(dataSets,[baseSubMask , baseSubImage, contourIDs, ([x,y,w,h]), centroid, hullArea]):
-        storage[tempID] = data
+        storage[globalID] = data
 
 
 
@@ -1471,21 +1471,81 @@ def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0
                     
     baseSubImage[subSubMask == 0]   = 0
                     
-    centroid = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
-    if concave == 0:
+    #centroid = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
+
+    if (type(concave) == int and concave == 0):
         hull                            = cv2.convexHull(np.vstack(contours[contourIDs]))
         hullArea                        = getCentroidPosContours(bodyCntrs = [hull])[1]
         #hullArea = getCentroidPosContours(bodyCntrs = [contours[k] for k in contourIDs], hullArea = 1)[1]
-    else:
-        #points_2d = np.vstack([contours[ID] for ID in contourIDs]).reshape(-1,2)
+    elif (type(concave) == int and concave == 1):
         points_2d = np.vstack(contours[contourIDs]).reshape(-1,2)
         alpha_shape = alphashape.alphashape(points_2d, 0.05)
         if alpha_shape.geom_type == 'Polygon':
                 xx,yy         = alpha_shape.exterior.coords.xy
                 hull        = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
-                hullArea    = cv2.contourArea(hull)
+                #hullArea    = cv2.contourArea(hull)
+    else:
+        hull = concave
+    centroid, hullArea    = getCentroidPosContours(bodyCntrs = [hull])
     for storage, data in zip(dataSets,[baseSubMask , baseSubImage, contourIDs, ([x,y,w,h]), centroid, int(hullArea), hull]):
         storage[globalID] = data
 
     #l_bubble_type[selectID]                 = typeTemp   #<<<< inspect here for duplicates
     #g_bubble_type[selectID][globalCounter]  = typeTemp
+def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0):
+    baseContour, _, _       = alphashapeHullCentroidArea(contours, contourIDs, alphaParam)  # find concave hull for a cluster using alphashape lib.
+    hullCoordinateIndices   = cv2.convexHull(baseContour, returnPoints = False)             # indicies of original contour points that form a convex hull
+    hullDefects             = cv2.convexityDefects(baseContour, hullCoordinateIndices)      # find concave defects of convex hull
+    refDistance             = previousInfo[0]
+    refPlaneTangent         = previousInfo[1]
+    refAngleThreshold       = previousInfo[2]
+    calculateAngle          = lambda vector: np.arccos(np.dot(refPlaneTangent, vector))     # chech angle between reference tangent and a vector
+    defectsIndicies         = []                                                            # large defects will be stored here
+    defectsDirection        = []                                                            # direction from 'cave' furthest point normal to contour.
+    defectsLength           = []
+    inPlaneDefectsPresent   = True
+    if debug == 1:
+        x,y,w,h             = cv2.boundingRect(baseContour)
+        imageDebug          = np.zeros((h,w,3),np.uint8)
+        cv2.drawContours( imageDebug, [baseContour - [x,y]], -1, (255,0,0), 2)
+        [cv2.drawContours(imageDebug, [contours[i]-[x,y]], -1, (40,40,40), -1) for i in contourIDs]
+    for i in range(hullDefects.shape[0]):
+        s,e,f,d = hullDefects[i,0]                                              # s,e,f are indicies of original concave hull, d is weird distance normal to contour
+        if d >= (refDistance)*256:                                              # filter out defects smaller than refDistance. times 256 - it just works!
+            start,end   = [np.array(tuple(baseContour[i][0])) for i in [s,e]]   # contour hull edge adjacent to a defect
+            tangent     = (lambda x: x/np.linalg.norm(x))(end-start)            # make it unit length
+            normal      = np.matmul(np.array([[0, -1],[1, 0]]), tangent)        # rotate tangent by 90 c-clockwise do find a normal. opencv travels contours clockwise!?
+            defectsIndicies.append([s,e])                                       # store defects indicies where it begins to cave and ends.
+            defectsDirection.append(normal)
+            defectsLength.append(d)
+            if debug == 1:
+                farPointStart   = np.array(tuple(baseContour[f][0])) - [x,y]
+                farPointEnd     = np.array(farPointStart+normal*d/256, int)
+                cv2.line(imageDebug, start - [x,y], end - [x,y], [0,0,255], 2)
+                cv2.line(imageDebug, farPointStart, farPointEnd, [255,125,0], 1)
+                cv2.circle(imageDebug,farPointStart, 5, [0,0,255], -1)
+                        
+    defectsIndicies     = np.array(defectsIndicies,int)
+    defectsLength       = np.array(defectsLength,int)
+    defectsDirection    = [vector*np.sign(np.dot(refPlaneTangent,vector)) for vector in defectsDirection]   # invert defectDirections if projection to refVector is negative.
+    defectsDirection    = np.array(defectsDirection)
+    defectsAngles       = np.array([int(calculateAngle(v)*180/np.pi) for v in defectsDirection])        # find defect angle to ref. min case where |angle| =< 90  
+    defectsDiscard      = np.array(np.where(np.abs(defectsAngles)>refAngleThreshold)).flatten()         # which angle is higher than threshold? not sure if i need abs
+                        
+    if len(defectsDiscard)>0:                                                                           # instead of deleting i want to keep everythin inbetween defects
+        removeTheseIntevals     = [[0,0]] +[defectsIndicies[i] for i in defectsDiscard] + [[-1,-1]]     # combine contour slices -> last defect end: next defect start       
+        invertedIndicies        = [(removeTheseIntevals[i][1],removeTheseIntevals[i+1][0]) for i in range(len(removeTheseIntevals)-1)]
+        hullOutput              = np.array(sum([list(baseContour[start:end]) for start,end in invertedIndicies] ,[]))
+    else:
+        hullOutput              = baseContour
+                        
+    numUsefulDefects    = len(defectsAngles) - len(defectsDiscard)                                      # these specify a plane (line) between merged bubbles.
+    if numUsefulDefects >= 1:                                                                           # ive seen single deffect.
+        defectsUseful       = [i for i in range(len(defectsAngles)) if i not in list(defectsDiscard)]   # do average defect direction weighted by defect length
+        avgDirection        = np.average(defectsDirection[defectsUseful], weights = defectsLength[defectsUseful],axis = 0)
+    else:                                                                                               # lack of defects in tangent plane might indicate end of merge.
+        avgDirection = refPlaneTangent                                                                  # at least keep old ref plane.
+        inPlaneDefectsPresent = False
+    cv2.drawContours( imageDebug,   [hullOutput- [x,y]], -1, (255,0,0), 2) if debug == 1 else 0
+    cv2.imshow(f'merge gc: {2}',imageDebug) if debug == 1 else 0
+    return hullOutput, (refDistance, avgDirection, refAngleThreshold), inPlaneDefectsPresent

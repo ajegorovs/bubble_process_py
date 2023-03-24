@@ -1449,14 +1449,45 @@ def tempStore(contourIDs, contours, globalID, mask, image, dataSets):
 #     dataSets = [l_RBub_r_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull]
 #else: 
 #    dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull]
-def alphashapeHullCentroidArea(contours, contourIDs, param):
-    points_2d = np.vstack(contours[contourIDs]).reshape(-1,2)
-    alpha_shape = alphashape.alphashape(points_2d, param)
+ 
+def alphashapeHullModded(contours, contourIDs, param, debug):
+    # finds a concave hull of cloud of points given a control parameter 'param'.
+    # when applied to contours, might perform incorrectly, since there are no points inside
+    # solution- add extra points inside contours.
+    points_2d   = np.vstack(contours[contourIDs]).reshape(-1,2)
+    x,y,w,h     = cv2.boundingRect(points_2d)                   # grab a subImage to reduce computational resources
+
+    fillContour = np.zeros((h,w),np.uint8)                      # mask of contour/-s
+    [cv2.drawContours( fillContour,   [contours[i]-[x,y]], -1, 255, -1) for i in contourIDs]
+    
+    fillPoints  = np.zeros((h,w),np.uint8)                      # for extra points
+    fillPoints[0:h:15,0:w:15] = 255                             # grid of evenly spaced points
+    
+    fillAndOp   = cv2.bitwise_and(fillContour,fillPoints)               # only points left are inside contour/-s
+    wherePoints = np.flip(np.array(np.where(fillAndOp == 255),int)).T   # local coordinates of inside points. some mumbo jambo with flipped x and y
+    wherePoints += [x,y]                                                # offset to global space
+    
+    allPonts = np.vstack((points_2d,wherePoints))
+    alpha_shape = alphashape.alphashape(allPonts, param)
     if alpha_shape.geom_type == 'Polygon':
             xx,yy                   = alpha_shape.exterior.coords.xy
             hull                    = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
-            centroid, area    =  getCentroidPosContours(bodyCntrs = [hull])
-    return hull, centroid, area 
+            #centroid, area          =  getCentroidPosContours(bodyCntrs = [hull])
+    else:
+        cv2.imshow('1',fillPoints)
+        cv2.imshow('2',fillContour)
+        cv2.imshow('3',fillAndOp)
+    if debug == 1:
+        cv2.imshow('1',fillPoints)
+        cv2.imshow('2',fillContour)
+        cv2.imshow('3',fillAndOp)
+        imageDebug = np.zeros((h,w,3),np.uint8)
+        [cv2.circle(imageDebug , c  - [x,y], 1, (0,255,0), -1) for c in allPonts]
+        cv2.drawContours( imageDebug,   [hull- [x,y]], -1, (255,255,0), 1)
+        cv2.imshow('4',imageDebug)
+
+            
+    return hull
 
 def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0):
     # smallest x centroid survives. ID:Cx -> smallest Cx ID
@@ -1478,11 +1509,12 @@ def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0
         hullArea                        = getCentroidPosContours(bodyCntrs = [hull])[1]
         #hullArea = getCentroidPosContours(bodyCntrs = [contours[k] for k in contourIDs], hullArea = 1)[1]
     elif (type(concave) == int and concave == 1):
-        points_2d = np.vstack(contours[contourIDs]).reshape(-1,2)
-        alpha_shape = alphashape.alphashape(points_2d, 0.05)
-        if alpha_shape.geom_type == 'Polygon':
-                xx,yy         = alpha_shape.exterior.coords.xy
-                hull        = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
+        hull = alphashapeHullModded(contours, contourIDs, 0.05)
+        #points_2d = np.vstack(contours[contourIDs]).reshape(-1,2)
+        #alpha_shape = alphashape.alphashape(points_2d, 0.05)
+        #if alpha_shape.geom_type == 'Polygon':
+        #        xx,yy         = alpha_shape.exterior.coords.xy
+        #        hull        = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
                 #hullArea    = cv2.contourArea(hull)
     else:
         hull = concave
@@ -1493,7 +1525,8 @@ def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0
     #l_bubble_type[selectID]                 = typeTemp   #<<<< inspect here for duplicates
     #g_bubble_type[selectID][globalCounter]  = typeTemp
 def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0):
-    baseContour, _, _       = alphashapeHullCentroidArea(contours, contourIDs, alphaParam)  # find concave hull for a cluster using alphashape lib.
+    #baseContour, _, _       = alphashapeHullCentroidArea(contours, contourIDs, alphaParam)  
+    baseContour             = alphashapeHullModded(contours, contourIDs, alphaParam, debug) # find concave hull for a cluster using alphashape lib.
     hullCoordinateIndices   = cv2.convexHull(baseContour, returnPoints = False)             # indicies of original contour points that form a convex hull
     hullDefects             = cv2.convexityDefects(baseContour, hullCoordinateIndices)      # find concave defects of convex hull
     refDistance             = previousInfo[0]

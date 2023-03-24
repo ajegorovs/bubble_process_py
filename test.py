@@ -786,7 +786,7 @@ def rescaleTo255(rmin,rmax,x):
 from matplotlib import pyplot as plt
 
 
-if 1 == 1:
+if 1 == 2:
     
     with open('l_MBub_info.pickle', 'rb') as handle:
         info = pickle.load(handle)
@@ -846,14 +846,70 @@ if 1 == 1:
     cv2.drawContours( img2,   [cntV2], -1, (255,0,0), 2)
     cv2.imshow(f'merge gc: {2}',img2)
     #rm = np.hstack(ss2)
+import alphashape
+param = 0.06
+with open('alphashapeHullCentroidArea.pickle', 'rb') as handle:
+    points_2d = pickle.load(handle)
+
+x,y,w,h             = cv2.boundingRect(points_2d)
+points_2d2 =  points_2d - [x,y]
+#points_2d2 = points_2d2.reshape(-1, 1, 2)
+fillContour = np.zeros((h,w),np.uint8)
+cv2.drawContours( fillContour,   [points_2d2], -1, 255, -1)
+cv2.imshow('fillContour',fillContour)
+checkerboard = np.zeros((h,w),np.uint8)
+checkerboard[0:h:15,0:w:15] = 255
+cv2.imshow('checkerboard',checkerboard)
+andOp = cv2.bitwise_and(fillContour,checkerboard)
+cv2.imshow('andOp',andOp)
+whereFills = np.array(np.where(andOp == 255),int).T.reshape(-1,1,2)
+points_2d2v2 = np.flip((points_2d2).reshape(-1,2).T).T
+points_2d2v2 = np.vstack((points_2d2v2,whereFills.reshape(-1,2)))
+
+res = np.zeros((h,w),np.uint8)
+#subset = points_2d2v2
+points_2d2v2 = np.flip((points_2d2v2).reshape(-1,2).T).T
+[cv2.circle(res , x, 1, 255, -1) for x in points_2d2v2]
+#res[points_2d2v2[:len(points_2d2)]] == 255
 
 
-
-trj = [(10,0),(0,0)]
-mss = [10,10]
-centrd = np.average(trj, weights=mss, axis = 1).astype(int)
-
-
+alpha_shape = alphashape.alphashape(points_2d2v2, param)
+if alpha_shape.geom_type == 'Polygon':
+        xx,yy                   = alpha_shape.exterior.coords.xy
+        hull                    = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
+        #centroid, area          =  getCentroidPosContours(bodyCntrs = [hull])
+imageDebug2          = np.zeros((1000,800,3),np.uint8)
+res = cv2.cvtColor(res,cv2.COLOR_GRAY2RGB)
+cv2.drawContours( res,   [hull], -1, (255,255,0), 1)
+#cv2.polylines(imageDebug2, points_2d.reshape(-1, 1, 2) ,1, (0,0,255), 1)
+#cv2.polylines(imageDebug2, points_2d2 ,1, (0,255,255), 1)
+#.cv2.imshow(f'asd:{1}',imageDebug2)
+cv2.imshow('res',res)
+#if alpha_shape.geom_type == 'Polygon':
+#        xx,yy                   = alpha_shape.exterior.coords.xy
+#        hull                    = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
+#        #centroid, area          =  getCentroidPosContours(bodyCntrs = [hull])
+#else:
+#    with open('alphashapeHullCentroidArea.pickle', 'wb') as handle:
+#                pickle.dump(points_2d, handle) 
+#    for prm in np.arange(param,0,-0.01):
+#        imageDebug          = np.zeros((h,w,3),np.uint8)
+#        alpha_shape2 = alphashape.alphashape(points_2d, prm)
+#        #cv2.polylines(imageDebug, points_2d2 ,1, (0,0,255), 2)
+#        cv2.drawContours( imageDebug,   [points_2d2], -1, (0,0,120), -1)
+#        cv2.drawContours( imageDebug,   [points_2d2], -1, (0,0,255), 2)
+#        mycoordslist = []
+#        hull = []
+#        if alpha_shape2.geom_type != 'Polygon':
+#            mycoordslist = [np.array(x.exterior.coords,int).reshape(-1,1,2) for x in alpha_shape2.geoms]
+#            [cv2.drawContours( imageDebug,   [cntr - [x,y]], -1, (255,255,0), 2) for cntr in mycoordslist]
+#            cv2.imshow(f'{np.round(prm,3)}',imageDebug)
+#        else:
+#            xx,yy                   = alpha_shape2.exterior.coords.xy
+#            hull                    = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
+#            cv2.drawContours( imageDebug,   [hull- [x,y]], -1, (255,255,0), 2)
+#            cv2.imshow(f'{np.round(prm,3)}',imageDebug)
+            
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
-    cv2.destroyallwindows()
+    cv2.destroyAllWindows()

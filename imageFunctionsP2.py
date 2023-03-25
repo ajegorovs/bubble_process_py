@@ -4,7 +4,7 @@ Created on Tue May 24 17:17:57 2022
 
 @author: User
 """
-import glob, pickle, numpy as np, cv2, os, itertools
+import glob, pickle, numpy as np, cv2, os, itertools, networkx as nx
 from scipy import interpolate
 from matplotlib import pyplot as plt
 import alphashape
@@ -1419,24 +1419,7 @@ def updateStat(count, mean, std, newValue):
         (mean, variance) = (mean, M2 / count)
         return (mean, np.sqrt(variance))
 
-def tempStore(contourIDs, contours, globalID, mask, image, dataSets):
-    gatherPoints                    = np.vstack([contours[ID] for ID in contourIDs])#;print(distCntrSubset.shape)
-    x,y,w,h                         = cv2.boundingRect(gatherPoints)#;print([x,y,w,h])
-    #tempID                          = min(contourIDs)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
-                
-    baseSubMask,baseSubImage        = mask.copy()[y:y+h, x:x+w], image.copy()[y:y+h, x:x+w]
-    subSubMask                      = np.zeros((h,w),np.uint8)
-    [cv2.drawContours( subSubMask, contours, ID, 255, -1, offset = (-x,-y)) for ID in contourIDs]
-    
-    baseSubMask[subSubMask == 0]    = 0
-                
-    baseSubImage[subSubMask == 0]   = 0
 
-    hullArea = getCentroidPosContours(bodyCntrs = [contours[k] for k in contourIDs], hullArea = 1)[1]
-    centroid = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
-
-    for storage, data in zip(dataSets,[baseSubMask , baseSubImage, contourIDs, ([x,y,w,h]), centroid, hullArea]):
-        storage[globalID] = data
 
 
 
@@ -1489,6 +1472,25 @@ def alphashapeHullModded(contours, contourIDs, param, debug):
             
     return hull
 
+def tempStore(contourIDs, contours, globalID, mask, image, dataSets):
+    gatherPoints                    = np.vstack([contours[ID] for ID in contourIDs])#;print(distCntrSubset.shape)
+    x,y,w,h                         = cv2.boundingRect(gatherPoints)#;print([x,y,w,h])
+    #tempID                          = min(contourIDs)  #<<<<<<<<<<< maybe check if some of these contours are missing elsewhere
+                
+    baseSubMask,baseSubImage        = mask.copy()[y:y+h, x:x+w], image.copy()[y:y+h, x:x+w]
+    subSubMask                      = np.zeros((h,w),np.uint8)
+    [cv2.drawContours( subSubMask, contours, ID, 255, -1, offset = (-x,-y)) for ID in contourIDs]
+    
+    baseSubMask[subSubMask == 0]    = 0
+                
+    baseSubImage[subSubMask == 0]   = 0
+
+    hullArea = getCentroidPosContours(bodyCntrs = [contours[k] for k in contourIDs], hullArea = 1)[1]
+    centroid = getCentroidPos(inp = baseSubMask, offset = (x,y), mode=0, mask=[])
+
+    for storage, data in zip(dataSets,[baseSubMask , baseSubImage, contourIDs, ([x,y,w,h]), centroid, hullArea]):
+        storage[globalID] = data
+
 def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0):
     # smallest x centroid survives. ID:Cx -> smallest Cx ID
                     
@@ -1510,12 +1512,7 @@ def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0
         #hullArea = getCentroidPosContours(bodyCntrs = [contours[k] for k in contourIDs], hullArea = 1)[1]
     elif (type(concave) == int and concave == 1):
         hull = alphashapeHullModded(contours, contourIDs, 0.05)
-        #points_2d = np.vstack(contours[contourIDs]).reshape(-1,2)
-        #alpha_shape = alphashape.alphashape(points_2d, 0.05)
-        #if alpha_shape.geom_type == 'Polygon':
-        #        xx,yy         = alpha_shape.exterior.coords.xy
-        #        hull        = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
-                #hullArea    = cv2.contourArea(hull)
+
     else:
         hull = concave
     centroid, hullArea    = getCentroidPosContours(bodyCntrs = [hull])
@@ -1582,3 +1579,45 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0):
     cv2.drawContours( imageDebug,   [hullOutput- [x,y]], -1, (255,0,0), 2) if debug == 1 else 0
     cv2.imshow(f'merge gc: {2}',imageDebug) if debug == 1 else 0
     return hullOutput, (refDistance, avgDirection, refAngleThreshold), inPlaneDefectsPresent
+
+def graphUniqueComponents(nodes,edges, edgesAux= [], debug = 0, bgDims = {1e3,1e3}, centroids = [], centroidsAux = [], contours = [], contoursAux = []):
+    # generally provide nodes and pairs of connections (edges), then retreave unique interconnected clusters.
+    # small modification where second set of connections is introduced. like catalyst, it may create extra connections, but is after deleted.
+    H = nx.Graph()
+    H.add_nodes_from(nodes)
+    H.add_edges_from(edges)
+            
+    if len(edgesAux)>0:
+        edgesAux = [v for v in edgesAux if v[1] in nodes]                                       # to avoid introducing new nodes via edgesAux. for all contour analysis you dont care because they are already in. in partial its a problem.
+        edgesAux = np.array(edgesAux, int) if len(edgesAux) >0 else np.empty((0,2),np.int16)    # not sure if needed. just in case. (copied from combosSelf)
+        H.add_edges_from([[str(i),j] for i,j in edgesAux])
+        connected_components_all = [list(nx.node_connected_component(H, key)) for key in nodes]
+        connected_components_main = [sorted([subID for subID in IDs if type(subID) != str]) for IDs in connected_components_all]
+    else:
+        connected_components_main = [list(sorted(nx.node_connected_component(H, key))) for key in nodes]
+
+    connected_components_unique = []
+    [connected_components_unique.append(x) for x in connected_components_main if x not in connected_components_unique] # remove duplicates
+
+    # debug can set node position if centroids dictionary is supplied, might require background dimensions
+    # also contour dictionary can be used to visualise node objects.
+    if debug == 1:
+        plt.figure(1)
+        idsAux = np.unique(edgesAux[:,0]) if len(edgesAux) > 0 else []
+        clrs    = ['#00FFFF']*len(nodes)+ ['#FFB6C1']*len(idsAux)
+        if len(centroids)>0:
+            pos     = {ID:centroids[ID] for ID in nodes}
+            posAux  = {str(ID):centroidsAux[ID] for ID in idsAux}
+            posAll  = {**pos, **posAux}
+            for n, p in posAll.items():
+                H.nodes[n]['pos'] = p
+            blank   = np.full((bgDims[0],bgDims[1],3),128, np.uint8)
+            if len(contours)>0:
+                [cv2.drawContours( blank,  [contours[i]], -1, (6,125,220), -1) for i in nodes]
+                [cv2.drawContours( blank, [contoursAux[i]], -1, (225,125,125), 2) for i in idsAux]
+            plt.imshow(blank)
+            nx.draw(H, posAll, with_labels = True, node_color = clrs)
+        else:
+            nx.draw(H, with_labels = True, node_color = clrs)
+        plt.show()
+    return connected_components_unique

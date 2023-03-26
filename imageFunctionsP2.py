@@ -1493,7 +1493,7 @@ def tempStore(contourIDs, contours, globalID, mask, image, dataSets):
     for storage, data in zip(dataSets,[baseSubMask , baseSubImage, contourIDs, ([x,y,w,h]), centroid, hullArea]):
         storage[globalID] = data
 
-def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0):
+def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0,param = 0.05):
     # smallest x centroid survives. ID:Cx -> smallest Cx ID
                     
     gatherPoints                    = np.vstack([contours[k] for k in contourIDs])
@@ -1513,7 +1513,7 @@ def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0
         hullArea                        = getCentroidPosContours(bodyCntrs = [hull])[1]
         #hullArea = getCentroidPosContours(bodyCntrs = [contours[k] for k in contourIDs], hullArea = 1)[1]
     elif (type(concave) == int and concave == 1):
-        hull = alphashapeHullModded(contours, contourIDs, 0.05)
+        hull = alphashapeHullModded(contours, contourIDs, param, 0)
 
     else:
         hull = concave
@@ -1624,7 +1624,9 @@ def graphUniqueComponents(nodes,edges, edgesAux= [], debug = 0, bgDims = {1e3,1e
         plt.show()
     return connected_components_unique
 
+
 from scipy.interpolate import UnivariateSpline
+
 def interpolateHull(points,k,s,numReturnPoints,debug):
     points      = points.reshape(-1,2)
     arclength   = np.cumsum( np.sqrt(np.sum( np.diff(points, axis=0)**2, axis=1 )) )

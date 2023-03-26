@@ -772,3 +772,66 @@ def maskProcSegments(img, mask, lowThreshold, graphics, exportGraphics, drawBG, 
     # return reportSet[nReports-1]
     # return cv2.drawContours( mean,   cntrHull, -1, (0,255,255), 1)
     return reportList[nReports-1]
+
+def partialBubble(image, graphics = 0, m=1):
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    w,h = image.shape[0],image.shape[1]
+    dlt = int(np.sqrt(w**2+h**2)/2 + 1)
+    tempImg0 = cv2.morphologyEx(image.copy(), cv2.MORPH_OPEN, np.ones((3,3),np.uint8))
+    tempImg0 = cv2.copyMakeBorder(tempImg0, dlt, dlt, dlt, dlt, cv2.BORDER_CONSTANT, None, 0)
+    tempImg = tempImg0.copy()
+    temp = list()
+    temp.append(tempImg)
+    maxIter = 19
+    di = 15
+    for i in range(5,maxIter*di,di):
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (i,i))
+        A = cv2.morphologyEx(tempImg0, cv2.MORPH_CLOSE, kernel, iterations = 1)
+        tempCntr, _ = cv2.findContours(A,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+        A = cv2.drawContours(A.copy(), tempCntr, -1, 255, -1)
+        typeCheck, _, _ = bubbleTypeCheck(image = A, index = str(m)+" "+str(i),erode = 4,close = 1,areaRemainingThreshold = 0.75, graphics = 0)
+        # cv2.imshow("adsad",A)
+        
+        temp2 = cv2.addWeighted(A, 0.5, tempImg0, 1 - 0.5,0)
+        temp2 = cv2.putText(temp2.copy(), str(typeCheck), (dlt+10,dlt+10), font, 0.4, 204, 1, cv2.LINE_AA)
+        temp.append(temp2)
+        if typeCheck >= 0.7: break
+    tempCntr, _ = cv2.findContours(A[dlt:-dlt,dlt:-dlt],cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+    # if graphics == 1:
+    #     tempRGB = cv2.drawContours(imageRGB.copy(), tempCntr, -1, (255,0,255), 1)
+    # else: tempRGB = None
+    return A, dlt
+    # imgMrphCls = [img[dlt:-dlt,dlt:-dlt] for img in temp]
+    # output[y:y+h,x:x+w] = imgMrphCls[len(imgMrphCls)-1]
+    # reportList[4][y:y+h,x:x+w] = A[dlt:-dlt,dlt:-dlt]
+
+def hullGeneral(image):
+    cntrHull, _ = cv2.findContours(image,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+    if len(cntrHull)>0:
+    # print(len(cntrHull))
+        cont = np.vstack(cntrHull)
+        hull = cv2.convexHull(cont)
+        return cv2.drawContours(  image.copy() * 0,   [hull], -1, 255, -1)
+    else:
+        return image.copy() * 0
+    
+def removeBorderComponents(img,mode=1,px=1):    
+    # remove border components https://stackoverflow.com/questions/65534370/remove-the-element-attached-to-the-image-border
+    image = convertRGB2Gray(img)
+    if mode == 1:
+        pad = cv2.copyMakeBorder(image, px,px,px,px, cv2.BORDER_CONSTANT, value=255)
+        h, w = pad.shape
+        mask = np.zeros([h + 2, w + 2], np.uint8)
+        img_floodfill = cv2.floodFill(pad, mask, (0,0), 0, (5), (0), flags=8)[1]
+        out = img_floodfill[px:h-px, px:w-px]
+        
+    else:
+        pad = np.full(image.shape,255,dtype=np.uint8)
+        h, w = pad.shape
+        pad[px:h-px, px:w-px] = image[px:h-px, px:w-px]
+        mask = np.zeros([h + 2, w + 2], np.uint8)
+        out = cv2.floodFill(pad, mask, (0,0), 0, (5), (0), flags=8)[1]    
+    
+    
+    return out
+    

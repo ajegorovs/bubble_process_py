@@ -1255,11 +1255,13 @@ def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [],
 def overlappingRotatedRectangles(group1Params,group2Params):
     #group1IDs, group2IDs = list(group1Params.keys()),list(group2Params.keys())
     #allCombs = list(itertools.product(group1Params, group1Params))#;print(f'allCombs,{allCombs}')
+    intersectingCombs = []
     if group1Params == group2Params:
         allCombs = np.unique(np.sort(np.array(list(itertools.permutations(group1Params, 2)))), axis = 0)
-    else: 
+    elif len(group2Params) ==0:
+        return intersectingCombs
+    else:
         allCombs = list(itertools.product(group1Params, group2Params))#;print(f'allCombs,{allCombs}')
-    intersectingCombs = []
     for (keyOld,keyNew) in allCombs:
         x1,y1,w1,h1 = group2Params[keyNew]#;print(allCombs)
         rotatedRectangle_new = ((x1+w1/2, y1+h1/2), (w1, h1), 0)
@@ -1621,3 +1623,22 @@ def graphUniqueComponents(nodes,edges, edgesAux= [], debug = 0, bgDims = {1e3,1e
             nx.draw(H, with_labels = True, node_color = clrs)
         plt.show()
     return connected_components_unique
+
+from scipy.interpolate import UnivariateSpline
+def interpolateHull(points,k,s,numReturnPoints,debug):
+    points      = points.reshape(-1,2)
+    arclength   = np.cumsum( np.sqrt(np.sum( np.diff(points, axis=0)**2, axis=1 )) )
+    arclength   = np.insert(arclength, 0, 0)/arclength[-1]                                  # normalize to % of total.
+    splines     = [UnivariateSpline(arclength, coords, k=k, s=s) for coords in points.T]
+    output      = np.array(np.vstack( spl(np.linspace(0, 1, numReturnPoints)) for spl in splines ).T,int)
+    if debug == 1:
+        _, ax = plt.subplots(ncols=2,sharex=False, sharey=True)
+        ax[0].plot(*points.T,'-' ,label='original points', color = 'black');
+        ax[0].scatter(*points.T,s=13, color = 'black');
+        ax[1].plot(*output.T,'-' ,label='resampled', color = 'red');
+        ax[1].scatter(*output.T,s=23, color = 'red');
+        ax[1].scatter(*points.T,s=13, color = 'black');
+        ax[0].set_aspect('equal', 'box')
+        ax[1].set_aspect('equal', 'box')
+        plt.show()
+    return output

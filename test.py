@@ -847,11 +847,74 @@ if 1 == 2:
     cv2.imshow(f'merge gc: {2}',img2)
     #rm = np.hstack(ss2)
 
-arr = np.array([[1,1,1],[2,2,2]])
-arr2 = np.array(arr, dtype  = 'S, i4, i4')
-print(arr2)
 
- 
+if  1== 1:
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib import patches
+    from scipy.interpolate import UnivariateSpline
+    with open('contour_hulls_gc5.pickle', 'rb') as handle:
+        hulls = pickle.load(handle)
+    from scipy.interpolate import UnivariateSpline
+    def interpHull(points,k,s,numReturnPoints,debug):
+        points      = points.reshape(-1,2)
+        arclength   = np.cumsum( np.sqrt(np.sum( np.diff(points, axis=0)**2, axis=1 )) )
+        arclength   = np.insert(arclength, 0, 0)/arclength[-1]                                  # normalize to % of total.
+        splines     = [UnivariateSpline(arclength, coords, k=k, s=s) for coords in points.T]
+        output      = np.vstack( spl(np.linspace(0, 1, numReturnPoints)) for spl in splines ).T
+        if debug == 1:
+            fig, ax = plt.subplots(ncols=2,sharex=False, sharey=True)
+            ax[0].plot(*points.T,'-' ,label='original points', color = 'black');
+            ax[0].scatter(*points.T,s=13, color = 'black');
+            ax[1].plot(*output.T,'-' ,label='resampled', color = 'red');
+            ax[1].scatter(*output.T,s=23, color = 'red');
+            ax[1].scatter(*points.T,s=13, color = 'black');
+            ax[0].set_aspect('equal', 'box')
+            ax[1].set_aspect('equal', 'box')
+            plt.show()
+            
+        # Define some points:
+    z = 5
+    interpHull(hulls[z],2,0.2,20,1)
+    interpHull(hulls[z],3,0.2,20,1)
+    a =1
+    ## Linear length along the line:
+    #distance = np.cumsum( np.sqrt(np.sum( np.diff(points, axis=0)**2, axis=1 )) )
+    #distance = np.insert(distance, 0, 0)/distance[-1]
+
+    ## Build a list of the spline function, one for each dimension:
+    #splines = [UnivariateSpline(distance, coords, k=3, s=.2) for coords in points.T]
+
+    ## Computed the spline for the asked distances:
+    #alpha = np.linspace(0, 1, 75)
+    #points_fitted = np.vstack( spl(alpha) for spl in splines ).T
+    #points_fitted2 = np.vstack( spl(np.linspace(0, 1, 25)) for spl in splines ).T
+    #(xcenter, ycenter),(width, height),angle = cv2.fitEllipse(points)
+    
+    #e1 = patches.Ellipse((xcenter, ycenter), width, height,
+    #                 angle=angle, fill=False, zorder=2, linewidth=1, linestyle = '-.')
+    #(xcenter, ycenter),(width, height),angle = cv2.fitEllipse(points_fitted2.astype(int))
+
+    #e2 = patches.Ellipse((xcenter, ycenter), width, height,
+    #                 angle=angle, fill=False, zorder=2,edgecolor=(1, 0, 0, 1), linewidth=1, linestyle = '-.')
+    ## Graph:
+    #fig = plt.figure()
+    #fig, ax = plt.subplots(ncols=2,sharex=False, sharey=True)
+    #ax[0].add_patch(e1)
+    #ax[1].add_patch(e2)
+    #ax[0].plot(*points.T,'-' ,label='original points', color = 'black');
+    #ax[0].scatter(*points.T, label='resampled',s=13, color = 'black');
+    ##ax.plot(*points_fitted.T, '-r', label='fitted spline k=3, s=.2');
+    #ax[1].scatter(*points_fitted2.T, label='resampled',s=23, color = 'red');
+    #ax[1].plot(*points.T,'-' ,label='original points', color = 'black');
+    #ax[0].axis('equal'); plt.xlabel('x'); plt.ylabel('y');
+    #ax[0].set_xlim((600,860))
+    #ax[1].set_xlim((600,860))
+    #ax[0].set_ylim((430,660))
+    #ax[1].set_ylim((430,660))
+    #ax[0].set_aspect('equal', 'box')
+    #ax[1].set_aspect('equal', 'box')
+    #plt.show()
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyAllWindows()

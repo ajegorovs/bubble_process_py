@@ -848,7 +848,7 @@ if 1 == 2:
     #rm = np.hstack(ss2)
 
 
-if  1== 1:
+if  1== 11:
     import numpy as np
     import matplotlib.pyplot as plt
     from matplotlib import patches
@@ -915,6 +915,12 @@ if  1== 1:
     #ax[0].set_aspect('equal', 'box')
     #ax[1].set_aspect('equal', 'box')
     #plt.show()
+
+arr = np.array([[ 2, 26],
+       [ 3, 36],
+       [ 4, 41],
+       [ 5, 34]], dtype=int)
+print({b:a for a,b in arr})
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyAllWindows()

@@ -1582,6 +1582,7 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0):
     cv2.imshow(f'merge gc: {2}',imageDebug) if debug == 1 else 0
     return hullOutput, (refDistance, avgDirection, refAngleThreshold), inPlaneDefectsPresent
 
+
 def graphUniqueComponents(nodes,edges, edgesAux= [], debug = 0, bgDims = {1e3,1e3}, centroids = [], centroidsAux = [], contours = [], contoursAux = []):
     # generally provide nodes and pairs of connections (edges), then retreave unique interconnected clusters.
     # small modification where second set of connections is introduced. like catalyst, it may create extra connections, but is after deleted.
@@ -1591,15 +1592,15 @@ def graphUniqueComponents(nodes,edges, edgesAux= [], debug = 0, bgDims = {1e3,1e
             
     if len(edgesAux)>0:
         edgesAux = [v for v in edgesAux if v[1] in nodes]                                       # to avoid introducing new nodes via edgesAux. for all contour analysis you dont care because they are already in. in partial its a problem.
-        edgesAux = np.array(edgesAux, int) if len(edgesAux) >0 else np.empty((0,2),np.int16)    # not sure if needed. just in case. (copied from combosSelf)
+        edgesAux = np.array(edgesAux, int) #if len(edgesAux) >0 else np.empty((0,2),np.int16)    # not sure if needed. just in case. (copied from combosSelf)
         H.add_edges_from([[str(i),j] for i,j in edgesAux])
         connected_components_all = [list(nx.node_connected_component(H, key)) for key in nodes]
         connected_components_main = [sorted([subID for subID in IDs if type(subID) != str]) for IDs in connected_components_all]
     else:
-        connected_components_main = [list(sorted(nx.node_connected_component(H, key))) for key in nodes]
+        connected_components_main = [list(sorted(nx.node_connected_component(H, key), key=int)) for key in nodes]       # sort for mixed type [2, 1, '1'] -> ['1', 1, 2]
 
     connected_components_unique = []
-    [connected_components_unique.append(x) for x in connected_components_main if x not in connected_components_unique] # remove duplicates
+    [connected_components_unique.append(x) for x in connected_components_main if x not in connected_components_unique]  # remove duplicates
 
     # debug can set node position if centroids dictionary is supplied, might require background dimensions
     # also contour dictionary can be used to visualise node objects.

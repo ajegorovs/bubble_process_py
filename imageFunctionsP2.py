@@ -429,39 +429,6 @@ def findMajorInterval(x,fx,meanVal,cover_area,debug):
     # so other interval for smaller f(x) is selected, which is not physically correct. fix: add small acceptable area deviation when its checked 
 
 # radialStatsImage() - given binary submask $mask, its position on main pictire $rectParams, calculate number of white pixels on concentric circles centered on global point $refCentroid
-def radialStatsImage(refCentroid, mask, rectParams, cover_area, ID, globalCounter, debug = 0):#oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID]
-    x,y,w,h         = rectParams
-    localCentroid   = np.array(refCentroid,dtype = int) - np.array([x,y],dtype = int)
-    xs, ys          = np.meshgrid(np.arange(0,w,1), np.arange(0,h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
-    zs              = np.sqrt((xs-localCentroid[0])**2 + (ys-localCentroid[1])**2).astype(int)
-    #rmin, rmax      = np.min(zs), np.max(zs)
-    dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))} 
-    for i,xses in enumerate(xs[0]):                                                     # get radius of each pixel, add to counter. 
-            for j,yses in enumerate(ys):
-                if mask[yses[0],xses] == 255:                                     # count only those inside contour (color = 255)
-                    radi = zs[j][i]
-                    dic[radi] += 1
-    xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))
-    avg             = np.average(xvals, weights=weights).astype(int)
-    rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)
-    if debug == 1:
-        fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=False, sharey=False)
-        axes[0].scatter(xvals,weights, label=f'Radial pixel distribution ID:{ID}')
-        axes[0].fill_between(xvals,weights,0,where= (xvals<=rmin +dr) & (xvals>=rmin))
-        axes[1].scatter(np.arange(len(xvals)),xvals, label=f'Radial pixel distribution ID:{ID}')
-        dmin, dmax      = np.min(weights), np.max(weights)
-        mask2 = mask.copy()
-        for i,xses in enumerate(xs[0]):
-            for j,yses in enumerate(ys):
-                if mask[yses[0],xses] == 255:
-                    radi                    = zs[j][i]
-                    clr                     = rescaleTo255(dmin,dmax,dic[radi])             # select a grayscale value based on number of pixel at that radius
-                    mask2[yses[0],xses]   = clr
-        cv2.circle(mask2, localCentroid, 3,  190, -1)
-        cv2.imshow('a',mask2)
-        fig.suptitle(f'gc: {globalCounter}, bID: {ID}', fontsize=16)
-        plt.show()
-    return np.array([avg, rmin, dr],int), dic
 
 def radialStatsImageEllipse(isEllipse,refCentroid, mask, rectParams, ellipseParams, cover_area, ID, globalCounter, debug = 0):
     x,y,w,h         = rectParams
@@ -516,72 +483,6 @@ def radialStatsImageEllipse(isEllipse,refCentroid, mask, rectParams, ellipsePara
 
 # radialStatsContours() -  same as radialStatsImage() but for collection of $IDsOfInterest contours from list $bodyCntrs
 
-def radialStatsContours(bodyCntrs,IDsOfInterest,refCentroid, cover_area, img, debug = 0):
-
-    output = {ID:np.zeros(3,int) for ID in IDsOfInterest}                                          # future return dict {ID:[avg_r,stdev_r]}
-    output_dist = {}
-    if debug == 1:
-        imgGray = img.copy()*0 #cv2.cvtColor(img.copy()*0, cv2.COLOR_BGR2GRAY) 
-        n = len(IDsOfInterest)
-        axes = plt.subplots(int(np.ceil(np.sqrt(n))), int(np.ceil(n/np.ceil(np.sqrt(n)))), figsize=(16, 9), sharex=True, sharey=False)[1]
-        if n>1:
-            axes = axes.reshape(-1)
-        else: axes = [axes]
- 
-    for k,ID in enumerate(IDsOfInterest):
-        #area0           = cv2.contourArea(bodyCntrs[ID])
-        x,y,w,h         = cv2.boundingRect(bodyCntrs[ID])
-        xs, ys          = np.meshgrid(np.arange(x,x+w,1), np.arange(y,y+h,1), sparse=True)  # all x,y pairs. hopefully its faster using meshgrid + numpy
-        zs              = np.sqrt((xs-refCentroid[0])**2 + (ys-refCentroid[1])**2).astype(int)  # calculate L2 norms from reference centroid.
-        rmin, rmax      = np.min(zs), np.max(zs)                                            # rmin/max of whole image, so 0 pixel count for some r values.
-        dic = {rad:0 for rad in np.arange(rmin,rmax+1,1)}                                   # if there is a discontinuity, because of casting to int, 0-count rads will be dropped anyway. EG (1.05, 1.99, 3.01)- > (1,1,3)
-        
-        #dic = {rad:0 for rad in np.sort(np.unique(zs.flatten()))}                          # order (sort) should not be important if not drawing a continious relation [r1,n1],[r2,n2],...
-        subSubMask      = np.zeros((h,w),np.uint8)                                          # stencil for determining if pixel is part of a bubble
-        cv2.drawContours( subSubMask, bodyCntrs, ID, 255, -1, offset = (-x,-y))
-        
-        for i,xses in enumerate(xs[0]):                                                     # get radius of each pixel, add to counter. 
-            for j,yses in enumerate(ys):
-                if subSubMask[yses[0]-y,xses-x] == 255:                                     # count only those inside contour (color = 255)
-                    radi = zs[j][i]
-                    dic[radi] += 1
-                    #clr = rescaleTo255(rmin,rmax,radi)
-                    #imgGray[yses[0],xses] = clr
-    
-        xvals, weights  = np.array(list(dic.keys())), np.array(list(dic.values()))           # cast to numpy to do statistics
-        avg             = np.average(xvals, weights=weights)     .astype(int)                            # weighted average
-        #stdev           = np.sqrt(numpy.average((xvals-avg)**2, weights=weights))            # stdev of weighted data. theres no ready function in numpy.
-        rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)      #;print(a,b)(x,fx,meanVal,cover_area,debug= 1)
-        dmin, dmax      = min(dic.values()),max(dic.values())
-        output[ID]      = np.array([avg, rmin, dr],int)
-        output_dist[ID] = dic
-        if debug == 1:
-            
-            axes[k].plot(xvals,weights)
-            axes[k].vlines(avg, min(dic.values()), max(dic.values()), linestyles ="dashed", colors ="k")
-            axes[k].fill_between(xvals,weights,0,where= (xvals<=rmin +dr) & (xvals>=rmin))
-            axes[k].set_xlabel('radius, pix')
-            axes[k].set_ylabel('sum of pixels')
-            axes[k].set_title(f'Radial pixel distribution ID:{ID}')
-            
-            for i,xses in enumerate(xs[0]):
-                for j,yses in enumerate(ys):
-                    if subSubMask[yses[0]-y,xses-x] == 255:
-                        radi                    = zs[j][i]
-                        clr                     = rescaleTo255(dmin,dmax,dic[radi])             # select a grayscale value based on number of pixel at that radius
-                        imgGray[yses[0],xses]   = clr
-            x0,y0 = bodyCntrs[ID][0][0]
-            cv2.putText(imgGray, str(ID), (x0,y0), cv2.FONT_HERSHEY_SIMPLEX, 0.3, 0, 3, cv2.LINE_AA)
-            cv2.putText(imgGray, str(ID), (x0,y0), cv2.FONT_HERSHEY_SIMPLEX, 0.3, 255, 1, cv2.LINE_AA)
-            
-    if debug == 1:
-        cv2.circle(imgGray, tuple(map(int,refCentroid)), 3, (255,0,0), -1)
-        cv2.imshow('a',imgGray)
-        plt.tight_layout()
-        plt.show()
-        
-    return output, output_dist
-    # possible optimization, draw pixels on one bigger blank mask and iterate though offset $rectParams locally.
 
 def radialStatsContoursEllipse(isEllipse,bodyCntrs,IDsOfInterest,refCentroid, ellipseParams, cover_area, img, pltID, globalCounter, debug = 0):
 

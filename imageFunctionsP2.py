@@ -242,16 +242,16 @@ def getCentroidPos(inp, offset, mode, mask,value=0):
     return tuple([int(mp['m10']/mp['m00'] + offset[0]), int(mp['m01']/mp['m00'] + offset[1])])
 
 def getCentroidPosContours(bodyCntrs,holesCntrs=[],hullArea = 0):
-    areas1 = [cv2.contourArea(cntr) for cntr in bodyCntrs]
-    areas0 = [cv2.contourArea(cntr) for cntr in holesCntrs]
-    moms1 = [cv2.moments(cntr) for cntr in bodyCntrs]
-    moms0 = [cv2.moments(cntr) for cntr in holesCntrs]
-    centroids1 = [np.uint32([m['m10']/m['m00'], m['m01']/m['m00']]) for m in moms1]
-    centroids0 = [np.uint32([m['m10']/m['m00'], m['m01']/m['m00']]) for m in moms0]
-    totalArea = np.sum(areas1) - np.sum(areas0)   
+    areas1      = [cv2.contourArea(cntr) for cntr in bodyCntrs]
+    areas0      = [cv2.contourArea(cntr) for cntr in holesCntrs]
+    moms1       = [cv2.moments(cntr) for cntr in bodyCntrs]
+    moms0       = [cv2.moments(cntr) for cntr in holesCntrs]
+    centroids1  = [np.uint32([m['m10']/m['m00'], m['m01']/m['m00']]) for m in moms1]
+    centroids0  = [np.uint32([m['m10']/m['m00'], m['m01']/m['m00']]) for m in moms0]
+    totalArea   = np.sum(areas1) - np.sum(areas0)   
     endCentroid = sum([w*a for w,a in zip(areas1,centroids1)]) - sum([w*a for w,a in zip(areas0,centroids0)])      
     endCentroid /= totalArea
-    returnArea = cv2.contourArea(cv2.convexHull(np.vstack(bodyCntrs))) if hullArea == 1 else totalArea
+    returnArea  = cv2.contourArea(cv2.convexHull(np.vstack(bodyCntrs))) if hullArea == 1 else totalArea
     return  tuple(map(int,np.ceil(endCentroid))), int(returnArea)
 
 def getContourHullArea(bodyCntrs):

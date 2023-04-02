@@ -915,12 +915,11 @@ if  1== 11:
     #ax[0].set_aspect('equal', 'box')
     #ax[1].set_aspect('equal', 'box')
     #plt.show()
-
-arr = np.array([[ 2, 26],
-       [ 3, 36],
-       [ 4, 41],
-       [ 5, 34]], dtype=int)
-print({b:a for a,b in arr})
+blank = np.zeros((500,500),np.uint8)
+a,b = 160,100
+print(np.sqrt(1-(min(a,b)/max(a,b))**2))
+cv2.ellipse(blank, (250,250),(a,b),0,0,360, 255, -1)
+cv2.imshow('a',blank)
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyAllWindows()

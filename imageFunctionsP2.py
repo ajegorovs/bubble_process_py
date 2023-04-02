@@ -1429,6 +1429,7 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0):
     baseContour             = alphashapeHullModded(contours, contourIDs, alphaParam, debug) # find concave hull for a cluster using alphashape lib.
     hullCoordinateIndices   = cv2.convexHull(baseContour, returnPoints = False)             # indicies of original contour points that form a convex hull
     hullDefects             = cv2.convexityDefects(baseContour, hullCoordinateIndices)      # find concave defects of convex hull
+    hullDefects             = hullDefects if hullDefects is not None else np.array([])
     refDistance             = previousInfo[0]
     refPlaneTangent         = previousInfo[1]
     refAngleThreshold       = previousInfo[2]

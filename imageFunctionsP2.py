@@ -479,7 +479,7 @@ def radialStatsImageEllipse(isEllipse,refCentroid, mask, rectParams, ellipsePara
         cv2.imshow(f'gc: {globalCounter}, oldID: {ID}',mask2)
         #fig.suptitle(f'gc: {globalCounter}, bID: {ID}', fontsize=16)
         plt.show()
-    return np.array([avg, rmin, dr],int), dic
+    return np.array([rmin, rmin + dr],int), dic
 
 # radialStatsContours() -  same as radialStatsImage() but for collection of $IDsOfInterest contours from list $bodyCntrs
 
@@ -534,7 +534,7 @@ def radialStatsContoursEllipse(isEllipse,bodyCntrs,IDsOfInterest,refCentroid, el
         #stdev           = np.sqrt(numpy.average((xvals-avg)**2, weights=weights))            # stdev of weighted data. theres no ready function in numpy.
         rmin, dr        = findMajorInterval(xvals,weights,avg,cover_area,debug= 0)      #;print(a,b)(x,fx,meanVal,cover_area,debug= 1)
         dmin, dmax      = min(dic.values()),max(dic.values())
-        output[ID]      = np.array([avg, rmin, dr],int)
+        output[ID]      = np.array([ rmin, rmin + dr],int)
         output_dist[ID] = dic
         if debug == 1:
             
@@ -583,18 +583,17 @@ def compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr,solution,cyclicColor,gl
     ogDom = list(OGDistr.keys())
     ogVals = list(OGDistr.values())
     axes[0].plot(ogDom,ogVals,lw = 2,color=np.array(cyclicColor(0))/255,linestyle='dashed')
-    _,r,dr = OGband
     #axes[0].plot([r,r+dr],[max(ogVals)+ t,max(ogVals)+ t],lw = 3,color=np.array(cyclicColor(0))/255)
-    axes[0].fill_between(ogDom,ogVals,0,where= (ogDom<=r +dr) & (ogDom>=r),color=np.array(cyclicColor(0))/255)
-    r1 = np.array([rr+0.5*drr for _,rr,drr in SlaveBand.values()])
+    axes[0].fill_between(ogDom,ogVals,0,where= (ogDom>=OGband[0]) & (ogDom<=OGband[1]),color=np.array(cyclicColor(0))/255)  # OGband = [left,right] boundaries
+    r1 = np.array([rr+0.5*(rr2-rr) for rr,rr2 in SlaveBand.values()])
     ordr = np.argsort(r1)
     for i,subID in enumerate(subNewIDs[ordr]):
         i += 1
         dom = list(SlaveDistr[subID].keys())
         val = list(SlaveDistr[subID].values())
         axes[0].plot(dom,val,c=np.array(cyclicColor(i))/255, lw = 3, label = str(subID))
-        _,r,dr = SlaveBand[subID]
-        axes[0].plot([r,r+dr],[-t*(i+1),-t*(i+1)],color=np.array(cyclicColor(i))/255, lw = 4)
+        r1,r2 = SlaveBand[subID]
+        axes[0].plot([r1,r2],[-t*(i+1),-t*(i+1)],color=np.array(cyclicColor(i))/255, lw = 4)
     axes[0].legend()
     axes[1].scatter(ogDom,ogVals,s = 12,label = "original")
     axes[1].scatter(domain,vals,s = 12,label = str(solution))
@@ -1547,3 +1546,68 @@ def interpolateHull(points,k,s,numReturnPoints,debug):
         ax[1].set_aspect('equal', 'box')
         plt.show()
     return output
+
+def getOverlap(a, b, mode): # if mode = 1, return intersection interval width, if mode  = 0, intersection right coordinate.
+    return np.maximum(0, np.minimum(a[:,1], b[:,1]) - mode*np.maximum(a[:,0], b[:,0]))
+
+def radialAnal( OGparams, SLparams, PermParams, StatParams, globalCounter, oldID, mainNewID, l_MBub_info_old, debug=0):
+    [[OGLeft,OGRight], OGDistr]   = OGparams
+    [isEllipse,l_contours,subNewIDs,predictCentroid, ellipseParams, cvr2, err]  = SLparams
+    [l_rect_parms_all,l_rect_parms_old,l_Centroids,l_Areas] = PermParams
+    [distCheck2, distCheck2Sigma, areaCheck, oldMeanArea, oldAreaStd, clusterCritValues] = StatParams
+    SlaveBand, SlaveDistr       = radialStatsContoursEllipse(isEllipse,l_contours,subNewIDs,predictCentroid, ellipseParams, cvr2, err, oldID, globalCounter, debug = 0)
+    ogInterval  = np.array([0,OGRight]).reshape(1,2)                            # set min radius to 0, interval = [0,rmin+dr]. so all inside contours are automatically incorporated.
+    slIntervals = np.array([np.array( [b[0], b[1]] ) for b in SlaveBand.values()])   # [[rmin1, rmin1 + dr1],[..],..]
+    slWidths    = np.array([b[1]-b[0] for b in SlaveBand.values()],int)                          # [dr1,dr2,..]
+    overlap     = getOverlap(ogInterval,slIntervals,1)                                        # how much area inside 
+    rOverlap    = np.divide(overlap,slWidths)                                               # overlap area/interval area-> 1: fully inside ogInterval, 0: no overlap.
+    passBase    = np.where(rOverlap >= 0.9)[0]                                              # returns tuple of dim (x,)
+    passRest    = np.where((rOverlap > 0.05) & (rOverlap < 0.9))[0]
+    baseIDs     = np.array(subNewIDs,int)[passBase]
+                        
+    # left band means r from [0,OG interval right coord], right band means  [OG interval right coord, rest]
+    restIDs     = np.array(subNewIDs,int)[passRest]
+    permIDsol2  = baseIDs.tolist()                                                          # base solution. can be empty. will be modified by restIDs
+    # if there are prime candidates inside trusted region (baseIDs) and possible cadidates in buffer region (restIDs)
+    # there might be a need to include buffer cadidates into baseIDs if prime cadidate is larger than buffer zone.
+    if len(restIDs) > 0 and len(baseIDs) > 0:
+        usefulIDs       = np.array(subNewIDs,int)[np.concatenate((passRest,passBase))]                                      # grab resolved IDs and ones in question
+        bandRightRs     = {ID:  [r for r,_ in SlaveDistr[ID].items()              if r > OGRight]   for ID in usefulIDs}    # take Rs past OG right band coord
+        bandRightCumSum = {ID:  np.cumsum([a for r,a in SlaveDistr[ID].items()    if r > OGRight])  for ID in usefulIDs}    # cum sum of right band
+        bandRightCumSum = {ID:  arr for ID,arr in bandRightCumSum.items()         if len(arr) > 0}                          # interval fully within OG will be empty.
+                            
+        if len(np.intersect1d(list(bandRightCumSum.keys()), baseIDs)) > 0:                                                              # testing. only baseIDs is inside OG band. so no other accepted IDs can contain other stray IDs.
+            aa = {ID:bandRightRs[ID][np.argmin(np.abs(cumSumArea- cvr2*cumSumArea[-1]))] for ID,cumSumArea in bandRightCumSum.items()}  # grab r at which area reaches 80%, in case contour is stretched thin at dist.
+            maxRightInterval    = max([br - OGRight for ID,br in aa.items() if ID in baseIDs])                                 # take widest resolved right band*0.8 interval as a reference
+            preResolvedRest     = [ID for ID,br in aa.items() if ID not in baseIDs and (br - OGRight)*0.8 < maxRightInterval]  # if Rest interval width is within 80% of maxRightInterval, consider it resolved.
+            restIDs             = [ID for ID in restIDs if ID not in preResolvedRest]
+            baseIDs             = np.concatenate((baseIDs,preResolvedRest)).astype(int)
+                        
+    # baseIDs have been re-evaluted. do permutations and double criterium for restIDs+baseIDs. baseIDs might be empty.
+    if len(restIDs) > 0:
+        combs                   = [tuple(baseIDs)] if len(baseIDs) > 0 else []                                              # this is the base list of IDs, they are 100% included eg [1,2]
+        restIDsPerms            = sum([list(itertools.combinations(restIDs, r)) for r in range(1,len(restIDs)+1)],[])       # these are permuations possible neighbors [3,4]-> [[3],[4],[3,4]]
+        [combs.append(tuple(baseIDs) + perm) for perm in restIDsPerms]                                                      # add base to combos of neighbors -> [[1,2],[1,2,3],[1,2,4],[1,2,3,4]]
+
+        permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations2(l_contours,l_rect_parms_all, l_rect_parms_old[oldID], combs, l_Centroids, l_Areas,
+                            predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = 0, doHull = 1)
+
+    if debug == 1: compareRadial([OGLeft,OGRight], OGDistr, SlaveBand, SlaveDistr, permIDsol2, cyclicColor, globalCounter, oldID) # debug on top
+    # solution is either empty, or its consist of elelents of baseIDs and restIDs
+    # if its is not empty, calculate concave or convex hull based on whether bubble had a merge lately.
+    newParams,hull,permRelArea2,newCentroid,newArea, = [],[],-1,-1, -1
+    if len(permIDsol2)>0:
+        if oldID in l_MBub_info_old:                                                    # it was part of a merge (big or small)
+            previousInfo        = l_MBub_info_old[oldID][3:] 
+            hull, newParams, _  = mergeCrit(permIDsol2, l_contours, previousInfo, alphaParam = 0.05, debug = 0)
+        else:
+            hull                = cv2.convexHull(np.vstack(l_contours[permIDsol2]))
+                                
+        newCentroid, newArea    = getCentroidPosContours(bodyCntrs = [hull])
+        permDist2               = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))                                              
+        permRelArea2            = np.abs(newArea-oldMeanArea)/ oldAreaStd
+                        
+    # no solution, revert to criterium vs original cluster # 02/04/23 had to recover from prefect cluster match. since dist2, areaCrit are inhereted wrongly.
+    else:
+        permDist2, permRelArea2 = clusterCritValues[mainNewID]
+    return permIDsol2, permDist2, permRelArea2, newCentroid, newArea, hull, newParams

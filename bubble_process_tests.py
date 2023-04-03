@@ -6,7 +6,6 @@ Created on Wed Apr 13 13:30:19 2022
 """
 #print("\014") #clear spyder console, if you use it
 from ast import For
-from asyncio import gather
 import cv2
 # from cv2.ximgproc import anisotropicDiffusion
 # from cv2.ximgproc import getDisparityVis
@@ -174,7 +173,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 400 #  53+3+5
-dataNum             = 3  # 7+5   
+dataNum             = 10  # 7+5   
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -474,12 +473,12 @@ def mainer(index):
                     tempStore2([newID], l_contours, newID, err, orig, dataSets, concave = hull)
                     newFoundBubsRings.remove(newID)
                     oldFoundRings.remove(oldID)
-                    print(f'{oldID}:Resolved (first match) {typeStrFromTypeID[oldType]}-newRB:{oldID} & {newID}.')
-                    print(f'{oldID}:Distance prediction error: {dist2:0.1f} vs {distCheck2:0.1f} +/- 5* {distCheck2Sigma:0.1f} and area criterium (dA/stev):{areaCrit:0.2f} vs ~3')
+                    print(f'--{oldID}:Resolved (first match) {typeStrFromTypeID[oldType]}-newRB:{oldID} & {newID}.')
+                    
                 else:
-                    print(f'{oldID}:Failed to resolve (first match) {typeStrFromTypeID[oldType]}-newRB: {oldID} & {newID}.')
-                    print(f'{oldID}:Distance prediction error: {dist2:0.1f} vs {distCheck2:0.1f} +/- 5* {distCheck2Sigma:0.1f} and area criterium (dA/stev):{areaCrit:0.2f} vs ~3')
+                    print(f'--{oldID}:Failed to resolve (first match) {typeStrFromTypeID[oldType]}-newRB: {oldID} & {newID}.')
                     accumulateFailParams.append([[oldID,newID],[int(dist2),int(distCheck2),int(distCheck2Sigma)],[np.around(areaCrit,2)]]) # store fails
+                print(f'--Distance prediction error: {dist2:0.1f} vs {distCheck2:0.1f} +/- 5* {distCheck2Sigma:0.1f} and area criterium (dA/stev):{areaCrit:0.2f} vs ~3')
                 #l_Areas  l_Areas_old l_RBub_old_new_IDs_old
         #print(f'RBOldNewDist:{list(map(list,RBOldNewDist))}') 
         #print(f'accumulateFailParams:{accumulateFailParams}') if len(l_RBub_centroids_old)>0 else 0
@@ -494,12 +493,13 @@ def mainer(index):
             
         # 1.2 ------------- RECOVER old unresolved RB and recovred RB USING matchTemplate() -----------------------
             
-        if len(oldFoundRings)>0:    print(f'{globalCounter}:--------- Begin recovery of Ring bubbles ---------\n')
-        else:                       print(f'{globalCounter}:-------------- No RBubs to recover ---------------\n')
+        #if len(oldFoundRings)>0:    print(f'{globalCounter}:--------- Begin recovery of Ring bubbles ---------\n')
+        #else:                       print(f'{globalCounter}:-------------- No RBubs to recover ---------------\n')
 
         recoveredBubsRelation = {}
         gfx = 1 if debugOnlyGFX(12) else 0
-        for oldID in oldFoundRings.copy(): # take unresolved R,rR old global IDs (oldID)
+        #for oldID in oldFoundRings.copy(): # take unresolved R,rR old global IDs (oldID)
+        for oldID in []:
 
             print(f'{globalCounter}:Trying to recover old ring {oldID}')
 
@@ -571,7 +571,7 @@ def mainer(index):
                     l_predict_displacement[tempID] = [pCentr, int(dist2)] 
                     oldFoundRings.remove(oldID)
                     print(f'{oldID}:Resolved (matchTemplate) {typeStrFromTypeID[oldType]}-{typeStrFromTypeID[newType]}:{oldID} & {min(overlapingContourIDList)}:{overlapingContourIDList}.')
-                    print(f'{oldID}:Distance prediction error: {dist2:0.1f} and area criterium (dA/stev):{-1:0.2f}')
+                    print(f'--Distance prediction error: {dist2:0.1f} and area criterium (dA/stev):{-1:0.2f}')
                     
                         
             print('recoveredBubsRelation',recoveredBubsRelation) if debugOnly(21) else 0
@@ -690,6 +690,7 @@ def mainer(index):
             elseOldNewDoubleCriteriumSubIDs     = {}
             elseOldNewDist                      = []
             jointNeighborsWoFrozen              = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items() if mainNewID not in frozenIDs}
+            jointNeighborsWoFrozen              = {**jointNeighborsWoFrozen,**{ID:[ID] for ID in newFoundBubsRings}}
             jointNeighborsWoFrozen_hulls        = {ID: cv2.convexHull(np.vstack(l_contours[subNewIDs])) for ID, subNewIDs in jointNeighborsWoFrozen.items()}
             jointNeighborsWoFrozen_bound_rect   = {ID: cv2.boundingRect(hull) for ID, hull in jointNeighborsWoFrozen_hulls.items()}
             jointNeighborsWoFrozen_c_a          = {ID: getCentroidPosContours(bodyCntrs = [hull]) for ID, hull in jointNeighborsWoFrozen_hulls.items()}
@@ -699,11 +700,18 @@ def mainer(index):
             # 10/02/23 grabbing frozenIDs_old (frID) from  frozenOldGlobNewLoc. replaced oldLocIDs -> oldGlobID beacuse now have access to this info
             #frozenIDs_old_glob = [oldGlobID for frID in frozenOldGlobNewLoc.values() for oldGlobID,oldLocIDs in  l_DBub_old_new_IDs_old.items() if frID == oldGlobID ] # !!!!! check this 10/02/23
             # drop frozen bubs from prev frame
-            resolvedFrozenGlobalIDs = [int(elem) for elem in frozenOldGlobNewLoc.values() if type(elem) == str]#list(map(int,frozenOldGlobNewLoc.values())) # not sure if it breaks if mixed type 12/02/23 now its mixed, but i drop not globals 19/02/23
-            oldDistanceCentroidsWoFrozen = {key:val for key,val in l_DBub_centroids_old.items() if key not in list(l_FBub_old_new_IDs_old.keys()) + resolvedFrozenGlobalIDs}
-            print(f'recovering DB bubbles :{list(oldDistanceCentroidsWoFrozen.keys())}')
-            for oldID, oldCentroid in oldDistanceCentroidsWoFrozen.items():
-                trajectory = list(g_Centroids[oldID].values())
+            resolvedFrozenGlobalIDs         = [int(elem) for elem in frozenOldGlobNewLoc.values() if type(elem) == str]#list(map(int,frozenOldGlobNewLoc.values())) # not sure if it breaks if mixed type 12/02/23 now its mixed, but i drop not globals 19/02/23
+            oldDistanceCentroidsWoFrozen    = {key:val for key,val in l_DBub_centroids_old.items() if key not in list(l_FBub_old_new_IDs_old.keys()) + resolvedFrozenGlobalIDs}
+            oldDBubAndUnresolvedOldRB       = {**oldDistanceCentroidsWoFrozen,**{ID:l_RBub_centroids_old[ID] for ID in oldFoundRings}}
+            print(f'recovering DB bubbles :{list(oldDistanceCentroidsWoFrozen.keys())}') if len(oldFoundRings) == 0 else print(f'recovering DB+RB bubbles :{list(oldDBubAndUnresolvedOldRB.keys())}')
+            beb = lambda x : l_bubble_type_old[x[0]]                                                # fun returns bubble type number. input (ID,vals)
+            oldDBubAndUnresolvedOldRB = dict(sorted(oldDBubAndUnresolvedOldRB.items(), key=beb))    # sort by type number-> RBs to front.
+            for oldID, oldCentroid in oldDBubAndUnresolvedOldRB.items():
+                oldType                                         = l_bubble_type_old[oldID]
+                if oldType == typeRing or oldType == typeRecoveredRing:
+                    newType     = typeRecoveredElse if oldType == typeRecoveredRing else typeRecoveredRing  # defaults to rRB. if it was rRB once, change it to rDB.
+                else: newType = typeElse
+                trajectory                                      = list(g_Centroids[oldID].values())
                 #if oldID in l_MBub_info_old:                   # in case of small merge might want to do alphashapes. but small merge should not change hull much.
                 #    1
                 predVec_old, _, distCheck2, distCheck2Sigma     = g_predict_displacement[oldID][globalCounter-1]
@@ -717,11 +725,12 @@ def mainer(index):
                 l_predict_displacement[oldID]                   = [tuple(map(int,predictCentroid)), -1] # in case search fails, predictCentroid will be stored here.
                 overlapIDs = np.array(overlappingRotatedRectangles({oldID:l_rect_parms_old[oldID]},jointNeighborsWoFrozen_bound_rect),int)
                 overlapIDs = {new: jointNeighborsWoFrozen[new] for _, new in overlapIDs}
-
+                if oldType == typeRing:
+                    distCheck2Sigma += 1
                 # ========== DO A WHOLE CLUSTER CHECK ========== # maybe we are lucky and there is no need to do radial stats stuff
                 clusterElementFailed                            = {ID:False for ID in overlapIDs}
                 clusterCritValues                               = {}
-
+                #print('\nTesting perfect cluster match')
                 for i, [mainNewID, subNewIDs] in enumerate(overlapIDs.items()):
 
                     newCentroid, newArea    = jointNeighborsWoFrozen_c_a[mainNewID]
@@ -729,27 +738,57 @@ def mainer(index):
                     areaCrit                = np.abs(newArea-oldMeanArea)/ oldAreaStd
                     
                     if dist2 <= distCheck2 + 5*distCheck2Sigma and areaCrit < 3:                # !!! no merge- alphashapes check.. yet?
-                        hull                                        = jointNeighborsWoFrozen_hulls[mainNewID]
-                        l_predict_displacement[oldID]               = [tuple(map(int,predictCentroid)), int(dist2)] #np.around(dist2,2) 15/03/23
-                        elseOldNewDoubleCriteriumSubIDs[mainNewID]  = subNewIDs
-                        elseOldNewDoubleCriterium.append([oldID,mainNewID,np.around(dist2,2),np.around(areaCrit,2)])
+                        tempID                          = oldID                                                 # l_RBub, l_RBub_r and l_DBub_r have global IDs. defaul to that but change for l_DBub
+                        
+                        hull                           = jointNeighborsWoFrozen_hulls[mainNewID]
+                        l_predict_displacement[oldID]  = [tuple(map(int,predictCentroid)), int(dist2)]          #np.around(dist2,2) 15/03/23
+                        
+                        newRBinTemp = [A for A in newFoundBubsRings if A in subNewIDs] 
 
-                        dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
-                        tempStore2(subNewIDs, l_contours, min(subNewIDs), err, orig, dataSets, concave = hull)
+                        if len(newRBinTemp) > 0:                                                                # if there are RBs in solution
+                            newFoundBubsRings   = [ ID for  ID in newFoundBubsRings if ID not in newRBinTemp]   # drop these RBs from new found list
 
-                        print(f'{oldID}:Resolved (first match) oldDB-newDB: {oldID} & {mainNewID}:{subNewIDs}.  Distance prediction error: {dist2:0.1f} vs {distCheck2:0.1f} +/- 5* {distCheck2Sigma:0.1f} and area criterium (dA/stev):{areaCrit:0.2f} vs ~3')
+
+                        overlapWORB = [a for a in subNewIDs if a not in newRBinTemp]                            # solution without RBs. subNewIDs always has entries.
+                                                                                                                # empty overlapWORB means subNewIDs consited only of RB
+                        if len(overlapWORB) == 0:                                                               # if solution consists only of RB (e.g crit failed to resolve oldRB-newRB)
+                            dataSets        = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
+                            newType         = typeRing      #(?)                                                # change default to RB, keep data in regular RB storage.
+                            RBOldNewDist    = np.append(RBOldNewDist,[[oldID,newRBinTemp[0]]],axis=0)
+                            tempID          = min(subNewIDs)
+                                                                                
+
+                        elif newType        == typeRecoveredRing:                                                                         
+                            dataSets        = [l_RBub_r_masks,l_RBub_r_images,l_RBub_r_old_new_IDs,l_RBub_r_rect_parms,l_RBub_r_centroids,l_RBub_r_areas_hull,l_RBub_contours_hull]
+
+                        elif newType        == typeRecoveredElse:                          
+                            dataSets        = [l_DBub_r_masks,l_DBub_r_images,l_DBub_r_old_new_IDs,l_DBub_r_rect_parms,l_DBub_r_centroids,l_DBub_r_areas_hull,l_DBub_contours_hull]
+                            print(f'-{oldID}:Swapping bubble type to {typeStrFromTypeID[newType]} because it was recovered second time.')
+                        
+                        else:
+                            dataSets        = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
+                            tempID          = min(subNewIDs)                                                        # l_RBub is stored in global IDs
+                            elseOldNewDoubleCriteriumSubIDs[tempID]  = subNewIDs
+                            elseOldNewDoubleCriterium.append([oldID,tempID,np.around(dist2,2),np.around(areaCrit,2)])
+                            
+                        tempStore2(subNewIDs, l_contours, tempID, err, orig, dataSets, concave = hull)
+                        oldFoundRings.remove(oldID) if oldID in oldFoundRings   else 0
+                        oldFoundElse.remove(oldID)  if oldID in oldFoundElse    else 0
+                        print(f'-{oldID}:Resolved (first match) old{typeStrFromTypeID[oldType]}-new{typeStrFromTypeID[newType]}: {oldID} & {mainNewID}:{subNewIDs}.')
 
                     else:
+                        print(f'-{oldID}:Failed to resolve (first match) old{typeStrFromTypeID[oldType]}-new{typeStrFromTypeID[newType]}: {oldID} & {subNewIDs}.')
                         clusterElementFailed[mainNewID]     = True    
                         clusterCritValues[mainNewID]        = [dist2,areaCrit]
-                
+                    
+                    print(f'--Distance prediction error: {dist2:0.1f} vs {distCheck2:0.1f} +/- 5* {distCheck2Sigma:0.1f} and area criterium (dA/stev):{areaCrit:0.2f} vs ~3\n')
+                        
                 # ========== GET RADIAL DISTRIBUTION FROM LAST STEP ==========
                 if all(clusterElementFailed.values()):                                               # if all cluster matches have failed
-                    print(f'{oldID}:Pefect match failed. Performing radial distrobution analysis.')
                     cvr = 0.90
                     ellipseParams   = l_ellipse_parms_old[oldID]
                     a,b             = ellipseParams[1]
-                    isEllipse       = 1 if np.sqrt(1-(min(a,b)/max(a,b))**2) > 0.5 else 0 #;print(np.sqrt(1-(min(a,b)/max(a,b))**2))
+                    isEllipse       = 1 if np.sqrt(1-(min(a,b)/max(a,b))**2) > 0.5 else 0 
                     ddd             = 0 if globalCounter != -1 else 1
                     [OGLeft,OGRight], OGDistr = radialStatsImageEllipse(isEllipse, oldCentroid, l_masks_old[oldID], l_rect_parms_old[oldID], ellipseParams, cvr, oldID, globalCounter, debug = ddd)
                     # OGband : [area-weighted average radiuss, interval beginning, interval width], interval- narrowest interval at which some % (90%) of total area is located.
@@ -759,61 +798,6 @@ def mainer(index):
                         
                         cvr2 = 0.8
                         debug = 0 if globalCounter != -1  else 1
-                        #SlaveBand, SlaveDistr = radialStatsContoursEllipse(isEllipse,l_contours,subNewIDs,predictCentroid, ellipseParams, cvr2, err, oldID, globalCounter, debug = 0)
-                        #ogInterval  = np.array([0,OGRight]).reshape(1,2)                            # set min radius to 0, interval = [0,rmin+dr]. so all inside contours are automatically incorporated.
-                        #slIntervals = np.array([np.array( [b[0], b[1]] ) for b in SlaveBand.values()])   # [[rmin1, rmin1 + dr1],[..],..]
-                        #slWidths    = np.array([b[1]-b[0] for b in SlaveBand.values()],int)                          # [dr1,dr2,..]
-                        #overlap     = getOverlap(ogInterval,slIntervals,1)                                        # how much area inside 
-                        #rOverlap    = np.divide(overlap,slWidths)                                               # overlap area/interval area-> 1: fully inside ogInterval, 0: no overlap.
-                        #passBase    = np.where(rOverlap >= 0.9)[0]                                              # returns tuple of dim (x,)
-                        #passRest    = np.where((rOverlap > 0.05) & (rOverlap < 0.9))[0]
-                        #baseIDs     = np.array(subNewIDs,int)[passBase]
-                        
-                        ## left band means r from [0,OG interval right coord], right band means  [OG interval right coord, rest]
-                        #restIDs     = np.array(subNewIDs,int)[passRest]
-                        #permIDsol2  = baseIDs.tolist()                                                          # base solution. can be empty. will be modified by restIDs
-                        ## if there are prime candidates inside trusted region (baseIDs) and possible cadidates in buffer region (restIDs)
-                        ## there might be a need to include buffer cadidates into baseIDs if prime cadidate is larger than buffer zone.
-                        #if len(restIDs) > 0 and len(baseIDs) > 0:
-                        #    usefulIDs       = np.array(subNewIDs,int)[np.concatenate((passRest,passBase))]                                      # grab resolved IDs and ones in question
-                        #    bandRightRs     = {ID:  [r for r,_ in SlaveDistr[ID].items()              if r > OGRight]   for ID in usefulIDs}    # take Rs past OG right band coord
-                        #    bandRightCumSum = {ID:  np.cumsum([a for r,a in SlaveDistr[ID].items()    if r > OGRight])  for ID in usefulIDs}    # cum sum of right band
-                        #    bandRightCumSum = {ID:  arr for ID,arr in bandRightCumSum.items()         if len(arr) > 0}                          # interval fully within OG will be empty.
-                            
-                        #    if len(np.intersect1d(list(bandRightCumSum.keys()), baseIDs)) > 0:                                                              # testing. only baseIDs is inside OG band. so no other accepted IDs can contain other stray IDs.
-                        #        aa = {ID:bandRightRs[ID][np.argmin(np.abs(cumSumArea- cvr2*cumSumArea[-1]))] for ID,cumSumArea in bandRightCumSum.items()}  # grab r at which area reaches 80%, in case contour is stretched thin at dist.
-                        #        maxRightInterval    = max([br - OGRight for ID,br in aa.items() if ID in baseIDs])                                 # take widest resolved right band*0.8 interval as a reference
-                        #        preResolvedRest     = [ID for ID,br in aa.items() if ID not in baseIDs and (br - OGRight)*0.8 < maxRightInterval]  # if Rest interval width is within 80% of maxRightInterval, consider it resolved.
-                        #        restIDs             = [ID for ID in restIDs if ID not in preResolvedRest]
-                        #        baseIDs             = np.concatenate((baseIDs,preResolvedRest)).astype(int)
-                        
-                        ## baseIDs have been re-evaluted. do permutations and double criterium for restIDs+baseIDs. baseIDs might be empty.
-                        #if len(restIDs) > 0:
-                        #    combs                   = [tuple(baseIDs)] if len(baseIDs) > 0 else []                                              # this is the base list of IDs, they are 100% included eg [1,2]
-                        #    restIDsPerms            = sum([list(itertools.combinations(restIDs, r)) for r in range(1,len(restIDs)+1)],[])       # these are permuations possible neighbors [3,4]-> [[3],[4],[3,4]]
-                        #    [combs.append(tuple(baseIDs) + perm) for perm in restIDsPerms]                                                      # add base to combos of neighbors -> [[1,2],[1,2,3],[1,2,4],[1,2,3,4]]
-
-                        #    permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations2(l_contours,l_rect_parms_all, l_rect_parms_old[oldID], combs, l_Centroids, l_Areas,
-                        #                        predictCentroid, distCheck2 + 5*distCheck2Sigma, areaCheck, relAreaCheck = 0.7, debug = 0, doHull = 1)
-
-                        #if debug == 1: compareRadial([OGLeft,OGRight], OGDistr, SlaveBand, SlaveDistr, permIDsol2, cyclicColor, globalCounter, oldID) # debug on top
-                        ## solution is either empty, or its consist of elelents of baseIDs and restIDs
-                        ## if its is not empty, calculate concave or convex hull based on whether bubble had a merge lately.
-                        #if len(permIDsol2)>0:
-                        #    if oldID in l_MBub_info_old:                                                    # it was part of a merge (big or small)
-                        #        previousInfo        = l_MBub_info_old[oldID][3:] 
-                        #        hull, newParams, _  = mergeCrit(permIDsol2, l_contours, previousInfo, alphaParam = 0.05, debug = 0)
-                        #    else:
-                        #        hull                = cv2.convexHull(np.vstack(l_contours[permIDsol2]))
-                                
-                        #    newCentroid, newArea    = getCentroidPosContours(bodyCntrs = [hull])
-                        #    permDist2               = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))                                              
-                        #    permRelArea2            = np.abs(newArea-oldMeanArea)/ oldAreaStd
-                        
-                        ## no solution, revert to criterium vs original cluster # 02/04/23 had to recover from prefect cluster match. since dist2, areaCrit are inhereted wrongly.
-                        #else:
-                        #    permDist2, permRelArea2 = clusterCritValues[mainNewID]
-
                         
                         permIDsol2,permDist2, permRelArea2, newCentroid, newArea, hull, newParams = radialAnal( [[OGLeft,OGRight], OGDistr] ,
                                                        [isEllipse,l_contours,subNewIDs,predictCentroid, ellipseParams, cvr2, err],
@@ -823,23 +807,55 @@ def mainer(index):
 
                         # --- check solution vs criterium. if it passes, add as resolved. ---
                         if len(permIDsol2)>0 and permDist2 < distCheck2 +2* distCheck2Sigma and permRelArea2 < 5:
-
-                            if oldID in l_MBub_info_old: l_MBub_info[oldID]     = [[],newArea,newCentroid] + list(newParams)   # if bub merged lately, add merge params
-                                
-                            dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
-                            tempStore2(permIDsol2, l_contours, min(permIDsol2), err, orig, dataSets, concave = hull)
-
                             l_predict_displacement[oldID]                       = [tuple(map(int,predictCentroid)), np.around(permDist2,2)]
-                            elseOldNewDoubleCriteriumSubIDs[min(permIDsol2)]    = permIDsol2
-                            elseOldNewDoubleCriterium.append([oldID,min(permIDsol2),np.around(permDist2,2),np.around(permRelArea2,2)])
-                            print(f'{oldID}:Resolved (via permutations of {subNewIDs}) oldDB-newDB: {oldID} & {permIDsol2}.')
-                            print(f'{oldID}:Distance prediction error: {permDist2:0.1f} vs {distCheck2:0.1f} +/- 2* {distCheck2Sigma:0.1f} and area criterium (dA/stev):{permRelArea2:0.2f} vs ~3')
+                            tempID                          = oldID 
+                           
+                            if oldID in l_MBub_info_old: l_MBub_info[oldID]     = [[],newArea,newCentroid] + list(newParams)   # if bub merged lately, add merge params
+                            
+                            newRBinTemp = [A for A in newFoundBubsRings if A in permIDsol2] 
+
+                            if len(newRBinTemp) > 0:                                                                # if there are RBs in solution
+                                newFoundBubsRings   = [ ID for  ID in newFoundBubsRings if ID not in newRBinTemp]   # drop these RBs from new found list
+
+
+                            overlapWORB = [a for a in permIDsol2 if a not in newRBinTemp]                            # solution without RBs. permIDsol2 always has entries.
+                                                                                                                    # empty overlapWORB means permIDsol2 consited only of RB
+                            if len(overlapWORB) == 0:                                                               # if solution consists only of RB (e.g crit failed to resolve oldRB-newRB)
+                                dataSets        = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
+                                newType         = typeRing                                                          # change default to RB, keep data in regular RB storage.
+                                RBOldNewDist    = np.append(RBOldNewDist,[[oldID,newRBinTemp[0]]],axis=0)
+                                tempID          = min(subNewIDs)                                                
+
+                            elif newType        == typeRecoveredRing:                                                                         
+                                dataSets        = [l_RBub_r_masks,l_RBub_r_images,l_RBub_r_old_new_IDs,l_RBub_r_rect_parms,l_RBub_r_centroids,l_RBub_r_areas_hull,l_RBub_contours_hull]
+
+                            elif newType        == typeRecoveredElse:                          
+                                dataSets        = [l_DBub_r_masks,l_DBub_r_images,l_DBub_r_old_new_IDs,l_DBub_r_rect_parms,l_DBub_r_centroids,l_DBub_r_areas_hull,l_DBub_contours_hull]
+                                print(f'-{oldID}:Swapping bubble type to {typeStrFromTypeID[newType]} because it was recovered second time.')
+                        
+                            else:
+                                dataSets        = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
+                                tempID          = min(permIDsol2)                                                        # l_RBub is stored in global IDs
+                                elseOldNewDoubleCriteriumSubIDs[tempID]  = permIDsol2
+                                elseOldNewDoubleCriterium.append([oldID,tempID,np.around(permDist2,2),np.around(permRelArea2,2)])
+                            
+                            tempStore2(permIDsol2, l_contours, tempID, err, orig, dataSets, concave = hull)
+                            if oldType == typeRing or oldType == typeRecoveredRing: oldFoundRings.remove(oldID)
+                            
+                            tempStore2(permIDsol2, l_contours, min(permIDsol2), err, orig, dataSets, concave = hull)
+                            oldFoundRings.remove(oldID) if oldID in oldFoundRings   else 0
+                            oldFoundElse.remove(oldID)  if oldID in oldFoundElse    else 0
+                             
+                            print(f'-{oldID}:Resolved (via permutations of {subNewIDs}) old{typeStrFromTypeID[oldType]}-new{typeStrFromTypeID[newType]}: {oldID} & {permIDsol2}.')
+                            
                         else:
-                            print(f'{oldID}:Recovery of oldDB {oldID} via permutations of {subNewIDs} has failed. Solution: {permIDsol2}.')
-                            print(f'{oldID}:Distance prediction error: {permDist2:0.1f} vs {distCheck2:0.1f} +/- 2* {distCheck2Sigma:0.1f} and area criterium (dA/stev):{permRelArea2:0.2f} vs ~5')
+                            print(f'-{oldID}:Recovery of oldDB {oldID} via permutations of {subNewIDs} has failed. Solution: {permIDsol2}.')
+                            
+                        print(f'--Distance prediction error: {permDist2:0.1f} vs {distCheck2:0.1f} +/- 2* {distCheck2Sigma:0.1f} and area criterium (dA/stev):{permRelArea2:0.2f} vs ~5\n')
                 #----------------- looking for new rings related to old else bubs --------------------- 31/03/23 not relevant anymore i think RBs are joint to clusters.
-                oldDBnewRBoverlap           = [b for _,b in overlappingRotatedRectangles({oldID:l_rect_parms_old[oldID]}, {newID:l_rect_parms_all[newID] for newID in newFoundBubsRings})]
-                for newID in oldDBnewRBoverlap:
+                #oldDBnewRBoverlap           = [b for _,b in overlappingRotatedRectangles({oldID:l_rect_parms_old[oldID]}, {newID:l_rect_parms_all[newID] for newID in newFoundBubsRings})]
+                #for newID in oldDBnewRBoverlap:
+                for newID in []:
                     hull                    = cv2.convexHull(np.vstack(l_contours[newID]))       
                     newCentroid, newArea    = getCentroidPosContours(bodyCntrs = [hull]) 
                     dist2                   = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid)).astype(int)
@@ -881,9 +897,9 @@ def mainer(index):
 
              
             ## modify jointNeighbors by splitting clusters using elseOldNewDoubleCriteriumSubIDs# l_DBub_old_new_IDs
-            removeFoundSubIDsAll    = sum(l_DBub_old_new_IDs.values(),[]) + sum(l_MBub_old_new_IDs.values(),[])
-            # delete new cluster IDs from original jointNeighbors, gather remaining and new found in jointNeighbors22
-            jointNeighborsDelSubIDs = [ [subelem for subelem in elem if subelem not in removeFoundSubIDsAll] for elem in jointNeighborsWoFrozen.values()]
+            removeFoundSubIDsAll    = sum(l_DBub_old_new_IDs.values(),[]) + sum(l_MBub_old_new_IDs.values(),[]) + sum(l_RBub_r_old_new_IDs.values(),[]) + sum(l_DBub_r_old_new_IDs.values(),[])
+            # delete new cluster IDs from original jointNeighbors, oldPreMergeGlobals remaining and new found in jointNeighbors22
+            jointNeighborsDelSubIDs = [ [subelem for subelem in elem if subelem not in removeFoundSubIDsAll] for elem in jointNeighborsWoFrozen.values() if min(elem) not in RBOldNewDist[:,1]]
             jointNeighbors_old      = dict(sorted(jointNeighbors.copy().items()))
             jointNeighbors          = {**{min(vals):vals for vals in jointNeighborsDelSubIDs if len(vals) > 0},**elseOldNewDoubleCriteriumSubIDs}
             jointNeighbors          = dict(sorted(jointNeighbors.items()))
@@ -963,7 +979,7 @@ def mainer(index):
             # --- resolved MB should be deleted from clusters alltogether ---
                       
             removeFoundSubIDsAll    = sum(delResolvedMB,[])
-            # delete new cluster IDs from original jointNeighbors, gather remaining and new found in jointNeighbors22
+            # delete new cluster IDs from original jointNeighbors, oldPreMergeGlobals remaining and new found in jointNeighbors22
             jointNeighborsDelSubIDs = [ [subelem for subelem in elem if subelem not in removeFoundSubIDsAll] for elem in jointNeighbors.values()]
             jointNeighbors          = {**{min(vals):vals for vals in jointNeighborsDelSubIDs if len(vals) > 0},**elseOldNewDoubleCriteriumSubIDs} #{23: [23, 25], 33: [33, 40], 35: [35], 38: [38], 44: [44]}
             # --- leftover clusers may have holes that are not connecting elements now ---
@@ -1111,10 +1127,11 @@ def mainer(index):
     print(f'{globalCounter}:--------- Begin merge detection/processing --------\n')
         
     # ------------------- detect merges by inspecting shared contours ----------------------
-    # idea is based on fact that if two or more bubbles from previous frame are not recovered and there are new unresolved bubbles, merge might have happened.
-    # problem is when small bubble merged with a  bigger one. resulting object might have been within tolerance and is considered resolved.
+    # OG idea was based on fact that if two or more bubbles from previous frame are not recovered and there are new unresolved bubbles, merge might have happened.
+    # this case is tested at first part. now its modified
     if globalCounter >= 1 :#and len(oldFoundElse)>1 and len(jointNeighbors)>1
         cc_oldIDs, cc_newIDs = [], []
+        # ======== PART 01: test if two old bubbles are unresolved and new is unresolved. might hint on merge =========
         rectParamsOld   = {oldID:l_rect_parms_old[oldID] for oldID in oldFoundElse}                             # old global IDs with bounding rectangle parameters
         rectParamsNew   = {subID:l_rect_parms_all[subID] for subID in sum(list(jointNeighbors.values()),[])}    # all unresolved cluster elements IDs and bound rect.
         combosOldNew    = np.array(overlappingRotatedRectangles(rectParamsOld,rectParamsNew),int)               # form [[old1,new1],[old1,new2],[old2,new1]]
@@ -1137,67 +1154,60 @@ def mainer(index):
             #print(f'newFoundBubsRings {newFoundBubsRings}, newFoundBubsElse {newFoundBubsElse}')
             #print(f'oldFoundRings {oldFoundRings}, oldFoundElse {oldFoundElse}')
             print(f'new local IDs: {cc_newIDs} overlap with old global IDs: {cc_oldIDs}')
-        
-        # consider small bubble merge into big, with big being resolved =  old is missing, no new missing.Target new which are not new (history of 2+ steps)
+
+        # ======== PART 02: Big bubble merged with small. big is resolved due leeway in criterium ========
+        # small old is missing, no new are missing. Target resolved old which has a history of 2+ steps. 
         # resolved centroid will be offset from predicted in derection of missing bubble.
         # if you were to consider total center of mass, of correct combination, it would be closer to resolved centroid.
-        #resolvedIDs     = l_predict_displacement 
         rectParamsResolved  = {**l_RBub_r_rect_parms,**l_DBub_r_rect_parms,**l_RBub_rect_parms,**l_DBub_rect_parms, **l_MBub_rect_parms} # first time MB might have str key
-        areasResolved       = {**l_RBub_areas_hull,   **l_DBub_areas_hull,    **l_FBub_areas_hull,      **l_MBub_areas_hull}
-
-        resolvedOldNew      = list(elseOldNewDist[:,0]) + list(RBOldNewDist[:,0])   # holds global IDs of resolved
-        resolvedOldNew2     = list(elseOldNewDist[:,1]) + list(RBOldNewDist[:,1])   # holds local IDs of resolved
-        combosOldNew        = np.array(overlappingRotatedRectangles(rectParamsOld,{ID:a for ID,a in rectParamsResolved.items() if ID in resolvedOldNew2}),int)  # old missing (glob) intersects new resolved (loc).
-        preCalculated       = {} # concave hull, centroidTry, 
+        
+        resolvedGlobals      = list(elseOldNewDist[:,0]) + list(RBOldNewDist[:,0])   # holds global IDs of resolved
+        resolvedLocals      = list(elseOldNewDist[:,1]) + list(RBOldNewDist[:,1])   # holds local IDs of resolved
+        combosOldNew        = np.array(overlappingRotatedRectangles(rectParamsOld,{ID:a for ID,a in rectParamsResolved.items() if ID in resolvedLocals}),int)  # old missing (glob) intersects new resolved (loc).
+        preCalculated       = {} # concave hull, centroidTest, 
         if len(combosOldNew) > 0:
-            cc_unique           = graphUniqueComponents(list(map(str,oldFoundElse)), [[str(a),b] for a,b in combosOldNew])  # clusters, kind of same as combosOldNew
-            cc_unique           = [a for a in cc_unique if len(a)>1]
-            cc_unique           = [[a for a in b if type(a) == str]+[a for a in b if type(a) != str] for b in cc_unique]    # place string first
-            whereGlobs          = [np.argwhere(resolvedOldNew2 == b)[0][0] for [_,b] in cc_unique]
-            globs               = [resolvedOldNew[i] for i in whereGlobs]                                                   # resolved global.
-            gather              = [[int(a),globs[i]] for i,[a,_] in enumerate(cc_unique)]                                   # gather old globals, missing and resolved.
-            locs = [resolvedOldNew2[i] for i in whereGlobs]                                                                 # resolved locals.
-            #oldOverlap          = [[int(elem) for elem in vec if type(elem) == str] for vec in aa]
-            #newOverlap          = [[elem for elem in vec if type(elem) != str] for vec in aa]
-            #newLocalGlobalIDs   = {**{b:a for a,b in elseOldNewDist}, **{b:a for a,b in RBOldNewDist},
-            #                       **{min(b):a for a,b in l_MBub_old_new_IDs.items()}, **{min(b):a for a,b in l_RBub_r_old_new_IDs.items()}, **{min(b):a for a,b in l_DBub_r_old_new_IDs.items()}}# 
-            #newOverlapGlobal    = [[newLocalGlobalIDs[ID] for ID in cluster if ID in newLocalGlobalIDs] for cluster in newOverlap]
-            #
-            ##globalIDClusters    = [a+b for a,b in zip(oldOverlap,newOverlapGlobal) if len(a)>0 and len(b)>0] # one from last frame should be resolved. object can swap IDs during frames. skip them
-            globalIDClusters    = gather
-            weights             = [np.array([l_areas_hull_old[ID] for ID in IDs],int) for IDs in globalIDClusters]                  
-            centroids           = [np.array([l_predict_displacement[ID][0] for ID in IDs],int) for IDs in globalIDClusters]
-            centroidTry         = [np.average(a, weights = b,axis = 0).astype(int) for a,b in zip(centroids,weights)]#l_areas_hull_old      # weighted predicted centroid   
-            centroidsResolved   = {**l_RBub_centroids,    **l_DBub_centroids,     **l_FBub_centroids,       **l_MBub_centroids}
+            centroidsResolved   = {**l_RBub_centroids,  **l_RBub_r_centroids,   **l_DBub_centroids,   **l_DBub_r_centroids,     **l_FBub_centroids,       **l_MBub_centroids}
+            areasResolved       = {**l_RBub_areas_hull, **l_RBub_r_areas_hull,  **l_DBub_areas_hull,  **l_DBub_r_areas_hull,    **l_FBub_areas_hull,      **l_MBub_areas_hull}
+            oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_FBub_old_new_IDs,     **l_MBub_old_new_IDs}
+            cc_unique           = graphUniqueComponents(list(map(str,oldFoundElse)), [[str(a),b] for a,b in combosOldNew])  # clusters: old unresolved intersect resolved old. e.g [[old lobal, old local]]: [['2', 21]]
+            cc_unique           = [a for a in cc_unique if len(a)>1]                                                        # sometimes theres no intersection, cluster of 1 element. drop it.
+            cc_unique           = [[a for a in b if type(a) == str]+[a for a in b if type(a) != str] for b in cc_unique]    # follow convension [str(ID1), ID2]
+            whereOldGlobals     = [np.argwhere(resolvedLocals == b)[0][0] for [_,b] in cc_unique]                           
+            oldResolvedGlobals  = [resolvedGlobals[i] for i in whereOldGlobals]                                             # global IDs of resolved old bubbles.               e.g [3]
+            oldPreMergeGlobals  = [[int(a),oldResolvedGlobals[i]] for i,[a,_] in enumerate(cc_unique)]                      # global IDs of possible merged bubbles.            e.g [[2, 3]]
+            oldResolvedLocals   = [resolvedLocals[i] for i in whereOldGlobals]                                              # local ID of old resolved bubble (on new frame)    e.g [21]
+            oldAreas            = [np.array([l_areas_hull_old[ID] for ID in IDs], int)          for IDs in oldPreMergeGlobals]  # hull areas             of old globals         e.g [array([ 3683, 15179])]
+            oldCentroids        = [np.array([l_predict_displacement[ID][0] for ID in IDs], int) for IDs in oldPreMergeGlobals]  # predicted centroids    of old globals         e.g [array([[1069,  476], [ 969,  462]])]
+            centroidTest        = [np.average(a, weights = b,axis = 0).astype(int)      for a,b in zip(oldCentroids,oldAreas)]  # weighted predicted centroid.                  e.g [array([988, 464])]
+                                                                                                                            # if merge happened, buble will be about here.
+            realCentroids       = {ID:centroidsResolved[ID] for ID in oldResolvedLocals}                                    # actual centroid of new found bubble (local ID)    e.g {21: (986, 464)}
+            predictedCentroids  = {ID:l_predict_displacement[ID][0] for ID in oldResolvedGlobals}                           # expected centroid of that bubble                  e.g {3: (969, 462)}
+            previousInfo        = [getMergeCritParams(l_ellipse_parms_old, old, 0.4, 25) for old in oldPreMergeGlobals]     # params to constuct convex-concave hull based on prev bubble orientation.
+            mergeCritStuff      = [mergeCrit(oldNewIdsResolved[lID], l_contours, pInfo, alphaParam = 0.06, debug = 0) for lID,pInfo in zip(oldResolvedLocals,previousInfo)]
+            areasTest           = [int(cv2.contourArea(hull)) for hull,_,_ in mergeCritStuff]                               # potentially better variant of hull area.          e.g [18373]
+            predictedAreas      = [l_areas_hull_old[ID] for ID in oldResolvedGlobals]                                       # expected old OG bubble area.                      e.g [15179]
+            realArea            = [areasResolved[ID] for ID in oldResolvedLocals]                                           # actual new bubble area                            e.g [20791]
+            areaPass            = [False]*len(oldResolvedGlobals)                                                           # containers to track state of failure
+            distPass            = [False]*len(oldResolvedGlobals)                                                           # practical (e.g) example shows that Test centroid and Areas are closer to real vals.
+            for i,[realValue, myVariant, oldVariant] in enumerate(zip(realArea,areasTest,predictedAreas)):                  # compare predicted OG vals to (new and recovered (considering merge happened))
+                relArea = lambda area: np.abs(realValue-area)/realValue
+                if relArea(myVariant) < relArea(oldVariant): areaPass[i] = True                                             # if relative area change w.r.t new are is smaller for merged than solo->...
             
-            realCentroids       = {ID:centroidsResolved[ID] for ID in locs}
-            predictedCentroids  = {ID:l_predict_displacement[ID][0] for ID in globs}
-            previousInfo        = [getMergeCritParams(l_ellipse_parms_old, old, 0.4, 25) for old in gather]
-            #areasTry            = [int(cv2.contourArea(mergeCrit([lID], l_contours, pInfo, alphaParam = 0.06, debug = 0)[0])) for lID,pInfo in zip(locs,previousInfo)]
-            mergeCritStuff      = [mergeCrit([lID], l_contours, pInfo, alphaParam = 0.06, debug = 0) for lID,pInfo in zip(locs,previousInfo)]
-            areasTry            = [int(cv2.contourArea(hull)) for hull,_,_ in mergeCritStuff]
-            predictedAreas      = [l_areas_hull_old[ID] for ID in globs]
-            realArea            = [areasResolved[ID] for ID in locs]
-            areaPass            = [False]*len(globs)
-            distPass            = [False]*len(globs)
-            for i,[newConvexArea, newConcaveArea, predicted_old] in enumerate(zip(realArea,areasTry,predictedAreas)):
-                relArea = lambda area: np.abs(predicted_old-area)/predicted_old
-                if relArea(newConcaveArea) < relArea(newConvexArea): areaPass[i] = True
-            
-            for i,[newCentroid, newRestoredC, predictCentroid] in enumerate(zip(list(realCentroids.values()),centroidTry,list(predictedCentroids.values()))):
-                dist = lambda centroid: np.linalg.norm(np.array(predictCentroid) - np.array(centroid))   
-                if dist(newRestoredC) <= dist(newCentroid): distPass[i] = True
+            for i,[realValue, myVariant, oldVariant] in enumerate(zip(list(realCentroids.values()),centroidTest,list(predictedCentroids.values()))):
+                dist = lambda centroid: np.linalg.norm(np.array(realValue) - np.array(centroid))   
+                if dist(myVariant) <= dist(oldVariant): distPass[i] = True                                                  # compare distance from new to (predicted old and recustructed assuming merge)
             
             for i, [passA,passD] in enumerate(zip(areaPass,distPass)):
                 if passA == True and passD == True:
-                    elseOldNewDist  = np.array([[a,b] for a,b in elseOldNewDist  if a != globs[i]])    # drop resolved status from bubble.
-                    RBOldNewDist    = np.array([[a,b] for a,b in RBOldNewDist    if a != globs[i]])      # easier to re-construct array than looking if ID is in, then where to delete.
-                    cc_oldIDs.append(gather[i])
-                    cc_newIDs.append([locs[i]])
-                    preCalculated[locs[i]] = [weights[i], centroidTry[i], mergeCritStuff[i][0], mergeCritStuff[i][1]]
+                    elseOldNewDist  = np.array([[a,b] for a,b in elseOldNewDist  if a != oldResolvedGlobals[i]])            # drop resolved status from bubble.
+                    RBOldNewDist    = np.array([[a,b] for a,b in RBOldNewDist    if a != oldResolvedGlobals[i]])            # easier to re-construct array than looking if ID is in, then where to delete.
+                    cc_oldIDs.append(oldPreMergeGlobals[i])
+                    newIDs = oldNewIdsResolved[oldResolvedLocals[i]]
+                    cc_newIDs.append(newIDs)
+                    preCalculated[min(newIDs)] = [oldAreas[i], centroidTest[i], mergeCritStuff[i][0], mergeCritStuff[i][1]]
+                    print(f'Merge detected between old:{oldPreMergeGlobals[i]} and new:{newIDs}')
         for old,new in zip(cc_oldIDs,cc_newIDs):
             
-            print(f'old {old}, new {new}')
             # grab new that is known (not stray) EG. is in unresolved new. EDIT 17/03/23 its not clear what next line does. i think error is in newFoundBubsElse containing min(subIDs), which is not used correctly here
             #new = [elem for elem in new if elem in newFoundBubsRings + newFoundBubsElse]
             #print(f'new: {new}')
@@ -1209,14 +1219,13 @@ def mainer(index):
                 areaList        = np.array([l_areas_hull_old[ID] for ID in old])
                 areaLargestID   = np.argmax(areaList)
                 areaRatio       = areaList/areaList[areaLargestID]
-                areaThreshold   = 0.2
+                areaThreshold   = 0.3
                 areaTest        = np.where(areaRatio<areaThreshold,1,0)
                 hasSmallBsMerge = any(areaTest)
 
                 if hasSmallBsMerge == True: # ==== its not yet tested !!! ==== 31/03/2023  kind of works for 1+1 merge
-                    print(f'Inspecting Merge of small and big bubble')
                     typeTemp        = typeRing if any(item in newFoundBubsRings for item in new) else typeElse      # maybe drop or change ring+ big area.
-                    print(f'Inspecting Merge of small and big bubble. Larger bubbles {old[areaLargestID]} type is {typeStrFromTypeID[typeTemp]}({typeTemp})')
+                    print(f'-Merge from Old IDs: {old} to new IDs: {new}. Big+Small type merge. Larger bubble of type {typeStrFromTypeID[typeTemp]}')
                 
                     if typeTemp == typeRing:
                         dataSets    = [l_RBub_r_masks,l_RBub_r_images,l_RBub_r_old_new_IDs,l_RBub_r_rect_parms,l_RBub_r_centroids,l_RBub_r_areas_hull,l_RBub_contours_hull]
@@ -1225,8 +1234,8 @@ def mainer(index):
                 
                     selectID        = old[areaLargestID]    # largest area inherits ID
                     
-                    if new[0] in preCalculated:
-                        [areas, predictCentroid, hull, newParams] = preCalculated[new[0]]
+                    if min(new) in preCalculated:
+                        [areas, predictCentroid, hull, newParams] = preCalculated[min(new)]
                     else:
                         previousInfo        = getMergeCritParams(l_ellipse_parms_old, old, 0.4, 25)
                         hull, newParams, _  = mergeCrit(new, l_contours, previousInfo, alphaParam = 0.05, debug = 0)
@@ -1249,13 +1258,6 @@ def mainer(index):
                 else:
                     previousInfo = getMergeCritParams(l_ellipse_parms_old, old, 0.4, 25)
 
-                    #e_parms     = [l_ellipse_parms_old[key] for key in old] 
-                    #cntroidE    = [np.array(c,int) for c,_,_ in e_parms]
-                    #dcc         = np.diff(cntroidE,axis=0)[0]
-                    #tcc         = np.matmul(np.array([[0, -1],[1, 0]]), dcc)  
-                    #tcc         = tcc/np.linalg.norm(tcc)
-                    #rads        = min([int((a+b)/4) for _,(a,b),_ in e_parms])
-                    #previousInfo        = [0.4*rads,tcc,25]
                     hull, newParams, _  = mergeCrit(new, l_contours, previousInfo, alphaParam = 0.05, debug = 0)
 
                     selectID =  str(min(new))                                           # str to differentiate first time merged IDs

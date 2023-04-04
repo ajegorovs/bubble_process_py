@@ -1556,10 +1556,10 @@ def radialAnal( OGparams, SLparams, PermParams, StatParams, globalCounter, oldID
     [l_rect_parms_all,l_rect_parms_old,l_Centroids,l_Areas] = PermParams
     [distCheck2, distCheck2Sigma, areaCheck, oldMeanArea, oldAreaStd, clusterCritValues] = StatParams
     SlaveBand, SlaveDistr       = radialStatsContoursEllipse(isEllipse,l_contours,subNewIDs,predictCentroid, ellipseParams, cvr2, err, oldID, globalCounter, debug = 0)
-    ogInterval  = np.array([0,OGRight]).reshape(1,2)                            # set min radius to 0, interval = [0,rmin+dr]. so all inside contours are automatically incorporated.
-    slIntervals = np.array([np.array( [b[0], b[1]] ) for b in SlaveBand.values()])   # [[rmin1, rmin1 + dr1],[..],..]
-    slWidths    = np.array([b[1]-b[0] for b in SlaveBand.values()],int)                          # [dr1,dr2,..]
-    overlap     = getOverlap(ogInterval,slIntervals,1)                                        # how much area inside 
+    ogInterval  = np.array([0,OGRight]).reshape(1,2)                                        # set min radius to 0, interval = [0,rmin+dr]. so all inside contours are automatically incorporated.
+    slIntervals = np.array([np.array( [b[0], b[1]] ) for b in SlaveBand.values()])          # [[rmin1, rmin1 + dr1],[..],..]
+    slWidths    = np.array([b[1]-b[0] for b in SlaveBand.values()],int)                     # [dr1,dr2,..]
+    overlap     = getOverlap(ogInterval,slIntervals,1)                                      # how much area inside 
     rOverlap    = np.divide(overlap,slWidths)                                               # overlap area/interval area-> 1: fully inside ogInterval, 0: no overlap.
     passBase    = np.where(rOverlap >= 0.9)[0]                                              # returns tuple of dim (x,)
     passRest    = np.where((rOverlap > 0.05) & (rOverlap < 0.9))[0]

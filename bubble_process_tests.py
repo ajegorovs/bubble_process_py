@@ -55,7 +55,7 @@ from imageFunctionsP2 import (initImport, init, bubbleTypeCheck,
                               multiContourBoundingRect,stuckBubHelp,doubleCritMinimum,dropDoubleCritCopies,
                               radialStatsImageEllipse,radialStatsContoursEllipse,compareRadial,                         # radialStatsImage,radialStatsContours,compareRadial 03/03/23
                               tempStore,tempStore2,alphashapeHullModded,mergeCrit,graphUniqueComponents,                # tempStore 17/03/23   alphashapeHullModded (replaced) 22(24)/03/23 ,mergeCrit 23/03/23, graphUniqueComponents 25/03/23 
-                              interpolateHull,getOverlap,radialAnal)                                                    # interpolateHull 26/03/23 radialAnal 02/04/23       
+                              interpolateHull,getOverlap,radialAnal,mergeSplitDetect)                                                    # interpolateHull 26/03/23 radialAnal 02/04/23   mergeSplitDetect 05/04/23    
 def resizeImage(img,frac):
     width = int(img.shape[1] * frac)
     height = int(img.shape[0] * frac)
@@ -157,12 +157,29 @@ def getMergeCritParams(ellipseParamsDict,IDs,scaled,angleThreshold):
     avgRadius           = min([int((a+b)/4) for _,(a,b),_ in ellipseParams])
     return [int(scaled*avgRadius),ccPerpendicularDir,angleThreshold]
 
+
+import pickle
+
+def dumpPickle(exportFileName, data, folders=[]):
+    # export data file with name exportFileName.pickle 
+    # into directory root/folders[0]/folders[1]/...
+    path = exportFileName+".pickle"                         # default path to root/filename
+    if len(folders)>0:                                      # if specifict subfolders required
+        pathFolder = '.'                                    # build them from root
+        for folderName in folders:
+            pathFolder = os.path.join(pathFolder,folderName)
+            if not os.path.exists(pathFolder):              # if folder does not exist
+                os.mkdir(pathFolder)                        # hierarchically build folder
+        path = os.path.join(pathFolder,path)                # add final dir + file name
+    with open(path, 'wb') as handle:
+        pickle.dump(data, handle)                           # export
+
 toList = lambda x: [x] if type(x) != list else x
 
 thresh0             = 1
 thresh1             = 15
 
-import pickle
+
 plotAreaRep         = 0
 inspectBubbleDecay  = 211
 testThreshold       = 222
@@ -809,6 +826,9 @@ def mainer(index):
                         newCentroid, newArea    = getCentroidPosContours(bodyCntrs = [hull])                                            # centroid and hull of a modified hull
                         dist2                   = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))                     # predictor error
                         areaCrit                = np.abs(newArea-oldMeanArea)/ oldAreaStd                                               # area diffference in terms of stdevs
+                        if globalCounter == 8:
+                            direction = np.matmul(np.array([[0, -1],[1, 0]]), newParams[1])
+                            mergeSplitDetect(l_contours,permIDsol2,direction,mCrit[1])
 
                         if dist2 <= distCheck2 + 5*distCheck2Sigma and areaCrit < 3:                                                    # a perfect match
 

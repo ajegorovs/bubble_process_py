@@ -1437,6 +1437,7 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
     defectsDirection        = []                                                            # direction from 'cave' furthest point normal to contour.
     defectsLength           = []
     defectsFarpoints        = []
+    farpointMean            = np.empty((0,2),int)
     inPlaneDefectsPresent   = True
     if debug == 1:
         x,y,w,h             = cv2.boundingRect(baseContour)
@@ -1467,6 +1468,7 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
     defectsAngles       = np.array([int(calculateAngle(v)*180/np.pi) for v in defectsDirection])        # find defect angle to ref. min case where |angle| =< 90  
     defectsDiscard      = np.array(np.where(np.abs(defectsAngles)>refAngleThreshold)).flatten()         # which angle is higher than threshold? not sure if i need abs
     defectsFarpoints    = np.array(defectsFarpoints,int)                 
+    
     if len(defectsDiscard)>0:                                                                           # instead of deleting i want to keep everythin inbetween defects
         removeTheseIntevals     = [[0,0]] +[defectsIndicies[i] for i in defectsDiscard] + [[-1,-1]]     # combine contour slices -> last defect end: next defect start       
         invertedIndicies        = [(removeTheseIntevals[i][1],removeTheseIntevals[i+1][0]) for i in range(len(removeTheseIntevals)-1)]
@@ -1488,13 +1490,68 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
         defectsLenSum   = np.sum(defectsLength[defectsUseful]/256)
         p1,p2           = [np.array(farpointMean + i*0.5*defectsLenSum*avgDirection,int) for i in [-1,1]]
     else: p1,p2 = [],[]
+    
     if debug ==1:
         cv2.circle(imageDebug,farpointMean - [x,y], 5, [255,0,255], -1)
         cv2.line(imageDebug, p1 - [x,y], p2 - [x,y], [255,0,255], 1)
         cv2.drawContours( imageDebug,   [hullOutput- [x,y]], -1, (255,0,0), 2) 
         cv2.imshow(f'GC {gc}, ID {id}',imageDebug) 
-    return hullOutput, (refDistance, avgDirection, refAngleThreshold), inPlaneDefectsPresent
+    return hullOutput, (refDistance, avgDirection, refAngleThreshold), (inPlaneDefectsPresent, farpointMean)
 
+
+colorList  = np.array(list(itertools.permutations(np.arange(0,255,255/5, dtype= np.uint8), 3)))
+np.random.seed(1);np.random.shuffle(colorList);np.random.seed()
+
+def cyclicColor(index):
+    return colorList[index % len(colorList)].tolist()
+
+def mergeSplitDetect(contours,contourIDs, direction, position):
+    pointsGather = {}
+    distsGather = {}
+    points_all  = np.vstack(contours[contourIDs]).reshape(-1,2)
+    x0,y0,w0,h0 = cv2.boundingRect(points_all)
+    blank = np.zeros((h0,w0,3),np.uint8) 
+    for ID in contourIDs:
+        points_2d   = contours[ID].reshape(-1,2)
+        x,y,w,h     = cv2.boundingRect(points_2d) 
+        fillContour = np.zeros((h,w),np.uint8)                              # mask of contour/-s
+        cv2.drawContours( fillContour,   [contours[ID]-[x,y]], -1, 255, -1)
+    
+        fillPoints  = np.zeros((h,w),np.uint8)                              # for extra points
+        fillPoints[0:h:8,0:w:8] = 255                                     # grid of evenly spaced points
+    
+        fillAndOp   = cv2.bitwise_and(fillContour,fillPoints)               # only points left are inside contour/-s
+        wherePoints = np.flip(np.array(np.where(fillAndOp == 255),int)).T   # local coordinates of inside points. some mumbo jambo with flipped x and y
+        wherePoints += [x,y]                                                # grab a subImage to reduce computational resources
+        pointsGather[ID] = wherePoints
+        
+    
+    for ID in contourIDs:
+        blank[pointsGather[ID][:,1]-y0,pointsGather[ID][:,0]-x0] = cyclicColor(ID)
+        
+        #p1 = np.array(position - [x0,y0], int)
+        #p2 = np.array(p1 + 20*direction, int)
+        #cv2.circle(blank, p1, 2, [255,0,255], -1)
+        
+        #cv2.line(blank, p1, p2, [255,0,255], 1)
+        pts = pointsGather[ID] - position
+        projections = np.einsum('ij,j->i', pts, direction).astype(int)
+        distsGather[ID] = projections
+        
+        ptsLoc = pointsGather[ID] - [x0,y0]
+        [cv2.line(blank, ps, np.array(ps-dst*direction,int), cyclicColor(ID), 1) for ps,dst in zip(ptsLoc[0:-1:2],projections[0:-1:2])]#[0:-1:1]
+        cv2.drawContours(blank, contours, ID, [0,0,0], 2, offset= (-x0,-y0))
+        cv2.drawContours(blank, contours, ID, cyclicColor(ID), 1, offset= (-x0,-y0))
+        
+    resized = cv2.resize(blank, (w0*3, h0*3), interpolation = cv2.INTER_AREA)
+    cv2.imshow('asdas',resized)
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.hist([distsGather[ID] for ID in contourIDs], 25, density = True, histtype = 'bar', color = [np.array(np.flip(cyclicColor(ID)))/255 for ID in contourIDs], label=contourIDs)
+    ax.legend(prop={'size': 10})
+    plt.show()
+
+    
 
 def graphUniqueComponents(nodes,edges, edgesAux= [], debug = 0, bgDims = {1e3,1e3}, centroids = [], centroidsAux = [], contours = [], contoursAux = []):
     # generally provide nodes and pairs of connections (edges), then retreave unique interconnected clusters.

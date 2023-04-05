@@ -7,22 +7,22 @@ General comments/ideas:
 	this might not be the best option, since bubbles may start to change rapidly.
 
 22/03.23:
-	l_BoundingRectangle_params is reated to frozen bubbles, check and change name, its confusing
-	DB recovered as RB do not change type. maybe intended, indeed there might be need for a type "momentum"
+	x - l_BoundingRectangle_params is reated to frozen bubbles, check and change name, its confusing
+	x - DB recovered as RB do not change type. maybe intended, indeed there might be need for a type "momentum"
 19/03/23:
-	x-add hull data to storage for drawing. due to alphashape
+	x - add hull data to storage for drawing. due to alphashape
 	radialEllipse stuff is not needed if there is a perfect match. should make a local switch to do it once if required.
 16/02/23:
-	change boundRectAngle to atan2
+	x - change boundRectAngle to atan2 . edit: not used anymore
 15/02/23:
 
 Global:
 predictCentroidDiff2- implement local, last step version so program does not have fetch big array.
 predictHullArea - same
-distCheck2Sigma, areaCrit make them update from statistis as calc
+x - distCheck2Sigma, areaCrit make them update from statistis as calc edit: wtf does it mean? 
 
 lastNStepsFrozenHullAreas - check if this actually works- FB from much earier steps are identified
-l_bubble_type is done multiple times. may be relict of when fb were managed with RB and Dist B
+x - l_bubble_type is done multiple times. may be relict of when fb were managed with RB and Dist B. edit: i think ive cleared this earler. move types to end.
 
 l_areas_hull_old    = {**l_RBub_areas_hull_old,   **l_DBub_areas_hull_old,    **l_FBub_areas_hull_old}- has more IDs than other!!
 check these lines long-term!:

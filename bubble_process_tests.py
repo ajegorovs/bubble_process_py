@@ -173,7 +173,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 200 #  53+3+5
-dataNum             = 17  # 7+5   
+dataNum             = 18  # 7+5   
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -802,9 +802,10 @@ def mainer(index):
                         mainNewID               = min(permIDsol2)
                         subNewIDs               = permIDsol2
                         previousInfo            = l_MBub_info_old[oldID][3:]      #[0.4*rads,tcc,25]
-                        debugs = 0 #if globalCounter != 16 else 1
-                        hull, newParams, mCrit  = mergeCrit(permIDsol2, l_contours, previousInfo, alphaParam = 0.05, debug = debugs)    # calculated modified hull
-
+                        #debugs = 0 if globalCounter != 16 else 1
+                        debugs = 0
+                        hull, newParams, mCrit  = mergeCrit(permIDsol2, l_contours, previousInfo, alphaParam = 0.05, debug = debugs,debug2 = 0, gc = globalCounter, id = oldID)    # calculated modified hull
+                        debugs = 0
                         newCentroid, newArea    = getCentroidPosContours(bodyCntrs = [hull])                                            # centroid and hull of a modified hull
                         dist2                   = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))                     # predictor error
                         areaCrit                = np.abs(newArea-oldMeanArea)/ oldAreaStd                                               # area diffference in terms of stdevs

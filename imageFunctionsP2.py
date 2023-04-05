@@ -1423,9 +1423,9 @@ def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0
 
     #l_bubble_type[selectID]                 = typeTemp   #<<<< inspect here for duplicates
     #g_bubble_type[selectID][globalCounter]  = typeTemp
-def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0):
+def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,debug2 = 0, gc = 0, id = 0):
     #baseContour, _, _       = alphashapeHullCentroidArea(contours, contourIDs, alphaParam)  
-    baseContour             = alphashapeHullModded(contours, contourIDs, alphaParam, debug) # find concave hull for a cluster using alphashape lib.
+    baseContour             = alphashapeHullModded(contours, contourIDs, alphaParam, debug2) # find concave hull for a cluster using alphashape lib.
     hullCoordinateIndices   = cv2.convexHull(baseContour, returnPoints = False)             # indicies of original contour points that form a convex hull
     hullDefects             = cv2.convexityDefects(baseContour, hullCoordinateIndices)      # find concave defects of convex hull
     hullDefects             = hullDefects if hullDefects is not None else np.array([])
@@ -1436,6 +1436,7 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0):
     defectsIndicies         = []                                                            # large defects will be stored here
     defectsDirection        = []                                                            # direction from 'cave' furthest point normal to contour.
     defectsLength           = []
+    defectsFarpoints        = []
     inPlaneDefectsPresent   = True
     if debug == 1:
         x,y,w,h             = cv2.boundingRect(baseContour)
@@ -1451,6 +1452,7 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0):
             defectsIndicies.append([s,e])                                       # store defects indicies where it begins to cave and ends.
             defectsDirection.append(normal)
             defectsLength.append(d)
+            defectsFarpoints.append(f)
             if debug == 1:
                 farPointStart   = np.array(tuple(baseContour[f][0])) - [x,y]
                 farPointEnd     = np.array(farPointStart+normal*d/256, int)
@@ -1464,7 +1466,7 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0):
     defectsDirection    = np.array(defectsDirection)
     defectsAngles       = np.array([int(calculateAngle(v)*180/np.pi) for v in defectsDirection])        # find defect angle to ref. min case where |angle| =< 90  
     defectsDiscard      = np.array(np.where(np.abs(defectsAngles)>refAngleThreshold)).flatten()         # which angle is higher than threshold? not sure if i need abs
-                        
+    defectsFarpoints    = np.array(defectsFarpoints,int)                 
     if len(defectsDiscard)>0:                                                                           # instead of deleting i want to keep everythin inbetween defects
         removeTheseIntevals     = [[0,0]] +[defectsIndicies[i] for i in defectsDiscard] + [[-1,-1]]     # combine contour slices -> last defect end: next defect start       
         invertedIndicies        = [(removeTheseIntevals[i][1],removeTheseIntevals[i+1][0]) for i in range(len(removeTheseIntevals)-1)]
@@ -1479,8 +1481,18 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0):
     else:                                                                                               # lack of defects in tangent plane might indicate end of merge.
         avgDirection = refPlaneTangent                                                                  # at least keep old ref plane.
         inPlaneDefectsPresent = False
-    cv2.drawContours( imageDebug,   [hullOutput- [x,y]], -1, (255,0,0), 2) if debug == 1 else 0
-    cv2.imshow(f'merge gc: {2}',imageDebug) if debug == 1 else 0
+    
+    if numUsefulDefects > 1:
+        farpointsUseful = np.array([baseContour[i][0] for i in defectsFarpoints[defectsUseful]])
+        farpointMean    = np.average(farpointsUseful, weights = defectsLength[defectsUseful],axis = 0).astype(int)
+        defectsLenSum   = np.sum(defectsLength[defectsUseful]/256)
+        p1,p2           = [np.array(farpointMean + i*0.5*defectsLenSum*avgDirection,int) for i in [-1,1]]
+    else: p1,p2 = [],[]
+    if debug ==1:
+        cv2.circle(imageDebug,farpointMean - [x,y], 5, [255,0,255], -1)
+        cv2.line(imageDebug, p1 - [x,y], p2 - [x,y], [255,0,255], 1)
+        cv2.drawContours( imageDebug,   [hullOutput- [x,y]], -1, (255,0,0), 2) 
+        cv2.imshow(f'GC {gc}, ID {id}',imageDebug) 
     return hullOutput, (refDistance, avgDirection, refAngleThreshold), inPlaneDefectsPresent
 
 

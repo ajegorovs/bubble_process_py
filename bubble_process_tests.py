@@ -826,9 +826,9 @@ def mainer(index):
                         newCentroid, newArea    = getCentroidPosContours(bodyCntrs = [hull])                                            # centroid and hull of a modified hull
                         dist2                   = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))                     # predictor error
                         areaCrit                = np.abs(newArea-oldMeanArea)/ oldAreaStd                                               # area diffference in terms of stdevs
-                        if globalCounter == 8:
+                        if globalCounter == 11:
                             direction = np.matmul(np.array([[0, -1],[1, 0]]), newParams[1])
-                            mergeSplitDetect(l_contours,permIDsol2,direction,mCrit[1])
+                            mergeSplitDetect(l_contours,permIDsol2,direction,mCrit[1],globalCounter,oldID, debug = 1)
 
                         if dist2 <= distCheck2 + 5*distCheck2Sigma and areaCrit < 3:                                                    # a perfect match
 

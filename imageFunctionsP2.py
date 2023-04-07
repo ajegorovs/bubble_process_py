@@ -359,13 +359,15 @@ def clusterPerms(refCentroid, mask, rectParams, ID, globalCounter, debug = 0):#o
         plt.show()
 
 # findMajorInterval() - given some function data [x,f(x)] eg [[0,1,5,8],[9,4,1,5]], calculates smallest x interval with  cover_area % area. from duplicate results, one closer to weighted mean(x) is selected.
-def findMajorInterval(x,fx,meanVal,cover_area,debug):
+def findMajorInterval(x, fx, meanVal=None, cover_area=0.8, debug=0):
     w_nonzero   = fx.nonzero()
     x           = x[w_nonzero]
     fx          = fx[w_nonzero]
+    if meanVal is None:
+        meanVal = np.average(x, weights=fx)
     fx_c        = np.cumsum(fx)                # assuming x is integer, fx_c is offset by 1 from x, either offset x id by -1 or consider fx_c as sum up to and including value at x[ID]
     totalArea   = fx_c[-1]
-    fx_c        = fx_c/fx_c[-1]                # normalize to 0- 1
+    fx_c        = fx_c/totalArea                # normalize to 0- 1
     #fx_c = np.concatenate(([0],fx_c))   # first entry 0 area, bit of an offset.
     #print(np.vstack((x,fx_c)))#;print(fx_c - (1-cover_area))    
     # fx_c = [0.1,..., 0.7, 0.8, 0.9, 1. ]; cover_area 0.25, (fx_c - 0.75) = [-0.65 ... -0.15 -0.05  0.05  0.15  0.25] 
@@ -421,7 +423,7 @@ def findMajorInterval(x,fx,meanVal,cover_area,debug):
         axes[1].fill_between(x,fx/totalArea,0,where=(x>=x[globalMin]) & (x<=x[globalMin]+solsIntevals2[globalMin]),color='g')
         axes[1].set_xlabel('radius, pix')
         axes[1].set_ylabel('density')
-        axes[1].set_xticks(x)
+        #axes[1].set_xticks(x)
         axes[0].scatter(x,fx_c)
         plt.show()
     return x[globalMin],solsIntevals2[globalMin]
@@ -1500,14 +1502,33 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
 
 
 colorList  = np.array(list(itertools.permutations(np.arange(0,255,255/5, dtype= np.uint8), 3)))
-np.random.seed(1);np.random.shuffle(colorList);np.random.seed()
+np.random.seed(2);np.random.shuffle(colorList);np.random.seed()
 
 def cyclicColor(index):
     return colorList[index % len(colorList)].tolist()
 
-def mergeSplitDetect(contours,contourIDs, direction, position):
-    pointsGather = {}
-    distsGather = {}
+def plot_histogram_multiple(data_sets,ax, IDs, colors):
+    
+    
+    offsets0 = [0] + [max(data[1]) for data in data_sets]
+    offsets = np.cumsum(offsets0)
+
+    # Plot the bars for each data set
+    for i, data in enumerate(data_sets):
+        values, counts = data
+        ax.bar(values, counts, width=1.3, bottom = offsets[i], align='center', label=f'ID: {IDs[i]}', color = colors[i])
+
+    ax.set_xlabel('Values')
+    ax.set_ylabel('Counts')
+    ax.set_title('Histogram of Multiple Data Sets')
+    ax.legend()
+ 
+
+def mergeSplitDetect(contours,contourIDs, direction, position, gc = 0, id = 0, debug = 0):
+    pointsGather    = {}
+    distsGather     = {}
+    intervalsGather = {}
+    saveHist        = {}
     points_all  = np.vstack(contours[contourIDs]).reshape(-1,2)
     x0,y0,w0,h0 = cv2.boundingRect(points_all)
     blank = np.zeros((h0,w0,3),np.uint8) 
@@ -1516,40 +1537,105 @@ def mergeSplitDetect(contours,contourIDs, direction, position):
         x,y,w,h     = cv2.boundingRect(points_2d) 
         fillContour = np.zeros((h,w),np.uint8)                              # mask of contour/-s
         cv2.drawContours( fillContour,   [contours[ID]-[x,y]], -1, 255, -1)
-    
+        totalArea = np.sum(fillContour)/255                                 # total area of a contour
+        numPoints = 36                                                      # specify how many points you want inside contour
+        step = int(np.sqrt(totalArea/numPoints))                            # assuming isotropic point density, and square region, calculate linear point density
         fillPoints  = np.zeros((h,w),np.uint8)                              # for extra points
-        fillPoints[0:h:8,0:w:8] = 255                                     # grid of evenly spaced points
+        fillPoints[::step,::step] = 255                                     # grid of evenly spaced points, with step dependant on contour area.
     
         fillAndOp   = cv2.bitwise_and(fillContour,fillPoints)               # only points left are inside contour/-s
+        #cv2.imshow(f'ID:{ID}',fillAndOp)
         wherePoints = np.flip(np.array(np.where(fillAndOp == 255),int)).T   # local coordinates of inside points. some mumbo jambo with flipped x and y
         wherePoints += [x,y]                                                # grab a subImage to reduce computational resources
         pointsGather[ID] = wherePoints
         
     
     for ID in contourIDs:
-        blank[pointsGather[ID][:,1]-y0,pointsGather[ID][:,0]-x0] = cyclicColor(ID)
         
-        #p1 = np.array(position - [x0,y0], int)
-        #p2 = np.array(p1 + 20*direction, int)
-        #cv2.circle(blank, p1, 2, [255,0,255], -1)
+        pts = pointsGather[ID] - position                                       # move global point coordinates into local, placed into midline center
+        projections = np.einsum('ij,j->i', pts, direction).astype(int)          # take projections onto normal to midline basis vector, this shows how far and which side of midline point is in.
+
+        unique, counts = np.unique(projections, return_counts = True)           # kind of histogram
+        result = list(zip(unique, counts))                                      # to sort histogram based on distanc values
+        result.sort(key=lambda x: x[0])                                         # so i can get f=f(x): [[xmin,f[xmin],...,[xmax,f[xmax]]]
+        result = np.array(result,int)                                           # cast to numpy array so its easier and faster to work with
+        saveHist[ID] = result if debug == 1 else []
+        r,dr = findMajorInterval(result[:,0],result[:,1], meanVal=None, cover_area=0.9, debug=debug)
+        #print(r,r+dr)
+        intervalsGather[ID] = np.array([[np.min(result[:,0]),np.max(result[:,0])],[r, r +dr],[np.diff([np.min(result[:,0]),np.max(result[:,0])])[0],dr]], int)
+        distsGather[ID]     = projections
+        if debug == 1:
+            ptsLoc = pointsGather[ID] - [x0,y0]
+            blank[pointsGather[ID][:,1]-y0,pointsGather[ID][:,0]-x0] = cyclicColor(ID)
         
-        #cv2.line(blank, p1, p2, [255,0,255], 1)
-        pts = pointsGather[ID] - position
-        projections = np.einsum('ij,j->i', pts, direction).astype(int)
-        distsGather[ID] = projections
-        
-        ptsLoc = pointsGather[ID] - [x0,y0]
-        [cv2.line(blank, ps, np.array(ps-dst*direction,int), cyclicColor(ID), 1) for ps,dst in zip(ptsLoc[0:-1:2],projections[0:-1:2])]#[0:-1:1]
-        cv2.drawContours(blank, contours, ID, [0,0,0], 2, offset= (-x0,-y0))
-        cv2.drawContours(blank, contours, ID, cyclicColor(ID), 1, offset= (-x0,-y0))
-        
-    resized = cv2.resize(blank, (w0*3, h0*3), interpolation = cv2.INTER_AREA)
-    cv2.imshow('asdas',resized)
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    ax.hist([distsGather[ID] for ID in contourIDs], 25, density = True, histtype = 'bar', color = [np.array(np.flip(cyclicColor(ID)))/255 for ID in contourIDs], label=contourIDs)
-    ax.legend(prop={'size': 10})
-    plt.show()
+            [cv2.line(blank, ps, np.array(ps-dst*direction,int), cyclicColor(ID), 1) for ps,dst in zip(ptsLoc[::2],projections[::2])]#[0:-1:1]
+            cv2.drawContours(blank, contours, ID, [0,0,0], 2, offset= (-x0,-y0))
+            cv2.drawContours(blank, contours, ID, cyclicColor(ID), 1, offset= (-x0,-y0))
+    #intervalWidths = {ID:np.diff(intervalsGather[ID][1]) for ID in contourIDs}
+    sideID = {}
+    if len(contourIDs)>1:                                                                                          # possible split implies existanc of one or contours.
+        for ID in contourIDs:
+            # determine if interval lives on one of the half-lines. split total interval into 2 parts at zero
+            # if one of subintervals is empty- whole interval lives on "+" ir "-" half-plane
+            # if one whole interval is relatively small, we dont bother. if one sub interval is small check how much smaller and discard it.
+            weightedInterval    = intervalsGather[ID][1]
+            width               = intervalsGather[ID][2,1]
+            print(f'width:{width}')
+            meanWidth           = np.average([intervalsGather[ids][2,1] for ids in contourIDs if ids != ID])    # mean of all except current ID
+            print(f'meanWidth:{meanWidth}')
+            overlapLeft         = interval_overlap(weightedInterval, [-max(w0, h0),0])                          # split big interval into two. split at zero
+            overlapRight        = interval_overlap(weightedInterval, [0, max(w0,h0)])                           # length of test interval is set to be the largest relevant for this problem.
+            overlapPartsLengths = np.array([np.diff(a)[0] for a in [overlapLeft,overlapRight] if len(a)>0])     # abs values of half interval lengths
+            if any([len(interval)==0 for interval in [overlapLeft,overlapRight] ]):                             # if one of intervals is empty (no overlap with half line)
+                oneSided = np.sign(*[np.sum(x) for x in [overlapLeft,overlapRight] if len(x)>0])                # sum(x) produces sign*intervalAra: [-a,0]-> -a, [0,a] -> a
+            elif (width >= 0.2*meanWidth) and (np.min(overlapPartsLengths) <= 0.2*np.max(width)):               # if width is bugger than fraction of mean width, and smaller side is a small fraction of total width
+                whereLargest    = np.argmax(overlapPartsLengths)                                                # where is largest by abs value
+                oneSided        = np.sign(np.sum([overlapLeft,overlapRight][whereLargest]))                     # get a sign of its position
+            else: oneSided = 0                                                                                  # 0 means not 1, nor -1. or abs(+/-1) > 0
+            sideID[ID] = oneSided
+            print(oneSided)
+            print(f'ID:{ID}, left overlap : {overlapLeft}, right overlap: {overlapRight}, side identified: {oneSided}')
+        sideIDs = np.array(list(sideID.values()))
+        if np.count_nonzero(sideIDs == 0) == 0:                                                        # there are only contours that live on either side. no inbetween
+            sideOneContourIDs = [ID for ID in contourIDs if sideID[ID] == -1]
+            sideTwoContourIDs = [ID for ID in contourIDs if sideID[ID] ==  1]
+            blank2 = np.zeros((h0,w0),np.uint8)
+            blank3 = np.zeros((h0,w0),np.uint8)
+            hull1 = cv2.convexHull(np.vstack(contours[sideOneContourIDs]))
+            hull2 = cv2.convexHull(np.vstack(contours[sideTwoContourIDs]))
+            cv2.drawContours( blank2,   [hull1-[x0,y0]], -1, 255, -1)
+            cv2.drawContours( blank3,   [hull2-[x0,y0]], -1, 255, -1)
+            #area2 = int(np.sum(blank2/255))
+            #area3 = int(np.sum(blank3/255))
+            inter = cv2.bitwise_and(blank2, blank3)
+            
+            interArea = int(np.sum(inter/255))
+            print(f'interArea: {interArea}')
+
+            if debug == 1:
+                deb = np.zeros((h0,w0,3),np.uint8)
+                [cv2.drawContours( deb,   [contours[ID]-[x0,y0]], -1, [120,120,120], -1) for ID in contourIDs]
+                cv2.drawContours( deb,   [hull1-[x0,y0]], -1, [255,0,0], 2)
+                cv2.drawContours( deb,   [hull2-[x0,y0]], -1, [0,0,255], 2)
+                cv2.imshow(f'{gc,id}', deb)
+                cv2.imshow(f'inter {gc,id}', inter)
+            
+            
+            #[cv2.drawContours( blank2,   [contours[ID]-[x0,y0]], -1, [120,120,120], -1) for ID in contourIDs]
+
+            
+    #resized = cv2.resize(blank, (w0*3, h0*3), interpolation = cv2.INTER_AREA)
+    #cv2.imshow('asdas',resized)
+    if debug == 1:
+        resized = cv2.resize(blank, (w0*3, h0*3), interpolation = cv2.INTER_AREA)
+        cv2.imshow(f'projections {gc,id}',resized)
+        _, ax = plt.subplots()
+        plot_histogram_multiple([saveHist[ID].T for ID in contourIDs], ax, contourIDs, [np.array(np.flip(cyclicColor(ID)))/255 for ID in contourIDs])
+        plt.savefig(f'.\\picklesImages\\splitMerge\\{gc}_{id}.png')
+        plt.close()
+        #plt.show()
+
+    #return intervalsGather
 
     
 
@@ -1618,6 +1704,14 @@ def interpolateHull(points,k,s,numReturnPoints,debug):
 
 def getOverlap(a, b, mode): # if mode = 1, return intersection interval width, if mode  = 0, intersection right coordinate.
     return np.maximum(0, np.minimum(a[:,1], b[:,1]) - mode*np.maximum(a[:,0], b[:,0]))
+
+def interval_overlap(interval1, interval2):
+    overlap_start = max(interval1[0], interval2[0])
+    overlap_end = min(interval1[1], interval2[1])
+    if overlap_start < overlap_end:
+        return [overlap_start, overlap_end]
+    else:
+        return []
 
 def radialAnal( OGparams, SLparams, PermParams, StatParams, globalCounter, oldID, mainNewID, l_MBub_info_old, debug=0):
     [[OGLeft,OGRight], OGDistr]   = OGparams

@@ -922,7 +922,7 @@ if 1 == -1:
     cv2.ellipse(blank, (250,250),(a,b),0,0,360, 255, -1)
     cv2.imshow('a',blank)
 
-if 1 == 1:
+if 1 == -11:
     A = np.array([[1,0],[0,1]])
     B = np.array([1,0])
     
@@ -936,6 +936,41 @@ if 1 == 1:
     c = np.array([0,1]);                    print(c,'\n');print(np.einsum('ij,j->i', a, c),'\n')
     d = np.array([1,0]);                    print(d,'\n');print(np.einsum('ij,j->i', a, d),'\n')
     #print(np.einsum('ij,ij->ij', a, c))
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Generate some sample data
+def plot_histogram_multiple(data_sets):
+    n_sets = len(data_sets)
+    fig, ax = plt.subplots()
+
+    # Set the x-axis labels to the unique values of all data sets
+    unique_values = np.unique(np.concatenate([data[0] for data in data_sets]))
+    x_labels = [str(value) for value in unique_values]
+
+    # Calculate the width of each bar
+    bar_width = 0.8 / n_sets
+
+    # Plot the bars for each data set
+    for i, data in enumerate(data_sets):
+        values, counts = data
+        left = np.arange(len(values)) + i * bar_width
+        ax.bar(left, counts, width=bar_width, align='edge', label=f'Set {i+1}')
+
+    ax.set_xticks(np.arange(len(unique_values)) + 0.4)
+    ax.set_xticklabels(x_labels)
+    ax.set_xlabel('Values')
+    ax.set_ylabel('Counts')
+    ax.set_title('Histogram of Multiple Data Sets')
+    ax.legend()
+    plt.show()
+
+# Example usage:
+data_set_1 = ([1, 2, 3, 4, 5], [2, 5, 8, 3, 6])
+data_set_2 = ([2, 3, 4, 5, 6], [3, 6, 5, 4, 2])
+data_set_3 = ([1, 3, 5, 7, 9], [4, 2, 6, 1, 7])
+plot_histogram_multiple([data_set_1, data_set_2, data_set_3])
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyAllWindows()

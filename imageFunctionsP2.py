@@ -1431,9 +1431,11 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
     hullCoordinateIndices   = cv2.convexHull(baseContour, returnPoints = False)             # indicies of original contour points that form a convex hull
     hullDefects             = cv2.convexityDefects(baseContour, hullCoordinateIndices)      # find concave defects of convex hull
     hullDefects             = hullDefects if hullDefects is not None else np.array([])
-    refDistance             = previousInfo[0]
-    refPlaneTangent         = previousInfo[1]
-    refAngleThreshold       = previousInfo[2]
+    refDistance             = previousInfo[0]                                               # limits length of defects
+    refPlaneTangent         = previousInfo[1]                                               # tangent vector to centroid-centroid v. merge interface ~ along it
+    refAngleThreshold       = previousInfo[2]                                               # limits angle of defects
+    #refMergePoint           = previousInfo[3]                                               # ~ point where interfaces meet. limits defects position.
+    #ccDir                   = np.matmul(np.array([[0, -1],[1, 0]]), refPlaneTangent) 
     calculateAngle          = lambda vector: np.arccos(np.dot(refPlaneTangent, vector))     # chech angle between reference tangent and a vector
     defectsIndicies         = []                                                            # large defects will be stored here
     defectsDirection        = []                                                            # direction from 'cave' furthest point normal to contour.
@@ -1465,12 +1467,18 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
                         
     defectsIndicies     = np.array(defectsIndicies,int)
     defectsLength       = np.array(defectsLength,int)
-    defectsDirection    = [vector*np.sign(np.dot(refPlaneTangent,vector)) for vector in defectsDirection]   # invert defectDirections if projection to refVector is negative.
+    defectsDirection    = [vector*np.sign(np.dot(refPlaneTangent,vector)) for vector in defectsDirection]       # invert defectDirections if projection to refVector is negative.
     defectsDirection    = np.array(defectsDirection)
-    defectsAngles       = np.array([int(calculateAngle(v)*180/np.pi) for v in defectsDirection])        # find defect angle to ref. min case where |angle| =< 90  
-    defectsDiscard      = np.array(np.where(np.abs(defectsAngles)>refAngleThreshold)).flatten()         # which angle is higher than threshold? not sure if i need abs
+    defectsAngles       = np.array([int(calculateAngle(v)*180/np.pi) for v in defectsDirection])                # find defect angle to ref. min case where |angle| =< 90  
+    defectsDiscard     = np.array(np.where(np.abs(defectsAngles)>refAngleThreshold)).flatten()                 # which angle is higher than threshold? not sure if i need abs
     defectsFarpoints    = np.array(defectsFarpoints,int)                 
-    
+    #if refMergePoint.shape[0]>0:
+    #    pts                 = np.array([baseContour[i][0] for i in defectsFarpoints]).reshape(-1,2) - refMergePoint # move global point coordinates into local, placed into midline center
+    #    projections         = np.abs(np.einsum('ij,j->i', pts, ccDir).astype(int))
+    #    defectsDiscardL     = np.array(np.where(projections>2*refDistance)).flatten() 
+    #    defectsDiscard      = np.union1d(defectsDiscardA, defectsDiscardL)                                          # which failed angle or distance check
+    #else:
+    #    defectsDiscard = defectsDiscardA
     if len(defectsDiscard)>0:                                                                           # instead of deleting i want to keep everythin inbetween defects
         removeTheseIntevals     = [[0,0]] +[defectsIndicies[i] for i in defectsDiscard] + [[-1,-1]]     # combine contour slices -> last defect end: next defect start       
         invertedIndicies        = [(removeTheseIntevals[i][1],removeTheseIntevals[i+1][0]) for i in range(len(removeTheseIntevals)-1)]
@@ -1494,8 +1502,11 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
     else: p1,p2 = [],[]
     
     if debug ==1:
-        cv2.circle(imageDebug,farpointMean - [x,y], 5, [255,0,255], -1)
-        cv2.line(imageDebug, p1 - [x,y], p2 - [x,y], [255,0,255], 1)
+        #cv2.circle(imageDebug,refMergePoint - [x,y], 3, [0,255,255], -1)
+        
+        if numUsefulDefects > 1:
+            cv2.circle(imageDebug,farpointMean - [x,y], 5, [255,0,255], -1)
+            cv2.line(imageDebug, p1 - [x,y], p2 - [x,y], [255,0,255], 1)
         cv2.drawContours( imageDebug,   [hullOutput- [x,y]], -1, (255,0,0), 2) 
         cv2.imshow(f'GC {gc}, ID {id}',imageDebug) 
     return hullOutput, (refDistance, avgDirection, refAngleThreshold), (inPlaneDefectsPresent, farpointMean)
@@ -1525,6 +1536,8 @@ def plot_histogram_multiple(data_sets,ax, IDs, colors):
  
 
 def mergeSplitDetect(contours,contourIDs, direction, position, gc = 0, id = 0, debug = 0):
+    sideOneContourIDs, sideTwoContourIDs = [], []
+    isThereASplit   = False
     pointsGather    = {}
     distsGather     = {}
     intervalsGather = {}
@@ -1611,7 +1624,10 @@ def mergeSplitDetect(contours,contourIDs, direction, position, gc = 0, id = 0, d
             
             interArea = int(np.sum(inter/255))
             print(f'interArea: {interArea}')
-
+            if interArea == 0:
+                dist = closes_point_contours(hull1,hull2)[1]
+                if dist > 5:
+                    isThereASplit = True
             if debug == 1:
                 deb = np.zeros((h0,w0,3),np.uint8)
                 [cv2.drawContours( deb,   [contours[ID]-[x0,y0]], -1, [120,120,120], -1) for ID in contourIDs]
@@ -1619,7 +1635,7 @@ def mergeSplitDetect(contours,contourIDs, direction, position, gc = 0, id = 0, d
                 cv2.drawContours( deb,   [hull2-[x0,y0]], -1, [0,0,255], 2)
                 cv2.imshow(f'{gc,id}', deb)
                 cv2.imshow(f'inter {gc,id}', inter)
-            
+        
             
             #[cv2.drawContours( blank2,   [contours[ID]-[x0,y0]], -1, [120,120,120], -1) for ID in contourIDs]
 
@@ -1633,9 +1649,9 @@ def mergeSplitDetect(contours,contourIDs, direction, position, gc = 0, id = 0, d
         plot_histogram_multiple([saveHist[ID].T for ID in contourIDs], ax, contourIDs, [np.array(np.flip(cyclicColor(ID)))/255 for ID in contourIDs])
         plt.savefig(f'.\\picklesImages\\splitMerge\\{gc}_{id}.png')
         plt.close()
-        #plt.show()
 
-    #return intervalsGather
+    return isThereASplit , sideOneContourIDs, sideTwoContourIDs
+
 
     
 

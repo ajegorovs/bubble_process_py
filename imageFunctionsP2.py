@@ -1154,10 +1154,11 @@ def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [],
     #    #plt.show()
     return returnVec
 
-def overlappingRotatedRectangles(group1Params,group2Params):
+def overlappingRotatedRectangles(group1Params,group2Params,returnType = 0):
     #group1IDs, group2IDs = list(group1Params.keys()),list(group2Params.keys())
     #allCombs = list(itertools.product(group1Params, group1Params))#;print(f'allCombs,{allCombs}')
-    intersectingCombs = []
+    intersectionType    = {}
+    intersectingCombs   = []
     if group1Params == group2Params:
         allCombs = np.unique(np.sort(np.array(list(itertools.permutations(group1Params, 2)))), axis = 0)
     elif len(group2Params) ==0:
@@ -1169,10 +1170,13 @@ def overlappingRotatedRectangles(group1Params,group2Params):
         rotatedRectangle_new = ((x1+w1/2, y1+h1/2), (w1, h1), 0)
         x2,y2,w2,h2 = group1Params[keyOld]
         rotatedRectangle_old = ((x2+w2/2, y2+h2/2), (w2, h2), 0)
-        interType,_ = cv2.rotatedRectangleIntersection(rotatedRectangle_new, rotatedRectangle_old)
+        interType   = cv2.rotatedRectangleIntersection(rotatedRectangle_new, rotatedRectangle_old)[0]
         if interType > 0:
             intersectingCombs.append([keyOld,keyNew]) # rough neighbors combinations
-    return intersectingCombs
+            if returnType == 1:
+                intersectionType[keyOld] = interType
+    if returnType == 0: return intersectingCombs
+    else: return intersectingCombs, intersectionType
 
 def filterPermutations(intersectingCombs,rectParams,rectParams_Old,areas_Old,areas,centroids,centroids_Old,relArea,relDist,maxAngle,maxArea,globalCounter):
     intersectingCombs_stage2 = []
@@ -1361,9 +1365,20 @@ def alphashapeHullModded(contours, contourIDs, param, debug):
             hull                    = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
             #centroid, area          =  getCentroidPosContours(bodyCntrs = [hull])
     else:
-        cv2.imshow('1',fillPoints)
-        cv2.imshow('2',fillContour)
-        cv2.imshow('3',fillAndOp)
+        print(f'alphashapeHullModded() subIDs: {contourIDs}-> OG geom type{alpha_shape.geom_type}')
+        for prm in np.arange(param-0.01,0,-0.01):
+            print(f'alphashapeHullModded() subIDs: {contourIDs}-> reducing alpha parameter from {param} to {np.around(prm,2)}, to resolve single polygon')
+            alpha_shape2 = alphashape.alphashape(allPonts, prm)
+            print(f'alphashapeHullModded() subIDs: {contourIDs}-> new geom type{alpha_shape2.geom_type}')
+            if alpha_shape2.geom_type == 'Polygon':
+                xx,yy                   = alpha_shape2.exterior.coords.xy
+                hull                    = np.array(list(zip(xx,yy)),np.int32).reshape((-1,1,2))
+                print(f'alphashapeHullModded() subIDs: {contourIDs}-> resoled single poly with parameter: {np.around(prm,2)}')
+                break
+            
+        #cv2.imshow('1',fillPoints)
+        #cv2.imshow('2',fillContour)
+        #cv2.imshow('3',fillAndOp)
     if debug == 1:
         cv2.imshow('1',fillPoints)
         cv2.imshow('2',fillContour)
@@ -1465,7 +1480,7 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
                 cv2.line(imageDebug, farPointStart, farPointEnd, [255,125,0], 1)
                 cv2.circle(imageDebug,farPointStart, 5, [0,0,255], -1)
                         
-    defectsIndicies     = np.array(defectsIndicies,int)
+    defectsIndicies     = np.array(defectsIndicies,int)                                                         
     defectsLength       = np.array(defectsLength,int)
     defectsDirection    = [vector*np.sign(np.dot(refPlaneTangent,vector)) for vector in defectsDirection]       # invert defectDirections if projection to refVector is negative.
     defectsDirection    = np.array(defectsDirection)
@@ -1479,10 +1494,27 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
     #    defectsDiscard      = np.union1d(defectsDiscardA, defectsDiscardL)                                          # which failed angle or distance check
     #else:
     #    defectsDiscard = defectsDiscardA
-    if len(defectsDiscard)>0:                                                                           # instead of deleting i want to keep everythin inbetween defects
-        removeTheseIntevals     = [[0,0]] +[defectsIndicies[i] for i in defectsDiscard] + [[-1,-1]]     # combine contour slices -> last defect end: next defect start       
-        invertedIndicies        = [(removeTheseIntevals[i][1],removeTheseIntevals[i+1][0]) for i in range(len(removeTheseIntevals)-1)]
-        hullOutput              = np.array(sum([list(baseContour[start:end]) for start,end in invertedIndicies] ,[]))
+                                                                                                        
+    if len(defectsDiscard)>0:                                                                           # usually discard defect start-end IDs do not intersect ID = 0
+        discardIndices              = [defectsIndicies[i] for i in defectsDiscard]                      # # array([ [60,  75], [140, 155]])
+        if discardIndices[0][0] < discardIndices[0][1]:                                                 
+            removeTheseIntevals     = [[0,0]] + discardIndices + [[-1,-1]]                              # array([ [0,  0], [60,  75], [140, 155], [-1, -1]])
+        else:                                                                                           # ------------- but 
+            if len(discardIndices) > 1:
+                removeTheseIntevals = np.concatenate((                                                  # array([[160,   3], [60,  75], [140, 155]]) might happen (first elem)
+                                            [   [0,discardIndices[0][1]]   ],                           # in this case contour will be reconstruceted doint ~ two loops 
+                                                defectsIndicies[1:]          ,                          # have to split first interval into two
+                                            [   [discardIndices[0][0],-1]  ]                            # array([[  0,   3], [ 60,  75], [140, 155], [160,  -1]])
+                                        )                                    , axis=0)                      
+            else:
+                removeTheseIntevals = np.concatenate((                                                      # array([[160,   3], [60,  75], [140, 155]]) might happen (first elem)
+                                            [   [0,discardIndices[0][1]]   ],                              # in this case contour will be reconstruceted doint ~ two loops 
+                                                                          
+                                            [   [discardIndices[0][0],-1]  ]                               # array([[  0,   3], [ 60,  75], [140, 155], [160,  -1]])
+                                        )                                    , axis=0) 
+                                                                                                        # combine contour slices -> last defect end: next defect start
+        invertedIndicies        = [(removeTheseIntevals[i][1],removeTheseIntevals[i+1][0]) for i in range(len(removeTheseIntevals)-1)] # like  array([ [0,  60], [75,  140], [155, -1]])
+        hullOutput              = np.array(sum([list(baseContour[start:end]) for start,end in invertedIndicies] ,[]))                  # or    array([ [3,  60], [75,  140], [155, 160]])
     else:
         hullOutput              = baseContour
                         
@@ -1655,7 +1687,7 @@ def mergeSplitDetect(contours,contourIDs, direction, position, gc = 0, id = 0, d
 
     
 
-def graphUniqueComponents(nodes,edges, edgesAux= [], debug = 0, bgDims = {1e3,1e3}, centroids = [], centroidsAux = [], contours = [], contoursAux = []):
+def graphUniqueComponents(nodes, edges, edgesAux= [], debug = 0, bgDims = {1e3,1e3}, centroids = [], centroidsAux = [], contours = [], contoursAux = []):
     # generally provide nodes and pairs of connections (edges), then retreave unique interconnected clusters.
     # small modification where second set of connections is introduced. like catalyst, it may create extra connections, but is after deleted.
     H = nx.Graph()
@@ -1777,8 +1809,9 @@ def radialAnal( OGparams, SLparams, PermParams, StatParams, globalCounter, oldID
     newParams,hull,permRelArea2,newCentroid,newArea, = [],[],-1,-1, -1
     if len(permIDsol2)>0:
         if oldID in l_MBub_info_old:                                                    # it was part of a merge (big or small)
+            ddd = 0 #if globalCounter != 3 and oldID != 4 else 1
             previousInfo        = l_MBub_info_old[oldID][3:] 
-            hull, newParams, _  = mergeCrit(permIDsol2, l_contours, previousInfo, alphaParam = 0.05, debug = 0)
+            hull, newParams, _  = mergeCrit(permIDsol2, l_contours, previousInfo, alphaParam = 0.05, debug = ddd ,debug2 = ddd, gc = globalCounter, id = oldID)
         else:
             hull                = cv2.convexHull(np.vstack(l_contours[permIDsol2]))
                                 

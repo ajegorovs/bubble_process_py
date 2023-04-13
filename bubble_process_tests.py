@@ -192,7 +192,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 200 #  53+3+5
-dataNum             = 70 # 7+5   
+dataNum             = 200 # 7+5   
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -367,20 +367,34 @@ def mainer(index):
     frozenIDs = []
     global frozenGlobal,frozenGlobal_LocalIDs
     frozenLocal = []
+ 
+    fakeBoxW, fakeBoxH      = 176,int(err.shape[0]/3)                                             # generate a fake bubble at inlet and add it to previous frame data.
+    fakeBox                 = {-1:[err.shape[1] - fakeBoxW + 1, fakeBoxH, fakeBoxW, fakeBoxH]}    # this will make sure to gather new bubbles at inlet into single cluster.
+
     if globalCounter >= 1:
         # try to find old contours or cluster of contours that did not move during frame transition.
         # double overlay of old global and old local IDs, remove local & keep global.
         print(f'{globalCounter}:-------- Begin search for frozen bubbles ---------')
         dropKeys                = lambda lib,IDs: {key:val for key,val in lib.items() if key not in IDs}                # function that drops all keys listed in ids from dictionary lib
         deleteOverlaySoloIDs    = [subIDs[0] for _, subIDs in l_old_new_IDs_old.items() if len(subIDs) == 1]            # these are duplicates of global IDs from prev frame. ex: l_old_new_IDs_old= {0: [15]} -> l_Areas_old= {15:A} & joinAreas = {0:A} same object.
-        stuckAreas              = {**dropKeys(l_Areas_hull_old,deleteOverlaySoloIDs),               **{str(key):val for key,val in l_areas_hull_old.items()}} # replaced regular area with fb hull 11/02/23
+        stuckAreas              = {**dropKeys(l_Areas_hull_old,deleteOverlaySoloIDs),     **{str(key):val for key,val in l_areas_hull_old.items()}} # replaced regular area with fb hull 11/02/23
         stuckRectParams         = {**dropKeys(l_rect_parms_all_old,deleteOverlaySoloIDs), **{str(key):val for key,val in l_rect_parms_old.items()}}
-        stuckCentroids          = {**dropKeys(l_Centroids_old,deleteOverlaySoloIDs),                **{str(key):val for key,val in l_centroids_old.items()}}
+        stuckCentroids          = {**dropKeys(l_Centroids_old,deleteOverlaySoloIDs),      **{str(key):val for key,val in l_centroids_old.items()}}
+
+
+        cntrRemainingIDs = [cID for cID in whereParentOriginal if cID not in  contoursFilter_RectParams_dropIDs ] #+ dropAllRings + dropRestoredIDs
         
-        dropKeysOld                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs_old)
-        dropKeysNew                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs)
+        distContours = {ID:contoursFilter_RectParams[ID] for ID in cntrRemainingIDs}
+
+        inletIDsNew, inletIDsTypeNew  = overlappingRotatedRectangles(distContours, fakeBox, returnType = 1)         # inletIDs, inletIDsType after frozen part
+        inletIDsNew                = [a[0] for a in inletIDsNew]
+
+        dropKeysOld                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs_old    + inletIDsNew)  # dropping frozens from inlet since
+        dropKeysNew                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs        + inletIDsNew)  # bubbles act bad there, might false-positive
         [stuckRectParams,stuckAreas,stuckCentroids]             = list(map(dropKeysOld,[stuckRectParams,stuckAreas,stuckCentroids] ))
         [fbStoreRectParams2,fbStoreAreas2,fbStoreCentroids2]    = list(map(dropKeysNew,[l_rect_parms_all,l_Areas,l_Centroids] ))
+        
+        
 
         # frozen bubbles, other than from previous time step should be considered.================================
         # take frozen bubbles from last N steps. frozen bubbles found in old step are already accounted in else/dist data, get all other.
@@ -448,7 +462,10 @@ def mainer(index):
         #for IDS in [bID for bID,bType in l_bubble_type_old.items() if bType == typeFrozen]:
         #    l_predict_displacement[IDS] = [tuple(map(int,stuckCentroids[str(IDS)])), -1]
     
-      
+        inletIDs, inletIDsType  = overlappingRotatedRectangles(l_rect_parms_old, fakeBox, returnType = 1)           # inletIDs: which old IDs are close to inlet? 
+        inletIDs                = [a[0] for a in inletIDs if a[0] not in lastStepFrozenGlobIDs]                     # inletIDsType: 1 & 2 - partially & fully inside.
+        inletIDsType            = {ID:inletIDsType[ID] for ID in inletIDs} 
+  
     unresolvedOldRB   = list(l_RBub_centroids_old.keys())     # list of global IDs for RB  
     unresolvedOldDB   = list(l_DBub_centroids_old.keys())     # and DB, from previous step. empty if gc = 0
     unresolvedNewRB   = list(whereChildrenAreaFiltered.keys())
@@ -483,17 +500,13 @@ def mainer(index):
 
         # sometimes nearby cluster elements [n1,n2] do not get connected via rect intersection. but it was clearly part of bigger bubble of prev frame [old].
         # grab that old bubble and find its intersection with new frame elements-> [[old,n1],[old,n2]]-> [n1,n2] are connected now via [old]
-        fakeBox                         = {}
-        inletIDs,       inletIDsType    = [], []
-        inletIDsNew,    inletIDsTypeNew = [], []
         if globalCounter > 0:                                                                                           # they will be used in old-new intersection
             fakeBoxW, fakeBoxH      = 176,int(err.shape[0]/3)                                                           # generate  a fake bubble at inlet and add it to  previous frame data.
             fakeBox                 = {-1:[err.shape[1] - fakeBoxW + 1, fakeBoxH, fakeBoxW, fakeBoxH]}                  # this will make sure to gather new bubbles at inlet into single cluster.
             inletIDs, inletIDsType  = overlappingRotatedRectangles(l_rect_parms_old, fakeBox, returnType = 1)           # inletIDs: which old IDs are close to inlet? 
             inletIDs                = [a[0] for a in inletIDs if a[0] not in lastStepFrozenGlobIDs]                     # inletIDsType: 1 & 2 - partially & fully inside.
             inletIDsType            = {ID:inletIDsType[ID] for ID in inletIDs}                                                                                                            # note: if edge is shared, then its not fully inside. added 1 pix offset for edge of image
-            inletIDsNew, inletIDsTypeNew  = overlappingRotatedRectangles(distContours, fakeBox, returnType = 1) 
-            inletIDsNew                = [a[0] for a in inletIDsNew]                                                
+                                                           
 
             blank = err.copy()
             x,y,w,h = fakeBox[-1]
@@ -620,7 +633,7 @@ def mainer(index):
             srtF = lambda x : l_bubble_type_old[x[0]]                                                                                                        # sort by type number-> RBs to front.
             oldDBubAndUnresolvedOldRB = dict(sorted(oldDBubAndUnresolvedOldRB.items(), key=srtF))                                                            # given low typeIDs are virtually important. 
 
-            oldDBubAndUnresolvedOldRB = {ID:a for ID,a in oldDBubAndUnresolvedOldRB.items() if ID not in inletIDsType or (ID in inletIDsType and inletIDsType[ID] < 2)}
+            oldDBubAndUnresolvedOldRB = {ID:a for ID,a in oldDBubAndUnresolvedOldRB.items()}                            # moved if ID not in inletIDsType or (ID in inletIDsType and inletIDsType[ID] < 2) inside loop
             for oldID, oldCentroid in oldDBubAndUnresolvedOldRB.items():                                                # recovering RB, rRB, DB, rDB
                 oldType         = l_bubble_type_old[oldID]                                                              # grab old ID bubType                                                   e.g 3  (typeElse)
                 if oldType == typeRing or oldType == typeRecoveredRing:                                                 # RB type inheritance should be fragile.
@@ -646,6 +659,8 @@ def mainer(index):
                 areaCheck                                           = oldMeanArea + 3*oldAreaStd                        # top limit                                                             e.g 8451
                 l_predict_displacement[oldID]                       = [tuple(map(int,predictCentroid)), -1]             # predictor error will be stored here. acts as buffer storage for predC e.g [(354, 537), -1]
                 
+                if (oldID in inletIDsType and inletIDsType[oldID] == 2):                                                # i consider bubbles in fully inlet zone. so i get estimate in l_predict_displacement
+                    continue                                                                                            # but then i skip this ID and process it in spaghetti code for inlet.
                 # ===== REFINE TEST TARGETS BASED ON PROXIMITY =====
                 overlapIDs = np.array(overlappingRotatedRectangles(
                                                                     {oldID:l_rect_parms_old[oldID]},                    # check rough overlap with clusters.
@@ -869,7 +884,7 @@ def mainer(index):
                         dist2                   = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))                     # predictor error
                         areaCrit                = np.abs(newArea-oldMeanArea)/ oldAreaStd                                               # area diffference in terms of stdevs
                         
-                        if len(permIDsol2) > 1 and mCrit[0] == True:
+                        if len(permIDsol2) > 1 and mCrit[0] == True and mCrit[1].shape[0] > 0:
                             direction = np.matmul(np.array([[0, -1],[1, 0]]), newParams[1])
                             split, subIDs1, subIDs2 = mergeSplitDetect(l_contours,permIDsol2,direction,mCrit[1],globalCounter,oldID, debug = 0)
                             #if split == True:
@@ -1231,7 +1246,7 @@ def mainer(index):
                 areaThreshold   = 0.3
                 areaTest        = np.where(areaRatio<areaThreshold,1,0)
                 hasSmallBsMerge = any(areaTest)
-
+                inletCase       = False
                 if hasSmallBsMerge == True: # ==== its not yet tested !!! ==== 31/03/2023  kind of works for 1+1 merge
                     typeTemp        = typeRing if any(item in unresolvedNewRB for item in new) else typeElse      # maybe drop or change ring+ big area.
                     print(f'-Merge from Old IDs: {old} to new IDs: {new}. Big+Small type merge. Larger bubble of type {typeStrFromTypeID[typeTemp]}')
@@ -1247,7 +1262,11 @@ def mainer(index):
                         [areas, predictCentroid, hull, newParams] = preCalculated[min(new)]
                     else:
                         previousInfo        = getMergeCritParams(l_ellipse_parms_old, old, 0.4, 25)
-                        hull, newParams, _  = mergeCrit(new, l_contours, previousInfo, alphaParam = 0.05, debug = 0, debug2 = 0, gc = globalCounter, id = selectID)
+                        inletCase = [oldID in inletIDs for oldID in old]
+                        if all(inletCase):                                             # INLET stuff here !!!!! if two inlet zone bubbles merge.
+                            hull        = cv2.convexHull(np.vstack(l_contours[new]))
+                        else:
+                            hull, newParams, _  = mergeCrit(new, l_contours, previousInfo, alphaParam = 0.05, debug = 0, debug2 = 0, gc = globalCounter, id = selectID)
                         areas               = [l_areas_hull_old[IDs] for IDs in old]
                         predictCentroid     = np.average([l_predict_displacement[ID][0] for ID in old], weights = areas, axis = 0).astype(int)  #l_centroids_old[IDs]
                         
@@ -1256,7 +1275,8 @@ def mainer(index):
                     centroidReal                            = dataSets[4][selectID]                               # centroid from current hull (convex or concave)
                     dist2                                   = np.linalg.norm(np.array(predictCentroid) - np.array(centroidReal))  
                     prevCentroid                            = np.average([l_centroids_old[ID] for ID in old], weights = areas, axis = 0).astype(int)
-                    l_MBub_info[int(selectID)]              = [old,np.sum(areas).astype(int),prevCentroid] + list(newParams) # [(645, 557), 8.6]
+                    if inletCase == False:
+                        l_MBub_info[int(selectID)]              = [old,np.sum(areas).astype(int),prevCentroid] + list(newParams) # [(645, 557), 8.6]
                     g_Centroids[selectID][globalCounter-1]  = prevCentroid                                          # move pre-merge centroid to common center of mass. should be easer to calculate dist predictor.
                     l_predict_displacement[selectID]        = [tuple(map(int,predictCentroid)), int(dist2)]         # predictCentroid not changed idk why. but dist is
                     for ID in [elem for elem in old if elem != selectID]:                                           # looks like its for a case with 2+ buble merge    
@@ -1771,7 +1791,7 @@ for globalCounter in range(globalCounter):
         dx2                     = max(0, xS + totSize - L)                                  # if BRect is poking out of right side of image dx2 is positive, else zero
         thickRectangle[ID]      = [xS + dx1 - dx2,0,totSize, hS]
         strDimsAll[ID]          = strDims
-        cv2.rectangle(blank, (xS + dx1 - dx2,y), (xS + dx1 - dx2+totSize,y+h),(255,0,0),2)
+        #cv2.rectangle(blank, (xS + dx1 - dx2,y), (xS + dx1 - dx2+totSize,y+h),(255,0,0),2)
     # split into competing vertical columns    
     aa = overlappingRotatedRectangles(thickRectangle,thickRectangle)
     HG = nx.Graph()

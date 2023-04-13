@@ -889,7 +889,20 @@ def closes_point_contours(c1,c2):
     # # draw the two points and save
     # cv2.circle(img,(chosen_point_c1), 4, (0,255,255), -1)
     # cv2.circle(img,tuple(chosen_point_c2[0]), 4, (0,255,255), -1)
-    
+
+def closestDistancesContours(contoursDict):
+    contourIDs = list(contoursDict.keys())
+    IDcombinations = np.unique(np.sort(np.array(list(itertools.permutations(contourIDs, 2)))), axis = 0)
+    output = {ID:np.zeros((len(contourIDs)-1,2),int) for ID in contourIDs}                                  # every ID has N-1 connections
+    counter  = {ID:0 for ID in contourIDs}
+    for i,j in IDcombinations:
+       distance = int(closes_point_contours(contoursDict[i],contoursDict[j])[1])                            # distance between contour i and j , i != j
+       ii = counter[i];jj = counter[j]                                                                      # maybe better to pre-reserve memory, so this is the pos counter
+       output[i][ii] = np.array((j,distance), int)                                                          # since dist i->j is same as j-> fill both
+       output[j][jj] = np.array((i,distance), int)
+       counter[i] += 1;counter[j] += 1
+    return output 
+
 showDistDecay = True    
 def distStatPrediction(trajectory, startAmp0 = 20, expAmp = 20, halfLife = 1, numsigmas = 2, plot=0, extraStr = ''):
     global showDistDecay

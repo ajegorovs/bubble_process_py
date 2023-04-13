@@ -55,7 +55,7 @@ from imageFunctionsP2 import (initImport, init, bubbleTypeCheck,
                               multiContourBoundingRect,stuckBubHelp,doubleCritMinimum,dropDoubleCritCopies,
                               radialStatsImageEllipse,radialStatsContoursEllipse,compareRadial,                         # radialStatsImage,radialStatsContours,compareRadial 03/03/23
                               tempStore,tempStore2,alphashapeHullModded,mergeCrit,graphUniqueComponents,                # tempStore 17/03/23   alphashapeHullModded (replaced) 22(24)/03/23 ,mergeCrit 23/03/23, graphUniqueComponents 25/03/23 
-                              interpolateHull,getOverlap,radialAnal,mergeSplitDetect)                                                    # interpolateHull 26/03/23 radialAnal 02/04/23   mergeSplitDetect 05/04/23    
+                              interpolateHull,getOverlap,radialAnal,mergeSplitDetect,closestDistancesContours)         # interpolateHull 26/03/23 radialAnal 02/04/23   mergeSplitDetect 05/04/23, closestDistancesContours 12/04/23
 def resizeImage(img,frac):
     width = int(img.shape[1] * frac)
     height = int(img.shape[0] * frac)
@@ -192,7 +192,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 200 #  53+3+5
-dataNum             = 61 # 7+5   
+dataNum             = 70 # 7+5   
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -922,6 +922,7 @@ def mainer(index):
             jointNeighbors          = {**{min(vals):vals for vals in jointNeighborsDelSubIDs if len(vals) > 0},**elseOldNewDoubleCriteriumSubIDs}   # not clear. same 2 lists overlayed
             # --- cluster have twice been recombined ( recover & merge-split), so some connectivity might be lost ---
             # --- must do overlap within clusters and then clusters must be devided based on connectivity --- *** pre delResolvedMB jointNeighbors have holes, might be problematic ***
+            print(f'Reclustering jointNeighbors in case of discontinueties due to recovery. old Clusters: {jointNeighbors}')
             bigClusterIDs           = [ID for ID,subIDs in jointNeighbors.items() if len(subIDs)>1]
             for ID in bigClusterIDs:
                 rectParams = {subID:l_rect_parms_all[subID] for subID in jointNeighbors[ID]}
@@ -930,54 +931,87 @@ def mainer(index):
                 jointNeighbors.pop(ID, None)
                 for subIDs in cc_unique:
                     jointNeighbors[min(subIDs)] = subIDs
-
+            print(f'Reclustering jointNeighbors in case of discontinueties due to recovery. new Clusters: {jointNeighbors}')
+            
             temp = {}
             for ID,subIDs in jointNeighbors.items():                                        # determine which cluster is overlapping inlet recangle. might be done conentional way..
                 match = [a in subIDs for a,tp in inletIDsTypeNew.items() if tp == 2]
                 temp[ID] =  sum(match)                                                      # count matches of inlet new IDs in clusters
             clusterID    = max(temp, key=temp.get)                                          # best match wins !
                     
+            if temp[clusterID] > 0:
+                a = 1                                                                           # 
+                idsInside   = [ID for ID, cType in inletIDsTypeNew.items() if cType == 2]       # ids fully inside inlet rectangle. might include parts of unresolved neighbor clusters
+                idsPartial  = [ID for ID, cType in inletIDsTypeNew.items() if cType == 1]       # ids that are partially inside inlet rectangle. again, might be part of unresolved clusters.
+                overlappintPartialOldIDs = [ID for ID,cType in inletIDsType.items() if cType == 1] # there are partially overlaying old IDs
+                overlappintUnresolvedOldIDs = [a for a in overlappintPartialOldIDs if a in unresolvedOldRB + unresolvedOldDB] # which of these are missing
 
-            a = 1                                                                           # 
-            idsInside   = [ID for ID, cType in inletIDsTypeNew.items() if cType == 2]       # ids fully inside inlet rectangle. might include parts of unresolved neighbor clusters
-            idsPartial  = [ID for ID, cType in inletIDsTypeNew.items() if cType == 1]       # ids that are partially inside inlet rectangle. again, might be part of unresolved clusters.
-            overlappintPartialOldIDs = [ID for ID,cType in inletIDsType.items() if cType == 1] # there are partially overlaying old IDs
-            overlappintUnresolvedOldIDs = [a for a in overlappintPartialOldIDs if a in unresolvedOldRB + unresolvedOldDB] # which of these are missing
-            for oldID, tp in inletIDsType.items():
-                if tp == 2 and len(idsInside)>0:
-                    overlapNew      = []                                                    # see if else below
-                    subIDs          = jointNeighbors[clusterID].copy()                      # take IDs of elements in relevant cluster
-                    includeIDs      = [ID for ID in subIDs if ID in idsInside]              # extract only those inside. maybe i dont have do this step, but take idsInside. not sure.
-                    leaveIDs        = [ID for ID in subIDs if ID not in idsInside]
-                    if len(overlappintUnresolvedOldIDs)==0:                                 # partial IDs could be part of unresolved cluster, like MB, which are determined next
-                        includeIDs = includeIDs + [ID for ID in subIDs if ID in idsPartial] # or they can be part of inlet bubble. in case there are no missing bubbles, include them into IB
-                        leaveIDs = []
-                    else:                                                                   # in case there is overlapping unresolved old ID, some contours fully in inlet rectangle
-                        overlap     = overlappingRotatedRectangles(                         # can be part of it. 
-                                    {ID:l_rect_parms_old[ID] for ID in overlappintUnresolvedOldIDs},
-                                    {ID:l_rect_parms_all[ID] for ID in includeIDs}          # check intersection between old partially overlapping unresolved old bubble and 
-                                                                    )                       # objects fully  inside inlet rectangle.
-                        overlapNew  = [a for _,a in overlap]                                 # get local IDs of new object ids
-                        includeIDs  = [a for a in includeIDs if a not in overlapNew]         # drop overlapNew IDs from fully inside
-                        leaveIDs    = leaveIDs + overlapNew                                    # add overlapNew IDs to remaining unresolved cluster
-
-                    newID           = min(includeIDs)
-                    jointNeighbors.pop(clusterID, None)
-                    if len(includeIDs)>0:
-                        jointNeighbors  = {**jointNeighbors,**{min(includeIDs):includeIDs}}
-                    if len(leaveIDs)>0:
-                        jointNeighbors  = {**jointNeighbors,**{min(leaveIDs):leaveIDs}}
+                print(f'Processing bubble next to inlet. inside region: {idsInside}, on border: {idsPartial}, unresolved old IDs that overlap inet zone: {overlappintUnresolvedOldIDs}')
+                #if len(overlappintUnresolvedOldIDs)==0 and : 
+                #for oldID, tp in inletIDsType.items():
+                #    if tp == 2 and len(idsInside)>0:
+                overlapNew      = []                                                    # see if else below
+                subIDs          = jointNeighbors[clusterID].copy()                      # take IDs of elements in relevant cluster
+                includeIDs      = [ID for ID in subIDs if ID in idsInside]              # extract only those inside. maybe i dont have do this step, but take idsInside. not sure.
+                leaveIDs        = [ID for ID in subIDs if ID not in idsInside]
+                if len(overlappintUnresolvedOldIDs)==0:                                 # partial IDs could be part of unresolved cluster, like MB, which are determined next
+                    includeIDs = includeIDs + [ID for ID in subIDs if ID in idsPartial] # or they can be part of inlet bubble. in case there are no missing bubbles, include them into IB
+                    leaveIDs = []
+                    print(f'no old bubbles in proximity, include border IDs into clusters: {includeIDs}')
+                else:                                                                   # in case there is overlapping unresolved old ID, some contours fully in inlet rectangle
+                    overlap     = overlappingRotatedRectangles(                         # can be part of it. 
+                                {ID:l_rect_parms_old[ID] for ID in overlappintUnresolvedOldIDs},
+                                {ID:l_rect_parms_all[ID] for ID in includeIDs}          # check intersection between old partially overlapping unresolved old bubble and 
+                                                                )                       # objects fully  inside inlet rectangle.
+                    overlapNew  = [a for _,a in overlap]                                # get local IDs of new object ids
+                    includeIDs  = [a for a in includeIDs if a not in overlapNew]        # drop overlapNew IDs from fully inside
+                    leaveIDs    = leaveIDs + overlapNew                                 # add overlapNew IDs to remaining unresolved cluster
+                        
+                    print(f'there are old bubbles in proximity, split inlet clusters into  {includeIDs} and {leaveIDs}')
+                if len(includeIDs)>0:
+                    includeArea = cv2.contourArea(cv2.convexHull(np.vstack(l_contours[includeIDs])))
+                    includeIDs  = includeIDs if includeArea > 550 else []
+                jointNeighbors.pop(clusterID, None)
+                if len(includeIDs)>1:
+                    neighborDists = closestDistancesContours({ID:l_contours[ID] for ID in includeIDs})  # get closest distances between contours. format: {ID1:np.array([[ID2,d12],[ID3,d13]]),ID2:...}
+                    IDfail = {ID:all(np.where(vals[:,1] > 50,1,0)) for  ID,vals in neighborDists.items()} # all distances are greater than threshold
+                    includeIDs  = [ID for ID in includeIDs if IDfail[ID] == False]                       # keep inside contours that are reasonably clustered
+                    distanceIDs = [ID for ID, failed in IDfail.items() if failed == True]               # and take out those that are too farm away from each other
+                    areasPass   = [ID  for ID in distanceIDs if cv2.contourArea(l_contours[ID]) > 550]
+                    distanceIDs = [ID for ID in distanceIDs if ID in areasPass]
+                    print(f'checking for widely spaced elements in clusters. IDs that fail dist check {IDfail}')
+                else: distanceIDs = []
+                    
+                    
+                if len(includeIDs)>0:                                                               
+                    jointNeighbors  = {**jointNeighbors,**{min(includeIDs):includeIDs}}
+                    oldInsideIDs = [oldID for oldID, cType in inletIDsType.items() if cType == 2]
+                    aresOld         = {ID:l_areas_hull_old[ID] for ID in oldInsideIDs}
                     hull            = cv2.convexHull(np.vstack(l_contours[includeIDs]))
-
+                    newID           = min(includeIDs)
                     dataSets        = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
-                                                                                     # data is stored via local IDs
-                    elseOldNewDoubleCriteriumSubIDs[newID]  = includeIDs                                               # add to oldDB new DB relations
-                    elseOldNewDoubleCriterium.append([oldID, newID, 15, 1])   # some stats.
+                    tempStore2(includeIDs, l_contours, newID, err, orig, dataSets, concave = hull)
+                    
+                    
+                    if len(oldInsideIDs)>0:
+                        oldID        = max(aresOld, key = aresOld.get)
+                    
+                        elseOldNewDoubleCriteriumSubIDs[newID]  = includeIDs                                               # add to oldDB new DB relations
+                        elseOldNewDoubleCriterium.append([oldID, newID, 15, 1])   # some stats.
                             
-                    tempStore2(includeIDs, l_contours,newID, err, orig, dataSets, concave = hull)
-                    l_predict_displacement[oldID]            = [tuple(map(int,l_DBub_centroids[newID])), 15]
-                    unresolvedOldRB.remove(oldID)   if oldID in unresolvedOldRB     else 0                              # remove from unresolved IDs
-                    unresolvedOldDB.remove(oldID)   if oldID in unresolvedOldDB     else 0                              # remove from unresolved IDs
+                        l_predict_displacement[oldID]            = [tuple(map(int,l_DBub_centroids[newID])), 15]
+                        unresolvedOldRB.remove(oldID)   if oldID in unresolvedOldRB     else 0                              # remove from unresolved IDs
+                        unresolvedOldDB.remove(oldID)   if oldID in unresolvedOldDB     else 0                              # remove from unresolved IDs
+                        print(f'relating inlet cluster to old ID: {oldID}')
+                        print(f'Save inlet cluster: {includeIDs}, distance fail elements: {distanceIDs}, rest of cluster: {leaveIDs}, which might be a merge.')
+                    else:
+                        print(f'no old ID found, addin as new ID')
+                        print(f'Save inlet cluster: {includeIDs}, distance fail elements: {distanceIDs}, rest of cluster: {leaveIDs}, which might be a merge.')
+                if len(distanceIDs)>0:                                                               
+                    jointNeighbors  = {**jointNeighbors,**{ID:[ID] for ID in distanceIDs}}          # add distance ones as single element clusters
+                if len(leaveIDs)>0:
+                    jointNeighbors  = {**jointNeighbors,**{min(leaveIDs):leaveIDs}}                 # rest of the cluster, not only partials
+                    
 
             #----------------- consider else clusters are finalized ---------------------
             #tempJoinNeighbors = jointNeighbors.copy()
@@ -1737,7 +1771,7 @@ for globalCounter in range(globalCounter):
         dx2                     = max(0, xS + totSize - L)                                  # if BRect is poking out of right side of image dx2 is positive, else zero
         thickRectangle[ID]      = [xS + dx1 - dx2,0,totSize, hS]
         strDimsAll[ID]          = strDims
-
+        cv2.rectangle(blank, (xS + dx1 - dx2,y), (xS + dx1 - dx2+totSize,y+h),(255,0,0),2)
     # split into competing vertical columns    
     aa = overlappingRotatedRectangles(thickRectangle,thickRectangle)
     HG = nx.Graph()
@@ -1754,14 +1788,21 @@ for globalCounter in range(globalCounter):
     for IDs in rectParams:
         for i in HG.neighbors(IDs):
             neighbors[IDs].append(i)
-            if posTB[i] == posTB[IDs]: neighborsSameSide[IDs].append(i)
-    clusters0 = [tuple(np.sort(np.array([ID] +nbrs))) for ID, nbrs in neighborsSameSide.items()]
-    SameSideClusters = [list(aa) for aa in set(clusters0)]
-    globSideOrder = {ID:0 for ID in rectParams}
-    for arr in SameSideClusters:
-        srt = np.argsort([cntrd[ID][1] for ID in arr])
-        for i,elem in enumerate(arr):
-            globSideOrder[elem] = srt[i]
+            if posTB[i] == posTB[IDs]: neighborsSameSide[IDs].append(i) # write connections between neighbors on same side
+    #clusters0 = [tuple(np.sort(np.array([ID] +nbrs))) for ID, nbrs in neighborsSameSide.items()]
+    a = 1
+    edgePairs = sum([[(ID,a) for a in nbrs] for ID,nbrs in neighborsSameSide.items() if len(nbrs) > 0], []) # rewrite connections into pairs, ignore solo connections
+    sameSideClusters = graphUniqueComponents(list(rectParams.keys()),edgePairs)                             # get same side cluster, next step order them by centroid y coordinate
+    
+    sortedByY = [[x for _,x in sorted(zip([cntrd[a][1] for a in X],X))] for X in sameSideClusters] # https://stackoverflow.com/questions/6618515/sorting-list-according-to-corresponding-values-from-a-parallel-list
+    sortedIndexed = [{ID:i for i,ID in enumerate(ID)} for ID in sortedByY]                         # enumerate index is a vertical position index for text
+    globSideOrder = {k: v for d in sortedIndexed for k, v in d.items()}                            # combine list of dictionaries into on dict.
+    #SameSideClusters = [list(aa) for aa in set(clusters0)]
+    #globSideOrder = {ID:0 for ID in rectParams}
+    #for arr in SameSideClusters:
+    #    srt = np.argsort([cntrd[ID][1] for ID in arr])                                            # old method. did not work, new method on top is simpler.
+    #    for i,elem in enumerate(arr):
+    #        globSideOrder[elem] = srt[i]
         
     textHeight  = textHeightMax
     textNoGo    = 10

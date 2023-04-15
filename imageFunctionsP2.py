@@ -1800,13 +1800,13 @@ def radialAnal( OGparams, SLparams, PermParams, StatParams, globalCounter, oldID
         bandRightCumSum = {ID:  np.cumsum([a for r,a in SlaveDistr[ID].items()    if r > OGRight])  for ID in usefulIDs}    # cum sum of right band
         bandRightCumSum = {ID:  arr for ID,arr in bandRightCumSum.items()         if len(arr) > 0}                          # interval fully within OG will be empty.
                             
-        if len(np.intersect1d(list(bandRightCumSum.keys()), baseIDs)) > 0:                                                              # testing. only baseIDs is inside OG band. so no other accepted IDs can contain other stray IDs.
+        if len(np.intersect1d(list(bandRightCumSum.keys()), baseIDs)) > 0:                                                  # testing. only baseIDs is inside OG band. so no other accepted IDs can contain other stray IDs.
             aa = {ID:bandRightRs[ID][np.argmin(np.abs(cumSumArea- cvr2*cumSumArea[-1]))] for ID,cumSumArea in bandRightCumSum.items()}  # grab r at which area reaches 80%, in case contour is stretched thin at dist.
             maxRightInterval    = max([br - OGRight for ID,br in aa.items() if ID in baseIDs])                                 # take widest resolved right band*0.8 interval as a reference
             preResolvedRest     = [ID for ID,br in aa.items() if ID not in baseIDs and (br - OGRight)*0.8 < maxRightInterval]  # if Rest interval width is within 80% of maxRightInterval, consider it resolved.
             restIDs             = [ID for ID in restIDs if ID not in preResolvedRest]
             baseIDs             = np.concatenate((baseIDs,preResolvedRest)).astype(int)
-                        
+            permIDsol2          = baseIDs.copy().tolist()               
     # baseIDs have been re-evaluted. do permutations and double criterium for restIDs+baseIDs. baseIDs might be empty.
     if len(restIDs) > 0:
         combs                   = [tuple(baseIDs)] if len(baseIDs) > 0 else []                                              # this is the base list of IDs, they are 100% included eg [1,2]

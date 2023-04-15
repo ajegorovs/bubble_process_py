@@ -191,8 +191,8 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart           = 200 #  53+3+5
-dataNum             = 200 # 7+5   
+dataStart           = 300 #  53+3+5
+dataNum             = 130 # 7+5   
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -347,17 +347,17 @@ def mainer(index):
     # get contours from binary image. filter out useless. 
     global contoursFilter_RectParams,contoursFilter_RectParams_dropIDs
     contoursFilter_RectParams_dropIDs,l_Centroids = [], {}
-    topFilter, bottomFilter, minArea    = 80, 10, 160                                                                                           # instead of deleting contours at inlet, i should merge
+    topFilter, bottomFilter, minArea    = 80, 10, 180                                                                                           # instead of deleting contours at inlet, i should merge
                                                                                                                                                 # them into one. since there is only ~one bubble at a time
     (l_contours,
      whereParentOriginal,
      whereParentAreaFiltered,
-     whereChildrenAreaFiltered)             = cntParentChildHierarchy(err,1, 1200,100,0.1)                                                      # whereParentOriginal all non-child contours.
+     whereChildrenAreaFiltered)             = cntParentChildHierarchy(err,1, 1200,130,0.1)                                                      # whereParentOriginal all non-child contours.
     g_contours[globalCounter]               = l_contours                                                                                        # add contours to global storage.
     contoursFilter_RectParams               = {ID: cv2.boundingRect(l_contours[ID]) for ID in whereParentOriginal}                              # remember bounding rectangle parameters for all primary contours.
     contoursFilter_RectParams_dropIDs       = [ID for ID,params in contoursFilter_RectParams.items() if sum(params[0:3:2])<topFilter]           # filter out bubbles at left image edge, keep those outside 80 pix boundary. x+w < 80 pix.
-    contoursFilter_RectParams_dropIDs_inlet = [ID for ID,params in contoursFilter_RectParams.items() if params[0] > err.shape[1]- bottomFilter] # top right corner is within box that starts at len(img)-len(box)
-    contoursFilter_RectParams_dropIDs       = contoursFilter_RectParams_dropIDs + contoursFilter_RectParams_dropIDs_inlet
+    #contoursFilter_RectParams_dropIDs_inlet = [ID for ID,params in contoursFilter_RectParams.items() if params[0] > err.shape[1]- bottomFilter] # top right corner is within box that starts at len(img)-len(box)
+    #contoursFilter_RectParams_dropIDs       = contoursFilter_RectParams_dropIDs + contoursFilter_RectParams_dropIDs_inlet
     l_Areas                                 = {key: cv2.contourArea(l_contours[key]) for key in contoursFilter_RectParams if key not in contoursFilter_RectParams_dropIDs } # remember contour areas of main contours that are out of side band.
     l_Areas_hull                            = {ID:getContourHullArea(l_contours[ID]) for ID in l_Areas}                                         # convex hull of a single contour. for multiple contrours use getCentroidPosContours.
     contoursFilter_RectParams_dropIDs       = contoursFilter_RectParams_dropIDs + [key for key, area in l_Areas.items() if area < minArea]      # list of useless contours- inside side band and too small area.
@@ -382,14 +382,15 @@ def mainer(index):
         stuckCentroids          = {**dropKeys(l_Centroids_old,deleteOverlaySoloIDs),      **{str(key):val for key,val in l_centroids_old.items()}}
 
 
-        cntrRemainingIDs = [cID for cID in whereParentOriginal if cID not in  contoursFilter_RectParams_dropIDs ] #+ dropAllRings + dropRestoredIDs
-        
-        distContours = {ID:contoursFilter_RectParams[ID] for ID in cntrRemainingIDs}
-
-        inletIDsNew, inletIDsTypeNew  = overlappingRotatedRectangles(distContours, fakeBox, returnType = 1)         # inletIDs, inletIDsType after frozen part
-        inletIDsNew                = [a[0] for a in inletIDsNew]
-
-        dropKeysOld                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs_old    + inletIDsNew)  # dropping frozens from inlet since
+        #cntrRemainingIDs = [cID for cID in whereParentOriginal if cID not in contoursFilter_RectParams_dropIDs ] #+ dropAllRings + dropRestoredIDs
+        #
+        #distContours = {ID:contoursFilter_RectParams[ID] for ID in cntrRemainingIDs}
+        minAreaInlet                    = 150
+        inletIDsNew, inletIDsTypeNew    = overlappingRotatedRectangles(contoursFilter_RectParams, fakeBox, returnType = 1)          # inletIDs, inletIDsType after frozen part
+        inletIDsNew                     = [a[0] for a in inletIDsNew]
+        inletIDsNew                     =  [ID for ID in inletIDsNew if cv2.contourArea(l_contours[ID]) > minAreaInlet]
+        [contoursFilter_RectParams_dropIDs.remove(x) for x in inletIDsNew if x in contoursFilter_RectParams_dropIDs]                # remove-drop == which to keep.
+        dropKeysOld                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs_old)   # dropping frozens from inlet since
         dropKeysNew                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs        + inletIDsNew)  # bubbles act bad there, might false-positive
         [stuckRectParams,stuckAreas,stuckCentroids]             = list(map(dropKeysOld,[stuckRectParams,stuckAreas,stuckCentroids] ))
         [fbStoreRectParams2,fbStoreAreas2,fbStoreCentroids2]    = list(map(dropKeysNew,[l_rect_parms_all,l_Areas,l_Centroids] ))
@@ -470,8 +471,9 @@ def mainer(index):
     unresolvedOldDB   = list(l_DBub_centroids_old.keys())     # and DB, from previous step. empty if gc = 0
     unresolvedNewRB   = list(whereChildrenAreaFiltered.keys())
  
-    print("unresolvedNewRB (new typeRing bubbles):\n",unresolvedNewRB)
-    print("unresolvedOldRB (all old R,rR bubbles):\n",    unresolvedOldRB)  
+    print("unresolvedNewRB (new typeRing bubbles):\n",  unresolvedNewRB)
+    print("unresolvedOldRB (all old R,rR bubbles):\n",  unresolvedOldRB)
+    print("unresolvedOldRB (all old R,rR bubbles):\n",  unresolvedOldDB)
     # 1.1 ------------- GRAB RING BUBBLES RB ----------------------
     # -----------------recover old-new ring bubble relations--------------------------
 
@@ -489,7 +491,7 @@ def mainer(index):
         # Drop contour IDs that have been restored using matchTemplate(). 2nd time restored rRB is changed into rDB. drop them 
         #dropRestoredIDs  = sum(list(l_RBub_r_old_new_IDs.values()),[]) + sum(list(l_DBub_r_old_new_IDs.values()),[])
         # remaining contrours: filtered by size or position + everything related to RBs.
-        cntrRemainingIDs = [cID for cID in whereParentOriginal if cID not in  contoursFilter_RectParams_dropIDs ] #+ dropAllRings + dropRestoredIDs
+        cntrRemainingIDs = [cID for cID in whereParentOriginal if cID not in contoursFilter_RectParams_dropIDs] #+ dropAllRings + dropRestoredIDs
         
         distContours = {ID:contoursFilter_RectParams[ID] for ID in cntrRemainingIDs}                                    # take all current active new contours
 
@@ -629,7 +631,7 @@ def mainer(index):
                                                                                                                                                             # old-newRB method was merged into this
 
             print(f'recovering DB bubbles :{list(oldDistanceCentroidsWoFrozen.keys())}') if len(unresolvedOldRB) == 0 else print(f'recovering DB+RB bubbles :{list(oldDBubAndUnresolvedOldRB.keys())}')
-
+            if len(inletIDs)>0:  print(f'except old inlet bubbles: {inletIDs}')
             srtF = lambda x : l_bubble_type_old[x[0]]                                                                                                        # sort by type number-> RBs to front.
             oldDBubAndUnresolvedOldRB = dict(sorted(oldDBubAndUnresolvedOldRB.items(), key=srtF))                                                            # given low typeIDs are virtually important. 
 
@@ -751,13 +753,14 @@ def mainer(index):
                         debug = 0 if globalCounter != -1  else 1
                         # ===== function radialAnal() returns best case solution by analysing radial distributions of subcluster =====
                         # if bubble was in a state of merge, modified hull method is applied.
+                        dddd = 0 #if not (globalCounter == 62 and oldID == 13) else 1
                         permIDsol2, permDist2, permRelArea2, newCentroid, newArea, hull, newParams = radialAnal( [[OGLeft,OGRight], OGDistr] ,
                                                        [isEllipse,l_contours,subNewIDs,predictCentroid, ellipseParams, cvr2, err],
                                                        [l_rect_parms_all,l_rect_parms_old,l_Centroids,l_Areas] ,
                                                        [distCheck2, distCheck2Sigma, areaCheck, oldMeanArea, oldAreaStd, clusterCritValues],
-                                                       globalCounter, oldID, mainNewID, l_MBub_info_old, debug = 0)
+                                                       globalCounter, oldID, mainNewID, l_MBub_info_old, debug = dddd)
                         
-                        if len(permIDsol2)>0 and permDist2 < distCheck2 +2* distCheck2Sigma and permRelArea2 < 5:       # check if given solution satisfies criterium
+                        if len(permIDsol2)>0 and permDist2 < distCheck2 +5* distCheck2Sigma and permRelArea2 < 5:       # check if given solution satisfies criterium
                             l_predict_displacement[oldID]   = [tuple(map(int,predictCentroid)), np.around(permDist2,2)] # store predictor error
                             tempID                          = oldID                                                     # default to global ID. not important.
                            
@@ -802,13 +805,13 @@ def mainer(index):
                         else:
                             print(f'-{oldID}:Recovery of oldDB {oldID} via permutations of {subNewIDs} has failed. Solution: {permIDsol2}.')
                             
-                        print(f'--Distance prediction error: {permDist2:0.1f} vs {distCheck2:0.1f} +/- 2* {distCheck2Sigma:0.1f} and area criterium (dA/stev):{permRelArea2:0.2f} vs ~5\n')
+                        print(f'--Distance prediction error: {permDist2:0.1f} vs {distCheck2:0.1f} +/- 5* {distCheck2Sigma:0.1f} and area criterium (dA/stev):{permRelArea2:0.2f} vs ~5\n')
 
             if len(elseOldNewDoubleCriterium)>0:
                 #print(dropDoubleCritCopies(elseOldNewDoubleCriterium))
                 elseOldNewDoubleCriterium = dropDoubleCritCopies(elseOldNewDoubleCriterium)         # i dont think its relevant anymore
 
-             
+            print('end of oldDB/oldRB recovery') 
             # modify jointNeighbors by splitting clusters using elseOldNewDoubleCriteriumSubIDs# l_DBub_old_new_IDs
             # take recovered local IDs: DB, rDB, rRB
             removeFoundSubIDsAll    = sum(l_DBub_old_new_IDs.values(),[]) + sum(l_MBub_old_new_IDs.values(),[]) + sum(l_RBub_r_old_new_IDs.values(),[]) + sum(l_DBub_r_old_new_IDs.values(),[])
@@ -822,6 +825,8 @@ def mainer(index):
             
             
             
+            print(f'{globalCounter}:--------- Merged bubble recovery ---------')
+            print(f'recovering oldMB: {list(l_MBub_centroids_old.keys())}')
             # =============================== S E C T I O N - -  0 2 ==================================       
             # --------------- RECOVER PREVIOUS MERGED BUBBLES VIA DISTANCE CLUSTERING -----------------
             #    
@@ -897,9 +902,15 @@ def mainer(index):
                                 l_MBub_info[oldID]                      = [[],newArea,newCentroid] + list(newParams)                        # store new merge params
                                 tempID          = oldID
                             
+                            elif len(permIDsol2) == 1 and permIDsol2[0] in unresolvedNewRB:
+                                tempID          = min(permIDsol2) 
+                                dataSets        = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
+                                RBOldNewDist    = np.append(RBOldNewDist,[[oldID,tempID]],axis=0)               
+                                                                                       # store RB solution in oldX-newRB relations
                             else:
-                                dataSets  = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
                                 tempID          = min(permIDsol2)                                                                   # data is stored via local IDs
+                                
+                                dataSets  = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
                                 elseOldNewDoubleCriteriumSubIDs[tempID]  = permIDsol2                                               # add to oldDB new DB relations
                                 elseOldNewDoubleCriterium.append([oldID,tempID,np.around(dist2,2),np.around(areaCrit,2)]) 
 
@@ -927,7 +938,7 @@ def mainer(index):
                         #    jointNeighbors = {ID:[subID for subID in vals if subID not in subIDs ] for ID,vals in jointNeighbors.items()}
                     jointNeighbors = {**{min(vals):vals for vals in jointNeighbors.values() if len(vals) > 0},**{min(sub):sub for sub in [subIDs1, subIDs2] }}
                     
-                        
+            print('end of oldMB recovery')             
 
             # --- resolved MB should be deleted from clusters alltogether ---
                       
@@ -948,17 +959,26 @@ def mainer(index):
                     jointNeighbors[min(subIDs)] = subIDs
             print(f'Reclustering jointNeighbors in case of discontinueties due to recovery. new Clusters: {jointNeighbors}')
             
+            centroidsResolved   = {**l_RBub_centroids,  **l_RBub_r_centroids,   **l_DBub_centroids,   **l_DBub_r_centroids,     **l_FBub_centroids,       **l_MBub_centroids}
+            areasResolved       = {**l_RBub_areas_hull, **l_RBub_r_areas_hull,  **l_DBub_areas_hull,  **l_DBub_r_areas_hull,    **l_FBub_areas_hull,      **l_MBub_areas_hull}
+            oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_FBub_old_new_IDs,     **l_MBub_old_new_IDs}
+            rectParamsOld       = {oldID:l_rect_parms_old[oldID] for oldID in unresolvedOldDB + unresolvedOldRB }#if oldID not in inletIDs        # old global IDs with bounding rectangle parameters
+        
+            resolvedContoursNew     = sum(oldNewIdsResolved.values(),[])
+            unresolvedInletContours = [a for a in inletIDsNew if a not in resolvedContoursNew]
             temp = {}
+            oldInsideIDs = [oldID for oldID, cType in inletIDsType.items() if cType == 2]
             for ID,subIDs in jointNeighbors.items():                                        # determine which cluster is overlapping inlet recangle. might be done conentional way..
                 match = [a in subIDs for a,tp in inletIDsTypeNew.items() if tp == 2]
                 temp[ID] =  sum(match)                                                      # count matches of inlet new IDs in clusters
             clusterID    = max(temp, key=temp.get)                                          # best match wins !
-                    
-            if temp[clusterID] > 0:
-                a = 1                                                                           # 
-                idsInside   = [ID for ID, cType in inletIDsTypeNew.items() if cType == 2]       # ids fully inside inlet rectangle. might include parts of unresolved neighbor clusters
-                idsPartial  = [ID for ID, cType in inletIDsTypeNew.items() if cType == 1]       # ids that are partially inside inlet rectangle. again, might be part of unresolved clusters.
-                overlappintPartialOldIDs = [ID for ID,cType in inletIDsType.items() if cType == 1] # there are partially overlaying old IDs
+            crit1               = temp[clusterID] > 0 and len(unresolvedInletContours) > 0         # drop resolved IDs from inlet cluster, if there are spare elements do your stuff. left part may be redundant
+            crit2               = len([ID for ID,cType in inletIDsType.items() if cType == 2]) > 0 # fully inside bubbles are not resolved prior in principle. resolve them here
+            if crit1 or crit2:# inlet cluster  maybe fully resolved by old-newDB, which happens if its poking outside inlet box.
+                a = 1                                                                                   # so inletIDsNew = resolved subcluster.
+                idsInside   = [ID for ID, cType in inletIDsTypeNew.items() if cType == 2]               # ids fully inside inlet rectangle. might include parts of unresolved neighbor clusters
+                idsPartial  = [ID for ID, cType in inletIDsTypeNew.items() if cType == 1]               # ids that are partially inside inlet rectangle. again, might be part of unresolved clusters.
+                overlappintPartialOldIDs    = [ID for ID,cType in inletIDsType.items() if cType == 1]   # there are partially overlaying old IDs
                 overlappintUnresolvedOldIDs = [a for a in overlappintPartialOldIDs if a in unresolvedOldRB + unresolvedOldDB] # which of these are missing
 
                 print(f'Processing bubble next to inlet. inside region: {idsInside}, on border: {idsPartial}, unresolved old IDs that overlap inet zone: {overlappintUnresolvedOldIDs}')
@@ -966,9 +986,12 @@ def mainer(index):
                 #for oldID, tp in inletIDsType.items():
                 #    if tp == 2 and len(idsInside)>0:
                 overlapNew      = []                                                    # see if else below
+                if max(list(temp.values())) == 0:
+                    assert len(idsPartial) <= 1, 'inlet kuku'
+                    clusterID = [min(a) for a in jointNeighbors.values() if idsPartial[0] in a][0]
                 subIDs          = jointNeighbors[clusterID].copy()                      # take IDs of elements in relevant cluster
-                includeIDs      = [ID for ID in subIDs if ID in idsInside]              # extract only those inside. maybe i dont have do this step, but take idsInside. not sure.
-                leaveIDs        = [ID for ID in subIDs if ID not in idsInside]
+                includeIDs      = [ID for ID in subIDs if ID        in idsInside]       # extract only those inside. maybe i dont have do this step, but take idsInside. not sure.
+                leaveIDs        = [ID for ID in subIDs if ID not    in idsInside]       # part of big cluster that is not fully inside.
                 if len(overlappintUnresolvedOldIDs)==0:                                 # partial IDs could be part of unresolved cluster, like MB, which are determined next
                     includeIDs = includeIDs + [ID for ID in subIDs if ID in idsPartial] # or they can be part of inlet bubble. in case there are no missing bubbles, include them into IB
                     leaveIDs = []
@@ -989,18 +1012,61 @@ def mainer(index):
                 jointNeighbors.pop(clusterID, None)
                 if len(includeIDs)>1:
                     neighborDists = closestDistancesContours({ID:l_contours[ID] for ID in includeIDs})  # get closest distances between contours. format: {ID1:np.array([[ID2,d12],[ID3,d13]]),ID2:...}
-                    IDfail = {ID:all(np.where(vals[:,1] > 50,1,0)) for  ID,vals in neighborDists.items()} # all distances are greater than threshold
-                    includeIDs  = [ID for ID in includeIDs if IDfail[ID] == False]                       # keep inside contours that are reasonably clustered
-                    distanceIDs = [ID for ID, failed in IDfail.items() if failed == True]               # and take out those that are too farm away from each other
+                    overlapNew = []
+                    if len(oldInsideIDs) > 0:                                           # 
+                        overlap     = overlappingRotatedRectangles(                     # want to check which inlet cluster elements overlap fully inside old. 
+                                {ID:l_rect_parms_old[ID] for ID in oldInsideIDs},
+                                {ID:l_rect_parms_all[ID] for ID in includeIDs}          
+                                                                )
+                        a=1 
+                        overlapNew  = [a for _,a in overlap]                            # dont expect multiple oldInsideIDs. take overlapNew as a new base.
+                        print(f'old , fully inside inlet region bubble present. setting inlet cluster base IDs to old-new overlap: {overlapNew}')
+                        huhuh = np.array(sum([[[a,b] for a,b in neighborDists[ID] if a not in overlapNew] for ID in overlapNew],[]),int) # distances from all elements in overlapNew to non-overlapNew elements.
+                        neighb  = np.empty((0,2), int) if huhuh.shape[0] == 0 else np.unique(huhuh[:,0])                           # IDs of neighbors
+                        dists   = {ID:np.array([b for a,b in huhuh if a == ID], int) for ID in neighb}                             # distances : {IDx:[dix,djx,..]} where dix distance to neighbor ID = x from element i in overlapNew
+                        IDfail2 = {ID:all(np.where(vals > 150,1,0)) for  ID,vals in dists.items()}                                  # if all dists are too large for IDx -> overlapNew, it should be separated
+                        print(f'testing distances to nearby neighbors: dists IDi:[IDj, Dij]: {dists}; dist fails: {IDfail2}')
+                        _, _, w0, _ = l_rect_parms_old[oldInsideIDs[0]]
+                        _,_,w1,_ = cv2.boundingRect(np.vstack(l_contours[overlapNew]))
+                        distElems = [ID for ID, failed in IDfail2.items() if failed == False]
+                        testCluster = overlapNew + distElems
+                        _,_,w2,_ = cv2.boundingRect(np.vstack(l_contours[testCluster]))
+                        avgWidth = 0.5*(w0+w1)
+                        #if avgWidth/fakeBoxW > 0.75*fakeBoxW
+                        if w2/(max(avgWidth,0.3*fakeBoxW)) > 2.3:                      # smallwidth clusters can increase their size easier. limit smallest cluster width with 0.3*fakeBoxW
+                            includeIDs = overlapNew
+                            distanceIDs = distElems
+                        else:
+                            includeIDs  = overlapNew + [ID for ID, failed in IDfail2.items() if failed == False]
+                            distanceIDs = [ID for ID, failed in IDfail2.items() if failed == True] 
+                        #includeIDs  = overlapNew + [ID for ID, failed in IDfail2.items() if failed == False]  
+                        #distanceIDs = [ID for ID, failed in IDfail2.items() if failed == True]   
+                    else:
+                        IDfail  = {ID:all(np.where(vals[:,1] > 150,1,0)) for  ID,vals in neighborDists.items()} # all distances are greater than threshold
+                        
+                        if len(IDfail) == 2 and IDfail[list(neighborDists.keys())[0]] == True:                # if two contours remaining and are far apart, both will fail, since d12=d21>threshold
+                            areas = {ID:cv2.contourArea(l_contours[ID]) for ID in neighborDists.keys()}
+                            includeIDs  = [max(areas, key=areas.get)]
+                            distanceIDs = [min(areas, key=areas.get)]
+                            if areas[includeIDs[0]]     < 550: includeIDs   = []                              # there are cases with two tiny contours
+                            if areas[distanceIDs[0]]    < 550: distanceIDs  = []                              # 
+    
+                            print(f'checking for widely spaced elements in clusters. from two choices separating smallest: {distanceIDs}')
+                        else:
+                            includeIDs  = [ID for ID in includeIDs if IDfail[ID] == False]                       # keep inside contours that are reasonably clustered
+                            distanceIDs = [ID for ID, failed in IDfail.items() if failed == True]               # and take out those that are too farm away from each other
+                            print(f'checking for widely spaced elements in clusters. IDs that fail dist check {IDfail}')
                     areasPass   = [ID  for ID in distanceIDs if cv2.contourArea(l_contours[ID]) > 550]
+                    if len(areasPass)<len(distanceIDs): print(f'dropping smaller distanceIDs')
                     distanceIDs = [ID for ID in distanceIDs if ID in areasPass]
-                    print(f'checking for widely spaced elements in clusters. IDs that fail dist check {IDfail}')
+                    
                 else: distanceIDs = []
                     
                     
                 if len(includeIDs)>0:                                                               
                     jointNeighbors  = {**jointNeighbors,**{min(includeIDs):includeIDs}}
-                    oldInsideIDs = [oldID for oldID, cType in inletIDsType.items() if cType == 2]
+                            # there is old ID fully inside inlet zone.
+                    print(f'old ID inside inlet zone: {oldInsideIDs}')
                     aresOld         = {ID:l_areas_hull_old[ID] for ID in oldInsideIDs}
                     hull            = cv2.convexHull(np.vstack(l_contours[includeIDs]))
                     newID           = min(includeIDs)
@@ -1008,7 +1074,7 @@ def mainer(index):
                     tempStore2(includeIDs, l_contours, newID, err, orig, dataSets, concave = hull)
                     
                     
-                    if len(oldInsideIDs)>0:
+                    if len(oldInsideIDs)>0:                                                               # if multiple olds inside, get one with largest area
                         oldID        = max(aresOld, key = aresOld.get)
                     
                         elseOldNewDoubleCriteriumSubIDs[newID]  = includeIDs                                               # add to oldDB new DB relations
@@ -1156,7 +1222,6 @@ def mainer(index):
     if globalCounter >= 1 :#and len(unresolvedOldDB)>1 and len(jointNeighbors)>1
         cc_oldIDs, cc_newIDs = [], []
         # ======== PART 01: test if two old bubbles are unresolved and new is unresolved. might hint on merge =========
-        rectParamsOld   = {oldID:l_rect_parms_old[oldID] for oldID in unresolvedOldDB + unresolvedOldRB}        # old global IDs with bounding rectangle parameters
         rectParamsNew   = {subID:l_rect_parms_all[subID] for subID in sum(list(jointNeighbors.values()),[])}    # all unresolved cluster elements IDs and bound rect.
         combosOldNew    = np.array(overlappingRotatedRectangles(rectParamsOld,rectParamsNew),int)               # form [[old1,new1],[old1,new2],[old2,new1]]
         #values          = list(set(combosOldNew[:,1]))
@@ -1167,6 +1232,7 @@ def mainer(index):
             hasShared       = any(np.where(counts>1,1,0))                                                   # True if any new has more than one old, implies shared new contour between two olds.
         if hasShared == True:                                                                               # if at least one merge do this
             H = nx.Graph()
+            H.add_nodes_from([str(a) for a in rectParamsOld.keys()])
             H.add_edges_from([[str(a),b] for a,b in combosOldNew])                                          # str to extract old IDs later
             cnctd_comp = [set(nx.node_connected_component(H, str(key))) for key in rectParamsOld]           # connected componetets. mix of old and new
             cc_unique = [];[cc_unique.append(x) for x in cnctd_comp if x not in cc_unique]
@@ -1190,9 +1256,6 @@ def mainer(index):
         combosOldNew        = np.array(overlappingRotatedRectangles(rectParamsOld,{ID:a for ID,a in rectParamsResolved.items() if ID in resolvedLocals}),int)  # old missing (glob) intersects new resolved (loc).
         preCalculated       = {} # concave hull, centroidTest, 
         if len(combosOldNew) > 0:
-            centroidsResolved   = {**l_RBub_centroids,  **l_RBub_r_centroids,   **l_DBub_centroids,   **l_DBub_r_centroids,     **l_FBub_centroids,       **l_MBub_centroids}
-            areasResolved       = {**l_RBub_areas_hull, **l_RBub_r_areas_hull,  **l_DBub_areas_hull,  **l_DBub_r_areas_hull,    **l_FBub_areas_hull,      **l_MBub_areas_hull}
-            oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_FBub_old_new_IDs,     **l_MBub_old_new_IDs}
             cc_unique           = graphUniqueComponents(list(map(str,unresolvedOldDB)), [[str(a),b] for a,b in combosOldNew])  # clusters: old unresolved intersect resolved old. e.g [[old lobal, old local]]: [['2', 21]]
             cc_unique           = [a for a in cc_unique if len(a)>1]                                                        # sometimes theres no intersection, cluster of 1 element. drop it.
             cc_unique           = [[a for a in b if type(a) == str]+[a for a in b if type(a) != str] for b in cc_unique]    # follow convension [str(ID1), ID2]
@@ -1262,8 +1325,8 @@ def mainer(index):
                         [areas, predictCentroid, hull, newParams] = preCalculated[min(new)]
                     else:
                         previousInfo        = getMergeCritParams(l_ellipse_parms_old, old, 0.4, 25)
-                        inletCase = [oldID in inletIDs for oldID in old]
-                        if all(inletCase):                                             # INLET stuff here !!!!! if two inlet zone bubbles merge.
+                        inletCase = all([oldID in inletIDs for oldID in old])
+                        if inletCase == True:                                             # INLET stuff here !!!!! if two inlet zone bubbles merge.
                             hull        = cv2.convexHull(np.vstack(l_contours[new]))
                         else:
                             hull, newParams, _  = mergeCrit(new, l_contours, previousInfo, alphaParam = 0.05, debug = 0, debug2 = 0, gc = globalCounter, id = selectID)

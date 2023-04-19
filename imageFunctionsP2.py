@@ -603,12 +603,15 @@ def compareRadial(OGband, OGDistr, SlaveBand, SlaveDistr,solution,cyclicColor,gl
     fig.suptitle(f'gc: {globalCounter}, oldID: {oldID}, ids: {subNewIDs}')
     plt.show()
 
-def centroidAreaSumPermutations(bodyCntrs,rectParams,rectParams_old, IDsOfInterest, centroidDict, areaDict, refCentroid, distCheck, refArea=10, relAreaCheck = 10000000, doHull = 1, debug = 0):
+def centroidAreaSumPermutations(bodyCntrs,rectParams,rectParams_old, IDsOfInterest, centroidDict, areaDict, refCentroid, distCheck, refArea=10, relAreaCheck = 10000000, doHull = 1,customPermutations = [], debug = 0):
     #bodyCntrs is used only if doHull == 1. i dont use it for frozen bubs permutations
     #print(rectParams)
     #with open('./cntr.pickle', 'wb') as handle:
     #            pickle.dump(bodyCntrs, handle) 
-    permutations = sum([list(itertools.combinations(IDsOfInterest, r)) for r in range(1,len(IDsOfInterest)+1)],[])                              # different combinations of size 1 to max cluster size.
+    if len(customPermutations) == 0:
+        permutations = sum([list(itertools.combinations(IDsOfInterest, r)) for r in range(1,len(IDsOfInterest)+1)],[])                              # different combinations of size 1 to max cluster size.
+    else:permutations = customPermutations
+
     cntrds2 =  np.array([getCentroidPosCentroidsAndAreas([centroidDict[k] for k in vec],[areaDict[m] for m in vec]) for vec in permutations])   # NOT OF HULLS !!!
     if doHull == 1:
         hullAreas = np.array([cv2.contourArea(cv2.convexHull(np.vstack([bodyCntrs[k] for k in vec]))) for vec in permutations])

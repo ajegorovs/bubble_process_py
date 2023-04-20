@@ -1019,6 +1019,67 @@ if  1==-1:
 
 if 1==1:
     print(list(range(0,5,1))[0:3:2])
+
+if 1 == -1:
+    if os.path.exists(os.path.join(intermediateDataFolder,'data.pickle')) and readIntermediateData: 
+        with open(os.path.join(intermediateDataFolder,'data.pickle'), 'rb') as handle:
+                    [
+                    globalCounter, g_contours, g_contours_hull, g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_areas_hull, g_dropIDs ,
+                    g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,g_child_contours              ,
+                    g_predict_displacement, g_predict_area_hull,  g_MBub_info, frozenGlobal,  g_bublle_type_by_gc_by_type, g_areas_IDs          ,
+                    ] = pickle.load(handle)
+        #fromTime  = 
+        temp = sum([[[bType, subID] for subID in IDS]  for bType,IDS in g_bublle_type_by_gc_by_type[globalCounter].items() if len(IDS)>0],[])
+        l_bubble_type_old = {ID:bType for bType,ID in temp}
+    
+        #l_Centroids_old2 = 
+        a = 1#[typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge,typeRecoveredFrozen,typeMerge]
+        rbs = [g_bublle_type_by_gc_by_type[globalCounter][bType] for bType in [typeRing,typeRecoveredRing]]
+        dbs = [g_bublle_type_by_gc_by_type[globalCounter][bType] for bType in [typeElse,typeRecoveredElse]]
+        fbs = [g_bublle_type_by_gc_by_type[globalCounter][bType] for bType in [typeFrozen,typeRecoveredFrozen]]
+        mbs = [g_bublle_type_by_gc_by_type[globalCounter][bType] for bType in [typeMerge]]
+        l_MBub_info_old = {}
+        for mID in sum(mbs,[]):
+            if mID in g_MBub_info and globalCounter in g_MBub_info[mID]:
+                l_MBub_info_old[mID]    = g_MBub_info[mID][globalCounter]
+
+        def assignFields(field_g, IDs, step):
+            output = []
+            for subIDs in IDs:
+                output.append({ID:field_g[ID][step] for ID in sum(subIDs,[])})
+            return output
+        #l_RBub_masks_old2 = {ID:g_Masks[ID][globalCounter] for ID in sum(rbs,[])}
+        a = 1
+        l_contours_hull_old    = {ID:g_contours_hull[ID][globalCounter] for ID in l_bubble_type_old.keys()}
+        l_ellipse_parms_old    = {ID:g_Ellipse_parms[ID][globalCounter] for ID in l_bubble_type_old.keys()}
+        frozenGlobal            = {t:IDs for t,IDs in frozenGlobal.items() if t <= globalCounter} # first time that ID appears. to prevent future IDs
+        #contoursFilter_RectParams_dropIDs_old2, contoursFilter_RectParams_old2 = g_drop_keep_IDs[globalCounter]
+        l_Areas_old            = {ID: cv2.contourArea(g_contours[globalCounter][ID])                           for ID in g_areas_IDs[globalCounter]}
+        l_Areas_hull_old       = {ID: getContourHullArea(g_contours[globalCounter][ID])                    for ID in g_areas_IDs[globalCounter]}
+        l_centroids_old_all    = {ID: getCentroidPosContours(bodyCntrs = [g_contours[globalCounter][ID]])[0]   for ID in g_areas_IDs[globalCounter]}
+        l_rect_parms_all_old   = {ID: cv2.boundingRect(g_contours[globalCounter][ID])                          for ID in g_areas_IDs[globalCounter]} 
+        contoursFilter_RectParams_dropIDs_old = g_dropIDs[globalCounter]
+        a = 1
+        [l_RBub_masks_old,         l_DBub_masks_old,          l_FBub_masks_old,      l_MBub_masks_old       ] =  assignFields(g_Masks,        [rbs,dbs,fbs,mbs], globalCounter)
+        [l_RBub_images_old,        l_DBub_images_old,         l_FBub_images_old,     l_MBub_images_old      ] =  assignFields(g_Images,       [rbs,dbs,fbs,mbs], globalCounter)
+        [l_RBub_rect_parms_old,    l_DBub_rect_parms_old,     l_FBub_rect_parms_old, l_MBub_rect_parms_old  ] =  assignFields(g_Rect_parms,   [rbs,dbs,fbs,mbs], globalCounter)
+        [l_RBub_centroids_old,     l_DBub_centroids_old,      l_FBub_centroids_old,  l_MBub_centroids_old   ] =  assignFields(g_Centroids,    [rbs,dbs,fbs,mbs], globalCounter)
+        [l_RBub_areas_hull_old,    l_DBub_areas_hull_old,     l_FBub_areas_hull_old, l_MBub_areas_hull_old  ] =  assignFields(g_areas_hull,   [rbs,dbs,fbs,mbs], globalCounter)
+        [l_RBub_old_new_IDs_old,   l_DBub_old_new_IDs_old,    l_FBub_old_new_IDs_old,l_MBub_old_new_IDs_old ] =  assignFields(g_old_new_IDs,  [rbs,dbs,fbs,mbs], globalCounter)
+    
+        l_masks_old         = {**l_RBub_masks_old,        **l_DBub_masks_old,         **l_FBub_masks_old,           **l_MBub_masks_old}
+        l_images_old        = {**l_RBub_images_old,       **l_DBub_images_old,        **l_FBub_images_old,          **l_MBub_images_old}
+        l_rect_parms_old    = {**l_RBub_rect_parms_old,   **l_DBub_rect_parms_old,    **l_FBub_rect_parms_old,      **l_MBub_rect_parms_old}
+        l_centroids_old     = {**l_RBub_centroids_old,    **l_DBub_centroids_old,     **l_FBub_centroids_old,       **l_MBub_centroids_old}
+        l_old_new_IDs_old   = {**l_RBub_old_new_IDs_old,  **l_DBub_old_new_IDs_old,   **l_FBub_old_new_IDs_old,     **l_MBub_old_new_IDs_old}
+        l_areas_hull_old    = {**l_RBub_areas_hull_old,   **l_DBub_areas_hull_old,    **l_FBub_areas_hull_old,      **l_MBub_areas_hull_old}
+    
+        globalCounter += 1
+        dataStartOffseted = dataStart + globalCounter
+        cntr = globalCounter
+    else:
+        dataStartOffseted = dataStart
+        cntr = 0
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyAllWindows()

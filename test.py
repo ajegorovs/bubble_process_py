@@ -946,76 +946,79 @@ import numpy as np
 #img = np.zeros((800,1220),np.uint8)
 #cv2.drawContours(img, [bodyCntrs[:]], -1, 255, 1)
 #cv2.imshow('f',img)
+if  1==-1:
+    def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0, zerothDisp = [],fixSharp = 0, angleLimit = 30, debug = 0, axes=[], pltString = ''):
+        data = np.array(data).reshape(len(data),-1) #[1,2]->[[1],[2]]; [[11,12],[21,22]]-> itself
+        numPointsInTraj = data.shape[0]
+        numStepsInTraj = numPointsInTraj - 1 #;print(f'numPointsInTraj:{numPointsInTraj}, numStepsInTraj:{numStepsInTraj}')
+        numDims = data.shape[1]
+        # start-> take last maxInterpSteps
+        start = 0 if numStepsInTraj < maxInterpSteps else numStepsInTraj-maxInterpSteps
+        if numStepsInTraj == 0:
+            zeroth = [0]*numDims if len(zerothDisp) == 0 else zerothDisp
+            return data[0] + zeroth
+        k = min(numStepsInTraj,maxInterpOrder)
+        t = np.arange(0,numPointsInTraj-start,1)#;print(f't:{t},(numPointsInTraj-star):{numPointsInTraj-start}')
+        if numDims == 1:data = np.hstack([t.reshape(len(t),-1),data])
+        splitSubsetComponents = data[start:].T#;print(data)
+        #if debug == 1: tDebug = np.arange(0,numPointsInTraj-start+0.01,0.2)#;print(f'tDebug:{tDebug}')
+        sMod = numPointsInTraj+np.sqrt(2*numPointsInTraj) # max proper range from docs.
+        if fixSharp == 1:
+            alphaMax = 1.2
+            alphas = np.arange(smoothingScale,alphaMax+0.0001,0.2)
+            for alpha in alphas:
+                sMod2 = alpha*sMod
+                spline0, _ = interpolate.splprep(splitSubsetComponents, u = t, s = sMod2, k = k)
 
-def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0, zerothDisp = [],fixSharp = 0, angleLimit = 30, debug = 0, axes=[], pltString = ''):
-    data = np.array(data).reshape(len(data),-1) #[1,2]->[[1],[2]]; [[11,12],[21,22]]-> itself
-    numPointsInTraj = data.shape[0]
-    numStepsInTraj = numPointsInTraj - 1 #;print(f'numPointsInTraj:{numPointsInTraj}, numStepsInTraj:{numStepsInTraj}')
-    numDims = data.shape[1]
-    # start-> take last maxInterpSteps
-    start = 0 if numStepsInTraj < maxInterpSteps else numStepsInTraj-maxInterpSteps
-    if numStepsInTraj == 0:
-        zeroth = [0]*numDims if len(zerothDisp) == 0 else zerothDisp
-        return data[0] + zeroth
-    k = min(numStepsInTraj,maxInterpOrder)
-    t = np.arange(0,numPointsInTraj-start,1)#;print(f't:{t},(numPointsInTraj-star):{numPointsInTraj-start}')
-    if numDims == 1:data = np.hstack([t.reshape(len(t),-1),data])
-    splitSubsetComponents = data[start:].T#;print(data)
-    #if debug == 1: tDebug = np.arange(0,numPointsInTraj-start+0.01,0.2)#;print(f'tDebug:{tDebug}')
-    sMod = numPointsInTraj+np.sqrt(2*numPointsInTraj) # max proper range from docs.
-    if fixSharp == 1:
-        alphaMax = 1.2
-        alphas = np.arange(smoothingScale,alphaMax+0.0001,0.2)
-        for alpha in alphas:
+                extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0),int)
+                dv0 = np.diff(extrapolatedPoint0).reshape(max(2,numDims))
+                z = np.polyfit(*splitSubsetComponents[:,-3:], 1);#print(f'z:{z}')
+                x0,x1 = splitSubsetComponents[0,-min(numPointsInTraj,3)], splitSubsetComponents[0,-1]
+                p0,p1 = np.array([x0,np.dot([x0,1],z)]),np.array([x1,np.dot([x1,1],z)]) #[ x0,y(x0)], or use poly1d lol
+                dv = (lambda x: x/np.linalg.norm(x)) (p1-p0)*np.linalg.norm(dv0)
+                angleDeg = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))(dv0,dv)
+                if angleDeg <= angleLimit or alpha == alphas[-1]:
+                    returnVec =  extrapolatedPoint0[:,-1]
+                    break
+            
+        else:
+            alpha = smoothingScale
             sMod2 = alpha*sMod
             spline0, _ = interpolate.splprep(splitSubsetComponents, u = t, s = sMod2, k = k)
-
             extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0),int)
-            dv0 = np.diff(extrapolatedPoint0).reshape(max(2,numDims))
-            z = np.polyfit(*splitSubsetComponents[:,-3:], 1);#print(f'z:{z}')
-            x0,x1 = splitSubsetComponents[0,-min(numPointsInTraj,3)], splitSubsetComponents[0,-1]
-            p0,p1 = np.array([x0,np.dot([x0,1],z)]),np.array([x1,np.dot([x1,1],z)]) #[ x0,y(x0)], or use poly1d lol
-            dv = (lambda x: x/np.linalg.norm(x)) (p1-p0)*np.linalg.norm(dv0)
-            angleDeg = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))(dv0,dv)
-            if angleDeg <= angleLimit or alpha == alphas[-1]:
-                returnVec =  extrapolatedPoint0[:,-1]
-                break
-            
-    else:
-        alpha = smoothingScale
-        sMod2 = alpha*sMod
-        spline0, _ = interpolate.splprep(splitSubsetComponents, u = t, s = sMod2, k = k)
-        extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0),int)
-        returnVec = extrapolatedPoint0[:,-1]
+            returnVec = extrapolatedPoint0[:,-1]
 
-    if debug == 1:
-        tDebug = np.arange(0,numPointsInTraj-start+0.01,0.2)
-        extrapolatedPointsDebug2 = np.array(interpolate.splev(tDebug, spline0,ext=0))
-        axes.plot(*extrapolatedPointsDebug2,'-o',label = 'interpolated data',ms= 6)
-        if fixSharp == 1:
-            axes.plot(*np.array([p0,p1]).T,'--',label = f'3 step linear fit (*)')
-            axes.plot([p0[0]+dv[0],p0[0],p0[0]+dv0[0]],[p0[1]+dv[1],p0[1],p0[1]+dv0[1]],'-',label = f'angleDeg between (*) and exterp:{angleDeg:0.1f}',lw=3)
-        axes.plot(*splitSubsetComponents,'x',label = 'Original pts (subset)',ms= 13,mew=5);print(f'splitSubsetComponents:{splitSubsetComponents}')
-        axes.legend(prop={'size': 10}, loc = 4)
-        axes.set_title(f'k:{k}, s:{sMod2:0.2f}', fontsize=15)
-        axes.set_ylim([-0.2,2.7])
-        axes.set_xlim([-0.8,1.6])
-        #plt.show()
-    return returnVec if numDims > 1 else returnVec[1]
-data2 = np.array([[-0.6,0.3],[-0.2,0],[0,1],[0.3,1.3],[0.6,2],[0.9,1.9]])
-numparams = 2
-_, axes2 = plt.subplots(1,numparams , figsize=( 12,4), sharex=True, sharey=True)
-order = list(range(1,5))
-smoothing = list(np.arange(0,0.5,0.1))
-for i in range(numparams):
-    extrapolate(data=data2,axes=axes2[i],debug = 1, maxInterpSteps = 5, maxInterpOrder = order[i], smoothingScale = 0, zerothDisp = [], fixSharp = 0, angleLimit = 30, pltString = f'n: {order[i]}, s: 0.0')
+        if debug == 1:
+            tDebug = np.arange(0,numPointsInTraj-start+0.01,0.2)
+            extrapolatedPointsDebug2 = np.array(interpolate.splev(tDebug, spline0,ext=0))
+            axes.plot(*extrapolatedPointsDebug2,'-o',label = 'interpolated data',ms= 6)
+            if fixSharp == 1:
+                axes.plot(*np.array([p0,p1]).T,'--',label = f'3 step linear fit (*)')
+                axes.plot([p0[0]+dv[0],p0[0],p0[0]+dv0[0]],[p0[1]+dv[1],p0[1],p0[1]+dv0[1]],'-',label = f'angleDeg between (*) and exterp:{angleDeg:0.1f}',lw=3)
+            axes.plot(*splitSubsetComponents,'x',label = 'Original pts (subset)',ms= 13,mew=5);print(f'splitSubsetComponents:{splitSubsetComponents}')
+            axes.legend(prop={'size': 10}, loc = 4)
+            axes.set_title(f'k:{k}, s:{sMod2:0.2f}', fontsize=15)
+            axes.set_ylim([-0.2,2.7])
+            axes.set_xlim([-0.8,1.6])
+            #plt.show()
+        return returnVec if numDims > 1 else returnVec[1]
+    data2 = np.array([[-0.6,0.3],[-0.2,0],[0,1],[0.3,1.3],[0.6,2],[0.9,1.9]])
+    numparams = 2
+    _, axes2 = plt.subplots(1,numparams , figsize=( 12,4), sharex=True, sharey=True)
+    order = list(range(1,5))
+    smoothing = list(np.arange(0,0.5,0.1))
+    for i in range(numparams):
+        extrapolate(data=data2,axes=axes2[i],debug = 1, maxInterpSteps = 5, maxInterpOrder = order[i], smoothingScale = 0, zerothDisp = [], fixSharp = 0, angleLimit = 30, pltString = f'n: {order[i]}, s: 0.0')
 
-_, axes3 = plt.subplots(1,numparams , figsize=( 12,4), sharex=True, sharey=True)
-order = list(range(1,5))
-smuch = 0.02
-for i in range(numparams):
-    extrapolate(data=data2,axes=axes3[i], debug = 1, maxInterpSteps = 5, maxInterpOrder = order[i], smoothingScale = smuch, zerothDisp = [], fixSharp = 0, angleLimit = 30, pltString = f'n: {order[i]} , s: {smuch}')
-plt.show()
+    _, axes3 = plt.subplots(1,numparams , figsize=( 12,4), sharex=True, sharey=True)
+    order = list(range(1,5))
+    smuch = 0.02
+    for i in range(numparams):
+        extrapolate(data=data2,axes=axes3[i], debug = 1, maxInterpSteps = 5, maxInterpOrder = order[i], smoothingScale = smuch, zerothDisp = [], fixSharp = 0, angleLimit = 30, pltString = f'n: {order[i]} , s: {smuch}')
+    plt.show()
+
+if 1==1:
+    print(list(range(0,5,1))[0:3:2])
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyAllWindows()

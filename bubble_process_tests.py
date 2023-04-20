@@ -178,6 +178,32 @@ def dumpPickle(exportFileName, data, folders=[]):
 
 toList = lambda x: [x] if type(x) != list else x
 
+# =========== BUILD OUTPUT FOLDERS =============//
+
+mainOutputFolder            = r'.\imageMainFolder_output'                        # these are main themed folders, sub-projects go inside.
+mainIntermediateDataFolder  = r'.\intermediateData'                              # these are main themed folders, sub-projects go inside.
+mainManualMasksFolder       = r'.\manualMask'                                    # these are main themed folders, sub-projects go inside.
+
+for directory in [mainOutputFolder, mainIntermediateDataFolder, mainManualMasksFolder]:
+        if not os.path.exists(directory):
+             os.mkdir(directory) 
+
+mainOutputSubFolders= ['ringDetect']                                             # specific sub-project folder heirarchy
+                                                                                
+imageFolder             = mainOutputFolder                                       # defaults output to main folder
+intermediateDataFolder  = mainIntermediateDataFolder                             # defaults output to main folder
+manualMasksFolder       = mainManualMasksFolder                                  # defaults output to main folder
+for folderName in mainOutputSubFolders:                                          # or creates heararchy of folders "subfolder/subsub/.."
+    imageFolder             = os.path.join(imageFolder,             folderName)
+    intermediateDataFolder  = os.path.join(intermediateDataFolder,  folderName)
+    manualMasksFolder       = os.path.join(manualMasksFolder,       folderName)
+    for directory in [imageFolder, intermediateDataFolder, manualMasksFolder]:
+        if not os.path.exists(directory):
+             os.mkdir(directory) 
+
+# //=========== BUILD OUTPUT FOLDERS =============
+
+
 thresh0             = 1
 thresh1             = 15
 
@@ -191,12 +217,18 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart           = 736 #300 #  53+3+5
-dataNum             = 130 # 7+5   
+dataStart           = 600 #736 #300 #  53+3+5
+dataNum             = 23 #130 # 7+5   
 
 assistManually      = 1
 assistFramesG       = [751]
-assistFrames        = [dataStart - a for a in assistFramesG]
+assistFrames        = [a - dataStart for a in assistFramesG]
+
+doIntermediateData              = 1
+intermediateDataStepInterval    = 18
+readIntermediateData            = 1
+startIntermediateDataAtG        = 615
+startIntermediateDataAt         = startIntermediateDataAtG - dataStart
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
 recalcMean          = 0  
@@ -216,7 +248,7 @@ drawFileName        = 1
 # workSingleCase      = 0
 
 markFirstMaskManually = 1
-markFirstExport     = 0 # see exportFirstFrame() lower after X_data import
+markFirstExport     = 1 # see exportFirstFrame() lower after X_data import
 
 drawAfter           = 0
 
@@ -257,10 +289,9 @@ init(imageMainFolder,imgNum)
 X_data, mean, imageLinks = initImport(mode,workBigArray,recalcMean,readSingleFromArray,pickleNewDataLoad,pickleNewDataSave,pickleSingleCaseSave)
 
 def exportFirstFrame(markFirstExport,dataStart):
+    #global manualMasksFolder
     if markFirstExport == 1:
-        if not os.path.exists(r'./manualMask'):
-            os.mkdir(r'./manualMask')
-        
+
         orig0 = X_data[dataStart]
         orig = orig0 -cv2.blur(mean, (5,5),cv2.BORDER_REFLECT)
     
@@ -272,12 +303,13 @@ def exportFirstFrame(markFirstExport,dataStart):
         #cv2.imshow('orig',orig)
         #cv2.imshow('origTH',origTH)
         #cv2.imshow('exp',exp)
-        cv2.imwrite("./manualMask/frame"+str(dataStart).zfill(4)+".png" ,err)
+        cv2.imwrite(os.path.join(manualMasksFolder, "frame"+str(dataStart).zfill(4)+".png") ,err)
         return 1
     else: return 0
 
 def extractManualMask(index = dataStart, debug  = 0): # either draw red masks over or using Paint, set bg color to red and freehand select and delete areas.
-    manualMask = cv2.imread("./manualMask/frame"+str(index).zfill(4)+" - Copy.png",1)
+    manualMask = cv2.imread(os.path.join(manualMasksFolder, "frame"+str(index).zfill(4)+" - Copy.png",),1)#"./manualMask/frame"+str(index).zfill(4)+" - Copy.png"
+    
     if debug == 1:
         cv2.imshow(f'extractManualMask {index}: import', manualMask)
         cv2.imshow(f'extractManualMask {index}: blue',  np.uint8(manualMask[:,:,0]))
@@ -298,7 +330,8 @@ def extractManualMask(index = dataStart, debug  = 0): # either draw red masks ov
     return contours,{ID:param for ID,param in enumerate(params)}
 
 def extractManualMask2(index = dataStart, debug  = 0): # either draw red masks over or using Paint, set bg color to red and freehand select and delete areas.
-    manualMask = cv2.imread("./manualMask/frame"+str(index).zfill(4)+" - Copy.png",1)
+    #manualMask = cv2.imread("./manualMask/frame"+str(index).zfill(4)+" - Copy.png",1)
+    manualMask = cv2.imread(os.path.join(manualMasksFolder, "frame"+str(index).zfill(4)+" - Copy.png",),1)
     if debug == 1:cv2.imshow(f'extractManualMask {index}: import', manualMask)
     manualMask = np.array(np.where((manualMask[:,:,1] > 10) & (manualMask[:,:,1] < 245),255,0),np.uint8)
     #manualMask = cv2.threshold(manualMask,230,255,cv2.THRESH_BINARY)[1]
@@ -322,31 +355,32 @@ typeStrFromTypeID = {tID:tStr for tID,tStr in zip(np.array([0,1,2,3,4,5,6,7,8]),
 # l_(...)_old are global variables that contain info from previous time. its technically global to acces across two time steps, but are local by idea.
 # (...)_r stands for recovered
 g_Centroids, g_Rect_parms, g_Ellipse_parms, g_Areas, g_Masks, g_Images, g_old_new_IDs, g_bubble_type, g_child_contours = {}, {}, {}, {}, {}, {}, {}, {}, {}
+g_areas_hull = {}#g_drop_keep_IDs = {}
 l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_areas_hull_old, l_RBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
 l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old, l_DBub_centroids_old, l_DBub_areas_hull_old, l_DBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
 l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old, l_FBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
 l_MBub_masks_old, l_MBub_images_old, l_MBub_rect_parms_old, l_MBub_centroids_old, l_MBub_areas_hull_old, l_MBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
-frozenGlobal,frozenGlobal_LocalIDs = {},{}; l_MBub_info_old,g_MBub_info = {}, {}
+frozenGlobal = {}; l_MBub_info_old, g_MBub_info, g_areas_IDs = {}, {}, {}
 
-g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull = {},{},{}
+g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_FBub_glob_IDs = {},{},{},{}
 g_contours, g_contours_hull,  frozenBubs, frozenBubsTimes,  l_bubble_type_old = {}, {}, {}, {}, {}
-l_Centroids_old, l_Areas_old,l_Areas_hull_old, l_rect_parms_all, l_rect_parms_all_old = {}, {}, {}, {}, {}
-g_predict_displacement, g_predict_area_hull  = {}, {}; frozenIDs, frozenIDs_old  = [],[]
+l_centroids_old_all, l_Areas_old,l_Areas_hull_old, l_rect_parms_all, l_rect_parms_all_old = {}, {}, {}, {}, {}
+g_predict_displacement, g_predict_area_hull  = {}, {}; frozenIDs = []
 l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old, l_contours_hull_old = {}, {}, {}, {}, {}, {}, {}, {}
-fakeBox, steepAngle = {}, {}    # inlet area rectangle
+fakeBox, steepAngle, g_bublle_type_by_gc_by_type, g_dropIDs = {}, {} ,{}, {}   # inlet area rectangle
 def mainer(index):
-    global globalCounter, g_contours, g_contours_hull, frozenBubs, frozenBubsTimes, l_Centroids_old, l_Areas_old, l_Areas_hull_old, l_rect_parms_all, l_rect_parms_all_old
-
-    global l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_old_new_IDs_old, ringCntrIDs
+    global globalCounter, g_contours, g_contours_hull, frozenBubs, frozenBubsTimes, l_centroids_old_all, l_Areas_old, l_Areas_hull_old, l_rect_parms_all, l_rect_parms_all_old, g_areas_hull
+    global l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_old_new_IDs_old
     global l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old,  l_DBub_centroids_old, l_DBub_areas_hull_old, l_DBub_old_new_IDs_old
     global l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old, l_FBub_old_new_IDs_old
     global l_MBub_masks_old, l_MBub_images_old, l_MBub_rect_parms_old, l_MBub_centroids_old, l_MBub_areas_hull_old, l_MBub_old_new_IDs_old
-    global g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull
+    global g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_FBub_glob_IDs
     global g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,l_bubble_type_old,g_child_contours
-    global g_predict_displacement, g_predict_area_hull, frozenIDs, frozenIDs_old, l_MBub_info_old, g_MBub_info
+    global g_predict_displacement, g_predict_area_hull, frozenIDs,  l_MBub_info_old, g_MBub_info
     global l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old, l_contours_hull_old
     global fakeBox, drawAfter, steepAngle, assistManually, assistFrames, dataStart
- 
+    global debugVecPredict, contoursFilter_RectParams_dropIDs_old, contoursFilter_RectParams, contoursFilter_RectParams_dropIDs
+    global frozenGlobal, imageFolder, g_bublle_type_by_gc_by_type, g_areas_IDs, g_dropIDs
     orig0           = X_data[index]
     # wanted to replace code below with cv2.subtract, but there are alot of problems with dtypes and results are a bit different
     orig            = orig0 -cv2.blur(mean, (5,5),cv2.BORDER_REFLECT)
@@ -355,15 +389,15 @@ def mainer(index):
 
     _,err           = cv2.threshold(orig.copy(),thresh0,255,cv2.THRESH_BINARY)
     err             = cv2.morphologyEx(err.copy(), cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
-    if globalCounter in assistFrames and not os.path.exists("./manualMask/frame"+str(index).zfill(4)+".png"):
-        cv2.imwrite("./manualMask/frame"+str(index).zfill(4)+".png" ,err)
+    
+    if globalCounter in assistFrames and not os.path.exists(os.path.join(manualMasksFolder, "frame"+str(index).zfill(4)+".png")):
+        cv2.imwrite(os.path.join(manualMasksFolder, "frame"+str(index).zfill(4)+".png") ,err)
         print('Writing assist frame...')
     if workBigArray == 1  and readSingleFromArray == 1: gfx = 1
     else: gfx = 0
     if workBigArray == 0: gfx = 1
 
-    global debugVecPredict,contoursFilter_RectParams_dropIDs_old
-    mergeCandidates,mergeCandidatesSubcontourIDs = {},{}
+    mergeCandidates,mergeCandidatesSubcontourIDs, l_predict_displacement, l_MBub_info                                           = {},{},{},{}
     l_bubble_type, l_contours_hull, l_RBub_contours_hull, l_DBub_contours_hull, l_FBub_contours_hull, l_MBub_contours_hull      = {}, {}, {}, {}, {}, {}
     l_RBub_masks, l_RBub_images, l_RBub_rect_parms, l_RBub_centroids, l_RBub_areas_hull, l_RBub_old_new_IDs                     = {}, {}, {}, {}, {}, {}
     l_DBub_masks, l_DBub_images, l_DBub_rect_parms, l_DBub_centroids, l_DBub_areas_hull, l_DBub_old_new_IDs                     = {}, {}, {}, {}, {}, {}
@@ -371,10 +405,10 @@ def mainer(index):
     l_DBub_r_masks, l_DBub_r_images, l_DBub_r_rect_parms,l_DBub_r_centroids, l_DBub_r_areas_hull, l_DBub_r_old_new_IDs          = {}, {}, {}, {}, {}, {}
     l_MBub_masks, l_MBub_images, l_MBub_rect_parms, l_MBub_centroids, l_MBub_areas_hull, l_MBub_old_new_IDs                     = {}, {}, {}, {}, {}, {}
     l_FBub_masks, l_FBub_images, l_FBub_rect_parms, l_FBub_centroids, l_FBub_areas_hull, l_FBub_old_new_IDs                     = {}, {}, {}, {}, {}, {}
-    l_predict_displacement = {};l_MBub_info = {}
+    
     # get contours from binary image. filter out useless. 
-    global contoursFilter_RectParams,contoursFilter_RectParams_dropIDs
-    contoursFilter_RectParams_dropIDs,l_Centroids = [], {}
+    
+    contoursFilter_RectParams_dropIDs,l_centroids_all = [], {}
     topFilter, bottomFilter, minArea    = 80, 10, 180                                                                                           # instead of deleting contours at inlet, i should merge
                                                                                                                                                 # them into one. since there is only ~one bubble at a time
     (l_contours,
@@ -386,14 +420,15 @@ def mainer(index):
     contoursFilter_RectParams_dropIDs       = [ID for ID,params in contoursFilter_RectParams.items() if sum(params[0:3:2])<topFilter]           # filter out bubbles at left image edge, keep those outside 80 pix boundary. x+w < 80 pix.
     #contoursFilter_RectParams_dropIDs_inlet = [ID for ID,params in contoursFilter_RectParams.items() if params[0] > err.shape[1]- bottomFilter] # top right corner is within box that starts at len(img)-len(box)
     #contoursFilter_RectParams_dropIDs       = contoursFilter_RectParams_dropIDs + contoursFilter_RectParams_dropIDs_inlet
-    l_Areas                                 = {key: cv2.contourArea(l_contours[key]) for key in contoursFilter_RectParams if key not in contoursFilter_RectParams_dropIDs } # remember contour areas of main contours that are out of side band.
-    l_Areas_hull                            = {ID:getContourHullArea(l_contours[ID]) for ID in l_Areas}                                         # convex hull of a single contour. for multiple contrours use getCentroidPosContours.
-    contoursFilter_RectParams_dropIDs       = contoursFilter_RectParams_dropIDs + [key for key, area in l_Areas.items() if area < minArea]      # list of useless contours- inside side band and too small area.
-    l_rect_parms_all                        = {key: val for key, val in contoursFilter_RectParams.items() if key in l_Areas}                    # bounding rectangle parameters for all primary except within a band.
-    l_Centroids                             = {key: getCentroidPosContours(bodyCntrs = [l_contours[key]])[0] for key in l_rect_parms_all}       # centroids of ^
+    l_areas_all_IDs                         = [ID for ID in contoursFilter_RectParams if ID not in contoursFilter_RectParams_dropIDs]
+    l_areas_all                             = {key: cv2.contourArea(l_contours[key]) for key in contoursFilter_RectParams if key not in contoursFilter_RectParams_dropIDs } # remember contour areas of main contours that are out of side band.
+    l_areas_hull_all                        = {ID:getContourHullArea(l_contours[ID]) for ID in l_areas_all}                                         # convex hull of a single contour. for multiple contrours use getCentroidPosContours.
+    contoursFilter_RectParams_dropIDs       = contoursFilter_RectParams_dropIDs + [key for key, area in l_areas_all.items() if area < minArea]      # list of useless contours- inside side band and too small area.
+    l_rect_parms_all                        = {key: val for key, val in contoursFilter_RectParams.items() if key in l_areas_all}                    # bounding rectangle parameters for all primary except within a band.
+    l_centroids_all                         = {key: getCentroidPosContours(bodyCntrs = [l_contours[key]])[0] for key in l_rect_parms_all}       # centroids of ^
     
     frozenIDs = []
-    global frozenGlobal,frozenGlobal_LocalIDs
+    
     frozenLocal = []
  
     fakeBoxW, fakeBoxH      = 176,int(err.shape[0]/3)                                             # generate a fake bubble at inlet and add it to previous frame data.
@@ -407,7 +442,7 @@ def mainer(index):
         deleteOverlaySoloIDs    = [subIDs[0] for _, subIDs in l_old_new_IDs_old.items() if len(subIDs) == 1]            # these are duplicates of global IDs from prev frame. ex: l_old_new_IDs_old= {0: [15]} -> l_Areas_old= {15:A} & joinAreas = {0:A} same object.
         stuckAreas              = {**dropKeys(l_Areas_hull_old,deleteOverlaySoloIDs),     **{str(key):val for key,val in l_areas_hull_old.items()}} # replaced regular area with fb hull 11/02/23
         stuckRectParams         = {**dropKeys(l_rect_parms_all_old,deleteOverlaySoloIDs), **{str(key):val for key,val in l_rect_parms_old.items()}}
-        stuckCentroids          = {**dropKeys(l_Centroids_old,deleteOverlaySoloIDs),      **{str(key):val for key,val in l_centroids_old.items()}}
+        stuckCentroids          = {**dropKeys(l_centroids_old_all,deleteOverlaySoloIDs),      **{str(key):val for key,val in l_centroids_old.items()}}
 
 
         #cntrRemainingIDs = [cID for cID in whereParentOriginal if cID not in contoursFilter_RectParams_dropIDs ] #+ dropAllRings + dropRestoredIDs
@@ -421,7 +456,7 @@ def mainer(index):
         dropKeysOld                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs_old)   # dropping frozens from inlet since
         dropKeysNew                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs        + inletIDsNew)  # bubbles act bad there, might false-positive
         [stuckRectParams,stuckAreas,stuckCentroids]             = list(map(dropKeysOld,[stuckRectParams,stuckAreas,stuckCentroids] ))
-        [fbStoreRectParams2,fbStoreAreas2,fbStoreCentroids2]    = list(map(dropKeysNew,[l_rect_parms_all,l_Areas,l_Centroids] ))
+        [fbStoreRectParams2,fbStoreAreas2,fbStoreCentroids2]    = list(map(dropKeysNew,[l_rect_parms_all,l_areas_all,l_centroids_all] ))
         
         
 
@@ -559,7 +594,7 @@ def mainer(index):
         # ===== graphUniqueComponents() takes connection between nodes and outputs connected components ======
         # ----- argument edgesAux acts as a catalyst by providing additional connections, but it does not appear in output -----
         # ----- in this case edgesAux are old-new bubble overlap connections ------
-        cc_unique = graphUniqueComponents(cntrRemainingIDs, combosSelf, dOldNewAll, 0, err.shape,  l_Centroids, l_centroids_old, l_contours, l_contours_hull_old)
+        cc_unique = graphUniqueComponents(cntrRemainingIDs, combosSelf, dOldNewAll, 0, err.shape,  l_centroids_all, l_centroids_old, l_contours, l_contours_hull_old)
 
         print('Connected Components unique:', cc_unique) if debugOnly(21) else 0
 
@@ -592,7 +627,7 @@ def mainer(index):
             blank = convertGray2RGB(blank)                                                              # IMSHOW
             
             # 
-            if  markFirstMaskManually == 1 and os.path.exists("./manualMask/frame"+str(dataStart).zfill(4)+" - Copy.png"):
+            if  markFirstMaskManually == 1 and os.path.exists(os.path.join(manualMasksFolder, "frame"+str(dataStart).zfill(4)+" - Copy.png")):
                 # *EDITED* not dropping----i am dropping RBs out of search, assuming they behave well. i do it to avoid doing it after.
                 cntrRemainingIDsMOD = [cID for cID in whereParentOriginal if cID not in  contoursFilter_RectParams_dropIDs ]
                 cntrRemainingMOD = {ID:l_contours[ID] for ID in cntrRemainingIDsMOD}
@@ -643,7 +678,7 @@ def mainer(index):
                     dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
                     tempStore2(cntrIDlist, l_contours, min(cntrIDlist), err, orig, dataSets, concave = 0)
 
-        if globalCounter >= 1 and assistManually == 1 and os.path.exists("./manualMask/frame"+str(index).zfill(4)+" - Copy.png"):
+        if globalCounter >= 1 and assistManually == 1 and os.path.exists(os.path.join(manualMasksFolder, "frame"+str(index).zfill(4)+" - Copy.png")):
             print('fixing assist frame')
             fixedFrame = 1
             contoursMain, group1Params = extractManualMask2(index, debug = 0)
@@ -846,7 +881,7 @@ def mainer(index):
                         dddd = 0 #if not (globalCounter == 62 and oldID == 13) else 1
                         permIDsol2, permDist2, permRelArea2, newCentroid, newArea, hull, newParams = radialAnal( [[OGLeft,OGRight], OGDistr] ,
                                                        [isEllipse,l_contours,subNewIDs,predictCentroid, ellipseParams, cvr2, err],
-                                                       [l_rect_parms_all,l_rect_parms_old,l_Centroids,l_Areas] ,
+                                                       [l_rect_parms_all,l_rect_parms_old,l_centroids_all,l_areas_all] ,
                                                        [distCheck2, distCheck2Sigma, areaCheck, oldMeanArea, oldAreaStd, clusterCritValues],
                                                        globalCounter, oldID, mainNewID, l_MBub_info_old, debug = dddd)
                         
@@ -960,7 +995,7 @@ def mainer(index):
 
                     # ===== to avoind using concave hull, rough estimate can be made using  convex hull =====
                     oldAreaHull = cv2.contourArea(cv2.convexHull(l_contours_hull_old[oldID], returnPoints = True))                      # we take a convex hull or old concave hull
-                    permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_rect_parms_all, l_rect_parms_old[oldID], toList(leftOver_overlap_new), l_Centroids, l_Areas,
+                    permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_rect_parms_all, l_rect_parms_old[oldID], toList(leftOver_overlap_new), l_centroids_all, l_areas_all,
                                                     predictCentroid, oldAreaHull*0.15, oldAreaHull, relAreaCheck = 0.7, debug = 0)      # find permutation of subIDs that result in a better
                                                                                                                                         #  match with old convex hull area and predicted centroid
                     if len(permIDsol2)>0:                                                                                               # if there is a non-trivial match 
@@ -1035,7 +1070,7 @@ def mainer(index):
                     # modify so it looks like ist of permutations
                     leftOver_overlap_new            = [jointNeighbors[b] for _,b in leftOver_overlap]
                     oldAreaHull = cv2.contourArea(cv2.convexHull(l_contours_hull_old[oldID], returnPoints = True))                      # we take a convex hull or old concave hull
-                    permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_rect_parms_all, l_rect_parms_old[oldID], [], l_Centroids, l_Areas,
+                    permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,l_rect_parms_all, l_rect_parms_old[oldID], [], l_centroids_all, l_areas_all,
                                                     predictCentroid, oldAreaHull*100, oldAreaHull, relAreaCheck = 100, customPermutations = leftOver_overlap_new ,debug = 0)      # find permutation of subIDs that result in a better
                     
                     if len(permIDsol2) > 0:
@@ -1736,6 +1771,8 @@ def mainer(index):
             g_Centroids[key]        = {}
             g_old_new_IDs[key]      = {}
             g_contours_hull[key]    = {}
+            g_areas_hull[key]       = {}
+
         g_Masks[key][globalCounter]         = l_masks_old[key]
         g_Images[key][globalCounter]        = l_images_old[key]
         g_Rect_parms[key][globalCounter]    = l_rect_parms_old[key]
@@ -1743,6 +1780,7 @@ def mainer(index):
         g_Centroids[key][globalCounter]     = l_centroids_old[key]
         g_old_new_IDs[key][globalCounter]   = l_old_new_IDs_old[key]
         g_contours_hull[key][globalCounter] = l_contours_hull_old[key]
+        g_areas_hull[key][globalCounter]    = l_areas_hull_old[key]
         # --------- take care of prediction storage: g_predict_area_hull & g_predict_displacement --------------
         # -- some extra treatment for merged bubbles before regular ones ---
         if  (key not in g_predict_area_hull and key in l_areas_hull_old and key in l_MBub_areas_hull_old):
@@ -1842,23 +1880,31 @@ def mainer(index):
   
 
     l_bubble_type_old                       = l_bubble_type
-    l_Areas_old                             = l_Areas
-    l_Areas_hull_old                        = l_Areas_hull
-    l_Centroids_old                         = l_Centroids
-    l_rect_parms_all_old          = l_rect_parms_all
-    contoursFilter_RectParams_dropIDs_old   = contoursFilter_RectParams_dropIDs # prepare/store for next time step   
-    frozenIDs_old                           = frozenIDs
-    if len(frozenLocal)>0:
-        if globalCounter not in frozenGlobal_LocalIDs:
-            #frozenGlobal[globalCounter] = []
-            frozenGlobal_LocalIDs[globalCounter] = []
-        #frozenGlobal[globalCounter].append(frozenLocal)
-        frozenGlobal_LocalIDs[globalCounter].append(frozenLocal)
+    l_Areas_old                             = l_areas_all
+    g_areas_IDs[globalCounter]              = l_areas_all
+    l_Areas_hull_old                        = l_areas_hull_all
+    l_centroids_old_all                     = l_centroids_all
+    l_rect_parms_all_old                    = l_rect_parms_all
+    contoursFilter_RectParams_dropIDs_old   = contoursFilter_RectParams_dropIDs # prepare/store for next time step 
+    g_dropIDs[globalCounter]                = contoursFilter_RectParams_dropIDs
+    #g_drop_keep_IDs[globalCounter]          = [contoursFilter_RectParams_dropIDs,contoursFilter_RectParams]
+    #frozenIDs_old                           = frozenIDs
+
+    g_bublle_type_by_gc_by_type[globalCounter] = {}
+    for bType in typeStrFromTypeID.keys():
+        g_bublle_type_by_gc_by_type[globalCounter][bType] = [ID for ID,bubT in l_bubble_type_old.items() if bubT == bType]
+
+    #if len(frozenLocal)>0:
+    #    if globalCounter not in frozenGlobal_LocalIDs:
+    #        #frozenGlobal[globalCounter] = []
+    #        frozenGlobal_LocalIDs[globalCounter] = []
+    #    #frozenGlobal[globalCounter].append(frozenLocal)
+    #    frozenGlobal_LocalIDs[globalCounter].append(frozenLocal)
 
     for key in list(l_DBub_r_masks.keys()) + list(l_RBub_r_masks.keys()):
         if key in contoursFilter_RectParams_dropIDs:
             l_Areas_old[key]        = cv2.contourArea(l_contours[key])
-            l_Centroids_old[key]    = getCentroidPosContours(bodyCntrs = [l_contours[key]])[0]
+            l_centroids_old_all[key]    = getCentroidPosContours(bodyCntrs = [l_contours[key]])[0]
 
 
     if drawAfter == 0:
@@ -2019,18 +2065,101 @@ def mainer(index):
                 [cv2.circle(blank, tuple(p), 1, cyclicColor(i), -1) for [p] in pts]
             
         cv2.putText(blank, str(globalCounter), (25,25), font, 0.9, (255,220,195),2, cv2.LINE_AA)
-        cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\"+str(dataStart+globalCounter).zfill(4)+".png" ,resizeToMaxHW(blank,width = 600))
+         
+        cv2.imwrite(os.path.join(imageFolder,str(dataStart+globalCounter).zfill(4)+".png") ,resizeToMaxHW(blank,width = 800))
         #cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\orig_"+str(dataStart+globalCounter).zfill(4)+".png" ,ori)#int(err.shape[0]/3)
         # cv2.imshow(f'{globalCounter}', resizeToMaxHW(blank))
     #if big != 1: cv2.imshow("aas",aas)
+
+    if doIntermediateData == 1:
+        if globalCounter % intermediateDataStepInterval == 0:
+            storeDir = os.path.join(intermediateDataFolder,'data.pickle')
+            with open(storeDir, 'wb') as handle:
+                pickle.dump(
+                [
+                globalCounter, g_contours, g_contours_hull,  l_centroids_old_all, l_Areas_old, l_Areas_hull_old, l_rect_parms_all_old               ,
+                l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_areas_hull_old, l_RBub_old_new_IDs_old                                 ,
+                l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old, l_DBub_centroids_old, l_DBub_areas_hull_old, l_DBub_old_new_IDs_old                                 ,
+                l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old, l_FBub_old_new_IDs_old                                 ,
+                l_MBub_masks_old, l_MBub_images_old, l_MBub_rect_parms_old, l_MBub_centroids_old, l_MBub_areas_hull_old, l_MBub_old_new_IDs_old                                 ,
+                g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_areas_hull, g_dropIDs                                                                                 ,
+                g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,l_bubble_type_old,g_child_contours                                ,
+                g_predict_displacement, g_predict_area_hull, l_MBub_info_old, g_MBub_info                                                                        ,
+                l_contours_hull_old,l_ellipse_parms_old, contoursFilter_RectParams_dropIDs_old                                                                                  ,
+                frozenGlobal,  g_bublle_type_by_gc_by_type, g_areas_IDs
+                ], handle) 
+ 
 
     globalCounter += 1
 
 
 
 exportFirstFrame(markFirstExport,dataStart)    
+if os.path.exists(os.path.join(intermediateDataFolder,'data.pickle')) and readIntermediateData: 
+    with open(os.path.join(intermediateDataFolder,'data.pickle'), 'rb') as handle:
+                [
+                globalCounter, g_contours, g_contours_hull,  l_centroids_old_all, l_Areas_old, l_Areas_hull_old, l_rect_parms_all_old               ,
+                l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_areas_hull_old, l_RBub_old_new_IDs_old                                 ,
+                l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old, l_DBub_centroids_old, l_DBub_areas_hull_old, l_DBub_old_new_IDs_old                                 ,
+                l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old, l_FBub_old_new_IDs_old                                 ,
+                l_MBub_masks_old, l_MBub_images_old, l_MBub_rect_parms_old, l_MBub_centroids_old, l_MBub_areas_hull_old, l_MBub_old_new_IDs_old                                 ,
+                g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_areas_hull, g_dropIDs                                                                                 ,
+                g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,l_bubble_type_old,g_child_contours                                ,
+                g_predict_displacement, g_predict_area_hull, l_MBub_info_old, g_MBub_info                                                                        ,
+                l_contours_hull_old,l_ellipse_parms_old, contoursFilter_RectParams_dropIDs_old                                                                                  ,
+                frozenGlobal,  g_bublle_type_by_gc_by_type, g_areas_IDs
+                ] = pickle.load(handle)
+    temp = sum([[[bType, subID] for subID in IDS]  for bType,IDS in g_bublle_type_by_gc_by_type[globalCounter].items() if len(IDS)>0],[])
+    l_bubble_type_old2 = {ID:bType for bType,ID in temp}
+    
+    #l_Centroids_old2 = 
+    a = 1#[typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge,typeRecoveredFrozen,typeMerge]
+    rbs = [g_bublle_type_by_gc_by_type[globalCounter][bType] for bType in [typeRing,typeRecoveredRing]]
+    dbs = [g_bublle_type_by_gc_by_type[globalCounter][bType] for bType in [typeElse,typeRecoveredElse]]
+    fbs = [g_bublle_type_by_gc_by_type[globalCounter][bType] for bType in [typeFrozen,typeRecoveredFrozen]]
+    mbs = [g_bublle_type_by_gc_by_type[globalCounter][bType] for bType in [typeMerge]]
+    l_MBub_info_old2 = {}
+    for mID in sum(mbs,[]):
+        if mID in g_MBub_info and globalCounter in g_MBub_info[mID]:
+            l_MBub_info_old2[mID]    = g_MBub_info[mID][globalCounter]
 
-cntr = 0
+    def assignFields(field_g, IDs, step):
+        output = []
+        for subIDs in IDs:
+            output.append({ID:field_g[ID][step] for ID in sum(subIDs,[])})
+        return output
+    #l_RBub_masks_old2 = {ID:g_Masks[ID][globalCounter] for ID in sum(rbs,[])}
+    a = 1
+    l_contours_hull_old2    = {ID:g_contours_hull[ID] for ID in l_bubble_type_old.keys()}
+    l_ellipse_parms_old2    = {ID:g_Ellipse_parms[ID] for ID in l_bubble_type_old.keys()}
+    frozenGlobal2            = {t:IDs for t,IDs in frozenGlobal.items() if t <= globalCounter} # first time that ID appears. to prevent future IDs
+    #contoursFilter_RectParams_dropIDs_old2, contoursFilter_RectParams_old2 = g_drop_keep_IDs[globalCounter]
+    l_Areas_old2            = {ID: cv2.contourArea(g_contours[globalCounter][ID])                           for ID in g_areas_IDs[globalCounter]}
+    l_Areas_hull_old2       = {ID: getContourHullArea(g_contours[globalCounter][ID])                    for ID in g_areas_IDs[globalCounter]}
+    l_centroids_old_all2    = {ID: getCentroidPosContours(bodyCntrs = [g_contours[globalCounter][ID]])[0]   for ID in g_areas_IDs[globalCounter]}
+    l_rect_parms_all_old2   = {ID: cv2.boundingRect(g_contours[globalCounter][ID])                          for ID in g_areas_IDs[globalCounter]} 
+    contoursFilter_RectParams_dropIDs_old = g_dropIDs[globalCounter]
+    a = 1
+    [l_RBub_masks_old2,         l_DBub_masks_old2,          l_FBub_masks_old2,      l_MBub_masks_old2       ] =  assignFields(g_Masks,        [rbs,dbs,fbs,mbs], globalCounter)
+    [l_RBub_images_old2,        l_DBub_images_old2,         l_FBub_images_old2,     l_MBub_images_old       ] =  assignFields(g_Images,       [rbs,dbs,fbs,mbs], globalCounter)
+    [l_RBub_rect_parms_old2,    l_DBub_rect_parms_old2,     l_FBub_rect_parms_old2, l_MBub_rect_parms_old2  ] =  assignFields(g_Rect_parms,   [rbs,dbs,fbs,mbs], globalCounter)
+    [l_RBub_centroids_old2,     l_DBub_centroids_old2,      l_FBub_centroids_old2,  l_MBub_centroids_old    ] =  assignFields(g_Centroids,    [rbs,dbs,fbs,mbs], globalCounter)
+    [l_RBub_areas_hull_old2,    l_DBub_areas_hull_old2,     l_FBub_areas_hull_old2, l_MBub_areas_hull_old2  ] =  assignFields(g_areas_hull,   [rbs,dbs,fbs,mbs], globalCounter)
+    [l_RBub_old_new_IDs_old2,   l_DBub_old_new_IDs_old2,    l_FBub_old_new_IDs_old2,l_MBub_old_new_IDs_old2 ] =  assignFields(g_old_new_IDs,  [rbs,dbs,fbs,mbs], globalCounter)
+    #l_RBub_masks_old2   = g_bubble_type
+    l_masks_old         = {**l_RBub_masks_old,        **l_DBub_masks_old,         **l_FBub_masks_old,           **l_MBub_masks_old}
+    l_images_old        = {**l_RBub_images_old,       **l_DBub_images_old,        **l_FBub_images_old,          **l_MBub_images_old}
+    l_rect_parms_old    = {**l_RBub_rect_parms_old,   **l_DBub_rect_parms_old,    **l_FBub_rect_parms_old,      **l_MBub_rect_parms_old}
+    l_centroids_old     = {**l_RBub_centroids_old,    **l_DBub_centroids_old,     **l_FBub_centroids_old,       **l_MBub_centroids_old}
+    l_old_new_IDs_old   = {**l_RBub_old_new_IDs_old,  **l_DBub_old_new_IDs_old,   **l_FBub_old_new_IDs_old,     **l_MBub_old_new_IDs_old}
+    l_areas_hull_old    = {**l_RBub_areas_hull_old,   **l_DBub_areas_hull_old,    **l_FBub_areas_hull_old,      **l_MBub_areas_hull_old}
+    
+    globalCounter += 1
+    dataStartOffseted = dataStart + globalCounter
+    cntr = globalCounter
+else:
+    dataStartOffseted = dataStart
+    cntr = 0
 if mode == 1:
     if big == 0:
         mainer(imgNum)
@@ -2038,8 +2167,8 @@ if mode == 1:
     # print(ss)
     # mainer(ss)
     else:
-        for i in range(dataStart,dataStart+dataNum,1):
-            print(f'\n==============================================')
+        for i in range(dataStartOffseted,dataStart+dataNum,1):
+            print(f'\n==================*IMG:{i}*========================')
             print(f'Time step ID: {cntr} max ID: {dataNum-1}')
             mainer(i)
             cntr += 1

@@ -13,3 +13,4 @@
 /manualMask
 /clusterPerms.pickle
 /imageMainFolder_output/rawContours
+/intermediateData/ringDetect/data.pickle

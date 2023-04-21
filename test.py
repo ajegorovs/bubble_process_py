@@ -1080,6 +1080,10 @@ if 1 == -1:
     else:
         dataStartOffseted = dataStart
         cntr = 0
+
+print('adsads')
+arr = [1,2,3,4]
+print([a for a in arr if 2<a<4])
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyAllWindows()

@@ -1456,7 +1456,7 @@ def tempStore2(contourIDs, contours, globalID, mask, image, dataSets,concave = 0
 
     #l_bubble_type[selectID]                 = typeTemp   #<<<< inspect here for duplicates
     #g_bubble_type[selectID][globalCounter]  = typeTemp
-def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,debug2 = 0, gc = 0, id = 0):
+def mergeCrit(contourIDs, contours, previousInfo, pCentr = None, alphaParam = 0.05, debug = 0,debug2 = 0, gc = 0, id = 0):
     #baseContour, _, _       = alphashapeHullCentroidArea(contours, contourIDs, alphaParam)  
     baseContour             = alphashapeHullModded(contours, contourIDs, alphaParam, debug2) # find concave hull for a cluster using alphashape lib.
     hullCoordinateIndices   = cv2.convexHull(baseContour, returnPoints = False)             # indicies of original contour points that form a convex hull
@@ -1465,13 +1465,15 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
     refDistance             = previousInfo[0]                                               # limits length of defects
     refPlaneTangent         = previousInfo[1]                                               # tangent vector to centroid-centroid v. merge interface ~ along it
     refAngleThreshold       = previousInfo[2]                                               # limits angle of defects
-    #refMergePoint           = previousInfo[3]                                               # ~ point where interfaces meet. limits defects position.
-    #ccDir                   = np.matmul(np.array([[0, -1],[1, 0]]), refPlaneTangent) 
+    refMergePoint           = previousInfo[3]
+    baseDefects             = previousInfo[4]
+    baseDefectsOut          = None
     calculateAngle          = lambda vector: np.arccos(np.dot(refPlaneTangent, vector))     # chech angle between reference tangent and a vector
     defectsIndicies         = []                                                            # large defects will be stored here
     defectsDirection        = []                                                            # direction from 'cave' furthest point normal to contour.
     defectsLength           = []
     defectsFarpoints        = []
+    defectsDiscard          = []
     farpointMean            = np.empty((0,2),int)
     inPlaneDefectsPresent   = True
     if debug == 1:
@@ -1495,14 +1497,61 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
                 cv2.line(imageDebug, start - [x,y], end - [x,y], [0,0,255], 2)
                 cv2.line(imageDebug, farPointStart, farPointEnd, [255,125,0], 1)
                 cv2.circle(imageDebug,farPointStart, 5, [0,0,255], -1)
-                        
-    defectsIndicies     = np.array(defectsIndicies,int)                                                         
-    defectsLength       = np.array(defectsLength,int)
-    defectsDirection    = [vector*np.sign(np.dot(refPlaneTangent,vector)) for vector in defectsDirection]       # invert defectDirections if projection to refVector is negative.
+    defectsIndicies2     = np.array(defectsIndicies,int)
+    defectsLength2       = np.array(defectsLength,int)
+    defectsDirection2    = np.array(defectsDirection)
+    defectsFarpoints2    = np.array(defectsFarpoints,int)
+    defectsFarpoints2p   = np.array([baseContour[ID] for ID in defectsFarpoints2],int).reshape(-1,2)
+    if refMergePoint is not None: 
+        
+                                                      # ~ point where interfaces meet. limits defects position.
+        ccDir                   = np.matmul(np.array([[0, -1],[1, 0]]), refPlaneTangent)                             # unit vector in c-c direction
+        pts                 = defectsFarpoints2p - refMergePoint                                                     # move coord system to one centered at refMergePoint
+        projections         = np.abs(np.einsum('ij,j->i', pts, ccDir).astype(int))                                   # get dist from tangent plane to defect point
+        defectsDiscardL2     = np.array(np.where(projections>2*refDistance)).flatten().astype(int)                   # which are to far?
+        defectsAngles2      = np.array([int(min(np.pi-calculateAngle(v),calculateAngle(v))*180/np.pi) for v in defectsDirection2])  # smallest angle to tangent plane
+        defectsDiscardA2    = np.array(np.where(np.abs(defectsAngles2)>40)).flatten()                                # which are too big?
+        defectsDiscard2     = np.union1d(defectsDiscardL2, defectsDiscardA2)                                         # combine drop lists.
+        baseDefectsOut      = [stats for i, stats in enumerate(zip(defectsFarpoints2p,defectsDirection2,defectsLength2)) if i not in defectsDiscard2]
+    elif (baseDefects is not None and len(baseDefects) >0 ) and len(defectsIndicies)>0:
+        currentCentroid = np.array(getCentroidPosContours(bodyCntrs = [baseContour])[0],int)
+        displacement    = currentCentroid - pCentr                                                                   # translate base defects by that amount
+        baseDefects2     = [[a+displacement,b,int(c/256)] for a,b,c in baseDefects]
+        #defectsIndicies2     = np.array(defectsIndicies,int)
+        #defectsLength2       = np.array(defectsLength,int)
+        #defectsDirection2    = np.array(defectsDirection)
+        #defectsFarpoints2    = np.array(defectsFarpoints,int)
+        #defectsFarpoints2p   = np.array([baseContour[ID] for ID in defectsFarpoints2],int).reshape(-1,2)
+        oldDefNewDefRelation = []
+        for i,[defPointPred, defDirOld, defDistOld] in enumerate(baseDefects2):
+            defOldNewDist   = [np.linalg.norm(np.array(defCurrent) - np.array(defPointPred)) for defCurrent in defectsFarpoints2p]
+            defOldNewAng    = [int(min(
+                                np.pi-np.arccos(np.dot(defDirOld,defDir)), np.arccos(np.dot(defDirOld,defDir))
+                                        )*180/np.pi) for defDir in defectsDirection2]
+            tt = np.array([defOldNewDist,defOldNewAng],int).T                                                       # [[dist_old_1,ang_old_1],[dist_old_2,ang_old_2]]
+            tt2 = np.argmin(tt, axis=0)                                                                             # [whereMin([dist_old_1,dist_old_2]),whereMin([ang_old_1,ang_old_2])]  
+            uniqtt = np.unique(tt2)                                                                                 # say both d1,a1 < d2,a2, so returns [0,0]-> [0]
+            if len(uniqtt) == 1:                                                                                    # if only 1 entry then defect wins in both comparisons
+                oldDefNewDefRelation.append([i,uniqtt[0]])                                                          # predicted /w index i matches current defect /w idx 0 -> [i,j]
+        passNewDef1 = [b for _,b in oldDefNewDefRelation]
+        passNewDef2 = [i for i in passNewDef1 if int(defectsLength2[i]/256) > 0.5*refDistance]
+        #passNewDef3 = [i for i in passNewDef1 if int(defectsLength2[i]/256) > 0.5*refDistance]
+        baseDefectsOut = [stats for i, stats in enumerate(zip(defectsFarpoints2p,defectsDirection2,defectsLength2)) if i in passNewDef2]
+        defectsDiscard = [i for i in range(len(defectsFarpoints2p)) if i not in passNewDef2]
+    defectsIndicies = defectsIndicies2
+    defectsLength = defectsLength2
+    defectsDirection    = [vector*np.sign(np.dot(refPlaneTangent,vector)) for vector in defectsDirection]
     defectsDirection    = np.array(defectsDirection)
-    defectsAngles       = np.array([int(calculateAngle(v)*180/np.pi) for v in defectsDirection])                # find defect angle to ref. min case where |angle| =< 90  
-    defectsDiscard     = np.array(np.where(np.abs(defectsAngles)>refAngleThreshold)).flatten()                 # which angle is higher than threshold? not sure if i need abs
-    defectsFarpoints    = np.array(defectsFarpoints,int)                 
+    defectsAngles       = np.array([int(calculateAngle(v)*180/np.pi) for v in defectsDirection]) 
+    defectsFarpoints    = np.array(defectsFarpoints,int)
+    defectsDiscard      = np.array(defectsDiscard)
+    #defectsIndicies     = np.array(defectsIndicies,int)                         # start end of defect edge                                
+    #defectsLength       = np.array(defectsLength,int)
+    #defectsDirection    = [vector*np.sign(np.dot(refPlaneTangent,vector)) for vector in defectsDirection]       # invert defectDirections if projection to refVector is negative.
+    #defectsDirection    = np.array(defectsDirection)
+    #defectsAngles       = np.array([int(calculateAngle(v)*180/np.pi) for v in defectsDirection])                # find defect angle to ref. min case where |angle| =< 90  
+    #defectsDiscard      = np.array(np.where(np.abs(defectsAngles)>refAngleThreshold)).flatten()                 # which angle is higher than threshold? not sure if i need abs
+    #defectsFarpoints    = np.array(defectsFarpoints,int)                 
     #if refMergePoint.shape[0]>0:
     #    pts                 = np.array([baseContour[i][0] for i in defectsFarpoints]).reshape(-1,2) - refMergePoint # move global point coordinates into local, placed into midline center
     #    projections         = np.abs(np.einsum('ij,j->i', pts, ccDir).astype(int))
@@ -1557,7 +1606,8 @@ def mergeCrit(contourIDs, contours, previousInfo, alphaParam = 0.05, debug = 0,d
             cv2.line(imageDebug, p1 - [x,y], p2 - [x,y], [255,0,255], 1)
         cv2.drawContours( imageDebug,   [hullOutput- [x,y]], -1, (255,0,0), 2) 
         cv2.imshow(f'GC {gc}, ID {id}',imageDebug) 
-    return hullOutput, (refDistance, avgDirection, refAngleThreshold), (inPlaneDefectsPresent, farpointMean)
+    return hullOutput, (refDistance, avgDirection, refAngleThreshold, None, baseDefectsOut), (inPlaneDefectsPresent, farpointMean)
+    #return hullOutput, (refDistance, avgDirection, refAngleThreshold), (inPlaneDefectsPresent, farpointMean)
 
 
 colorList  = np.array(list(itertools.permutations(np.arange(0,255,255/5, dtype= np.uint8), 3)))

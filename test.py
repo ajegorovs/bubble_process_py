@@ -1081,9 +1081,11 @@ if 1 == -1:
         dataStartOffseted = dataStart
         cntr = 0
 
-print('adsads')
-arr = [1,2,3,4]
-print([a for a in arr if 2<a<4])
+oldNewIdsResolved = {19: [19], 24: [24], 52: [52], 27: [27], 15: [15, 23,27, 29,44], 22: [22, 28, 37], 48: [48], 16: [16], 44: [44, 47]}
+sharr_g = {17: [39, 34],18: [9, 4]}
+combs = sum([[[cID,gID] for gID in gIDs] for cID,gIDs in sharr_g.items()],[])
+print(combs)
+a = 1
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyAllWindows()

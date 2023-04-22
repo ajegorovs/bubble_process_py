@@ -5,7 +5,8 @@ General comments/ideas:
 - split frozen into high and low likelyhood fr bubbes using temporal stat.
 - statistics on bubble parameters were supposed to converge from more relaxed inital limits to something stationary.
 	this might not be the best option, since bubbles may start to change rapidly.
-
+22/04/23:
+	-
 22/03.23:
 	x - l_BoundingRectangle_params is reated to frozen bubbles, check and change name, its confusing
 	x - DB recovered as RB do not change type. maybe intended, indeed there might be need for a type "momentum"

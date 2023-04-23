@@ -218,14 +218,14 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 600 #736 #300 #  53+3+5
-dataNum             = 46 #130 # 7+5   
+dataNum             = 51 #130 # 7+5   
 
 assistManually      = 1
 assistFramesG       = [1068]#751,976
 assistFrames        = [a - dataStart for a in assistFramesG]
 doIntermediateData              = 1                                         # dump backups ?
 intermediateDataStepInterval    = 1                                        # dumps latest data field even N steps
-readIntermediateData            = 1                                         # load backups ?
+readIntermediateData            = 0                                         # load backups ?
 startIntermediateDataAtG        = 643                                     # frame stack index ( in X_Data). START FROM NEXT FRAME
 startIntermediateDataAt         = startIntermediateDataAtG - dataStart      # to global, which is pseudo global ofc. global to dataStart
 # ------------------- this manual if mode  is not 0, 1  or 2
@@ -429,9 +429,9 @@ def mainer(index):
     l_rect_parms_all                        = {key: val for key, val in contoursFilter_RectParams.items() if key in l_areas_all}                    # bounding rectangle parameters for all primary except within a band.
     l_centroids_all                         = {key: getCentroidPosContours(bodyCntrs = [l_contours[key]])[0] for key in l_rect_parms_all}       # centroids of ^
     
-    frozenIDs = []
+    #frozenIDs = []
     
-    frozenLocal = []
+    #frozenLocal = []
  
     fakeBoxW, fakeBoxH      = 176,int(err.shape[0]/3)                                             # generate a fake bubble at inlet and add it to previous frame data.
     fakeBox                 = {-1:[err.shape[1] - fakeBoxW + 1, fakeBoxH, fakeBoxW, fakeBoxH]}    # this will make sure to gather new bubbles at inlet into single cluster.
@@ -442,9 +442,9 @@ def mainer(index):
         print(f'{globalCounter}:-------- Begin search for frozen bubbles ---------')
         dropKeys                = lambda lib,IDs: {key:val for key,val in lib.items() if key not in IDs}                # function that drops all keys listed in ids from dictionary lib
         deleteOverlaySoloIDs    = [subIDs[0] for _, subIDs in l_old_new_IDs_old.items() if len(subIDs) == 1]            # these are duplicates of global IDs from prev frame. ex: l_old_new_IDs_old= {0: [15]} -> l_Areas_old= {15:A} & joinAreas = {0:A} same object.
-        stuckAreas              = {**dropKeys(l_Areas_hull_old,deleteOverlaySoloIDs),     **{str(key):val for key,val in l_areas_hull_old.items()}} # replaced regular area with fb hull 11/02/23
-        stuckRectParams         = {**dropKeys(l_rect_parms_all_old,deleteOverlaySoloIDs), **{str(key):val for key,val in l_rect_parms_old.items()}}
-        stuckCentroids          = {**dropKeys(l_centroids_old_all,deleteOverlaySoloIDs),  **{str(key):val for key,val in l_centroids_old.items()}}
+        #stuckAreas              = {**dropKeys(l_Areas_hull_old,deleteOverlaySoloIDs),     **{str(key):val for key,val in l_areas_hull_old.items()}} # replaced regular area with fb hull 11/02/23
+        #stuckRectParams         = {**dropKeys(l_rect_parms_all_old,deleteOverlaySoloIDs), **{str(key):val for key,val in l_rect_parms_old.items()}}
+        #stuckCentroids          = {**dropKeys(l_centroids_old_all,deleteOverlaySoloIDs),  **{str(key):val for key,val in l_centroids_old.items()}}
 
         for ID in l_rect_parms_old:
             if ID not in frozenBuffer_old: frozenBuffer_old[ID] = {}
@@ -488,9 +488,9 @@ def mainer(index):
         inletFullyInside                = [ID for ID,bType in inletIDsTypeNew.items() if bType == 2]
         #inletIDsNew                     =  [ID for ID in inletIDsNew if cv2.contourArea(l_contours[ID]) > minAreaInlet]
         #[contoursFilter_RectParams_dropIDs.remove(x) for x in inletIDsNew if x in contoursFilter_RectParams_dropIDs]                # remove-drop == which to keep.
-        dropKeysOld                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs_old)   # dropping frozens from inlet since
+        #dropKeysOld                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs_old)   # dropping frozens from inlet since
         dropKeysNew                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs + inletFullyInside)  # bubbles act bad there, might false-positive
-        [stuckRectParams,stuckAreas,stuckCentroids]             = list(map(dropKeysOld,[stuckRectParams,stuckAreas,stuckCentroids] ))
+        #[stuckRectParams,stuckAreas,stuckCentroids]             = list(map(dropKeysOld,[stuckRectParams,stuckAreas,stuckCentroids] ))
         [fbStoreRectParams2,fbStoreAreas2,fbStoreCentroids2]    = list(map(dropKeysNew,[l_rect_parms_all,l_areas_all,l_centroids_all] ))
         a = 1
         if globalCounter == 44:
@@ -529,38 +529,38 @@ def mainer(index):
         a = 1
         # frozen bubbles, other than from previous time step should be considered.================================
         # take frozen bubbles from last N steps. frozen bubbles found in old step are already accounted in else/dist data, get all other.
-        lastStepFrozenGlobIDs           = list(l_FBub_old_new_IDs_old.keys())                   # Frozens from last step
-        lastNStepsFrozen                = 10
-        lastNStepsFrozenTimesAll        = [time for time in frozenGlobal.keys() if max(globalCounter-lastNStepsFrozen-1,0)<time<globalCounter] # if time is in [0 1 2 3 4 5], lastNStepsFrozen = 3, globalCounter = 5 -> out = [2, 3, 4]
-        lastNStepsFrozenIDsExceptOld    = set([a for a in sum(frozenGlobal.values(),[]) if a not in lastStepFrozenGlobIDs]) if len(lastNStepsFrozenTimesAll)>0 else []
-        lastNStepsFrozenLatestTimes     = {ID:max([time for time,IDs in frozenGlobal.items() if ID in IDs]) for ID in lastNStepsFrozenIDsExceptOld}
-        lastNStepsFrozenRectParams      = {str(ID):g_FBub_rect_parms[latestTime][ID]     for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
-        lastNStepsFrozenHullAreas       = {str(ID):g_FBub_areas_hull[latestTime][ID]     for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
-        lastNStepsFrozenCentroids       = {str(ID):g_FBub_centroids[latestTime][ID]      for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
+        #lastStepFrozenGlobIDs           = list(l_FBub_old_new_IDs_old.keys())                   # Frozens from last step
+        #lastNStepsFrozen                = 10
+        #lastNStepsFrozenTimesAll        = [time for time in frozenGlobal.keys() if max(globalCounter-lastNStepsFrozen-1,0)<time<globalCounter] # if time is in [0 1 2 3 4 5], lastNStepsFrozen = 3, globalCounter = 5 -> out = [2, 3, 4]
+        #lastNStepsFrozenIDsExceptOld    = set([a for a in sum(frozenGlobal.values(),[]) if a not in lastStepFrozenGlobIDs]) if len(lastNStepsFrozenTimesAll)>0 else []
+        #lastNStepsFrozenLatestTimes     = {ID:max([time for time,IDs in frozenGlobal.items() if ID in IDs]) for ID in lastNStepsFrozenIDsExceptOld}
+        #lastNStepsFrozenRectParams      = {str(ID):g_FBub_rect_parms[latestTime][ID]     for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
+        #lastNStepsFrozenHullAreas       = {str(ID):g_FBub_areas_hull[latestTime][ID]     for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
+        #lastNStepsFrozenCentroids       = {str(ID):g_FBub_centroids[latestTime][ID]      for ID,latestTime in lastNStepsFrozenLatestTimes.items()}
         
-        stuckRectParams = {**stuckRectParams,   **lastNStepsFrozenRectParams}
-        stuckAreas      = {**stuckAreas,        **lastNStepsFrozenHullAreas}
-        stuckCentroids  = {**stuckCentroids,    **lastNStepsFrozenCentroids}
+        #stuckRectParams = {**stuckRectParams,   **lastNStepsFrozenRectParams}
+        #stuckAreas      = {**stuckAreas,        **lastNStepsFrozenHullAreas}
+        #stuckCentroids  = {**stuckCentroids,    **lastNStepsFrozenCentroids}
 
-        fields = [stuckRectParams,fbStoreRectParams2,stuckAreas,fbStoreAreas2,stuckCentroids,fbStoreCentroids2]
+        #fields = [stuckRectParams,fbStoreRectParams2,stuckAreas,fbStoreAreas2,stuckCentroids,fbStoreCentroids2]
         
-        frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, l_contours, globalCounter, frozenLocal, relArea = 0.0, relDist = 0, maxAngle = 1, maxArea = 1) # TODO breaks on higher relDist, probly not being split correctly
-        print(f'frozenLocal:{frozenLocal}')
+        #frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, l_contours, globalCounter, frozenLocal, relArea = 0.0, relDist = 0, maxAngle = 1, maxArea = 1) # TODO breaks on higher relDist, probly not being split correctly
+        #print(f'frozenLocal:{frozenLocal}')
 
         #[cv2.drawContours( blank, l_contours, ID, cyclicColor(key), -1) for ID in cntrIDlist]    # IMSHOW
         # store frozen bubble info for this step using local old IDs. could use only _old field instead, but this is more consistent with other fields 10/02/23
-        frozenOldGlobNewLoc = {}
-        for oldLocalID, newLocalIDs,_,_,centroid in frozenIDsInfo: #["oldLocID: ", ", newLocID: ",", c-c dist: ",", rArea: ",", centroid: "]
+        #frozenOldGlobNewLoc = {}
+        #for oldLocalID, newLocalIDs,_,_,centroid in frozenIDsInfo: #["oldLocID: ", ", newLocID: ",", c-c dist: ",", rArea: ",", centroid: "]
 
-            dataSets = [l_FBub_masks,l_FBub_images,l_FBub_old_new_IDs,l_FBub_rect_parms,l_FBub_centroids,l_FBub_areas_hull,l_FBub_contours_hull]
-            tempStore2(newLocalIDs, l_contours, oldLocalID, err, orig, dataSets, concave = 0)
+        #    dataSets = [l_FBub_masks,l_FBub_images,l_FBub_old_new_IDs,l_FBub_rect_parms,l_FBub_centroids,l_FBub_areas_hull,l_FBub_contours_hull]
+        #    tempStore2(newLocalIDs, l_contours, oldLocalID, err, orig, dataSets, concave = 0)
             
             #findOldGlobIds = []; [findOldGlobIds.append(globID) for globID, locIDs in l_old_new_IDs_old.items() if oldLocalID in locIDs]
-            if type(oldLocalID) == str:                                                                # if old ID already has global ID (str -> global, int -> local)
-                if int(oldLocalID) in l_old_new_IDs_old or oldLocalID in lastNStepsFrozenRectParams:   # in case oldLocalID is old Else bubble ~='7' 11/02/23 or frozen from N step back 18/02/23
-                    #findOldGlobIds.append(oldLocalID)
-                    frozenOldGlobNewLoc[min(newLocalIDs)] = oldLocalID                                 # min(newLocalIDs) ! kind of correct, might cause problems 10/02/23/ modded 19/02/23
-            else: frozenOldGlobNewLoc[min(newLocalIDs)] = oldLocalID                                   # == if it was single local, then it should have a global, if its part of old cluster, it must get new ID 19/02/23 
+            #if type(oldLocalID) == str:                                                                # if old ID already has global ID (str -> global, int -> local)
+            #    if int(oldLocalID) in l_old_new_IDs_old or oldLocalID in lastNStepsFrozenRectParams:   # in case oldLocalID is old Else bubble ~='7' 11/02/23 or frozen from N step back 18/02/23
+            #        #findOldGlobIds.append(oldLocalID)
+            #        frozenOldGlobNewLoc[min(newLocalIDs)] = oldLocalID                                 # min(newLocalIDs) ! kind of correct, might cause problems 10/02/23/ modded 19/02/23
+            #else: frozenOldGlobNewLoc[min(newLocalIDs)] = oldLocalID                                   # == if it was single local, then it should have a global, if its part of old cluster, it must get new ID 19/02/23 
             #if type(oldLocalID) == str and int(oldLocalID) in l_old_new_IDs_old: findOldGlobIds.append(oldLocalID) # in case oldLocalID is old Else bubble ~='7' 11/02/23
             #if type(oldLocalID) == str and oldLocalID in lastNStepsFrozenRectParams: findOldGlobIds.append(oldLocalID) # frozen from N step back 18/02/23
             
@@ -568,33 +568,34 @@ def mainer(index):
             #frozenKeys = list(frozenOldGlobNewLoc.values()) wrong 11/02/23
             # !!! detectStuckBubs -> centroidAreaSumPermutations when permutation search fails returns empty array. it fucks shit up
         # !!! centroidAreaSumPermutations is used elsewhere, i think there its dealth with. 
-        print(f'frozenIDs:{frozenIDs}')
-        remIDs = [];print(f'remIDs:{remIDs}')
-        for i, a in enumerate(frozenIDs): 
-            if type(a) == list:
-                if len(a) == 0 :
-                    print("asdasdsadsad!!!!!!!!!!!!!!!!!!!!!")
-                    remIDs.append(i)
-        #frozenIDs = [a for a in frozenIDs if type(a) != list ]
-        print(f'remIDs:{remIDs}')
-        frozenIDs = [a for i,a in enumerate(frozenIDs) if i not in remIDs ] #
-        frozenIDsInfo = np.array([a for i,a in enumerate(frozenIDsInfo) if i not in remIDs ], dtype=object)
-        print(f'frozenIDs:{frozenIDs}')
+        #print(f'frozenIDs:{frozenIDs}')
+        #remIDs = [];print(f'remIDs:{remIDs}')
+        #for i, a in enumerate(frozenIDs): 
+        #    if type(a) == list:
+        #        if len(a) == 0 :
+        #            print("asdasdsadsad!!!!!!!!!!!!!!!!!!!!!")
+        #            remIDs.append(i)
+        ##frozenIDs = [a for a in frozenIDs if type(a) != list ]
+        #print(f'remIDs:{remIDs}')
+        #frozenIDs = [a for i,a in enumerate(frozenIDs) if i not in remIDs ] #
+        #frozenIDsInfo = np.array([a for i,a in enumerate(frozenIDsInfo) if i not in remIDs ], dtype=object)
+        #print(f'frozenIDs:{frozenIDs}')
 
-        if  1 == 1:
-            strRavel = ["oldLocID: ", ", newLocID: ",", c-c dist: ",", rArea: ",", centroid: "]
-            formats = ["{}", "{}", "{:.2f}", "{:.2f}", "{}"]
-            frozenIDsInfoFMRT = [[frmt.format(nbr) for nbr,frmt in zip(elem, formats)] for elem in frozenIDsInfo] if len(frozenIDsInfo)> 0 else []
-            peps = ["".join(np.ravel([strRavel,k], order='F')) for k in frozenIDsInfoFMRT] if len(frozenIDsInfoFMRT)> 0 else []
-            peps = "\n".join(peps) if len(frozenIDsInfo)> 0 else []
-            print(f'Detected Frozen bubbles:\n{peps}')
-        print(f'{globalCounter}:------------- Frozen bubbles detected ------------\n') if len(frozenIDsInfo) > 0 else print(f'{globalCounter}:------------- No frozen bubbles found ------------\n')
+        #if  1 == 1:
+        #    strRavel = ["oldLocID: ", ", newLocID: ",", c-c dist: ",", rArea: ",", centroid: "]
+        #    formats = ["{}", "{}", "{:.2f}", "{:.2f}", "{}"]
+        #    frozenIDsInfoFMRT = [[frmt.format(nbr) for nbr,frmt in zip(elem, formats)] for elem in frozenIDsInfo] if len(frozenIDsInfo)> 0 else []
+        #    peps = ["".join(np.ravel([strRavel,k], order='F')) for k in frozenIDsInfoFMRT] if len(frozenIDsInfoFMRT)> 0 else []
+        #    peps = "\n".join(peps) if len(frozenIDsInfo)> 0 else []
+        #    print(f'Detected Frozen bubbles:\n{peps}')
+        #print(f'{globalCounter}:------------- Frozen bubbles detected ------------\n') if len(frozenIDsInfo) > 0 else print(f'{globalCounter}:------------- No frozen bubbles found ------------\n')
         
         #for IDS in [bID for bID,bType in l_bubble_type_old.items() if bType == typeFrozen]:
         #    l_predict_displacement[IDS] = [tuple(map(int,stuckCentroids[str(IDS)])), -1]
     
         inletIDs, inletIDsType  = overlappingRotatedRectangles(l_rect_parms_old, fakeBox, returnType = 1)           # inletIDs: which old IDs are close to inlet? 
-        inletIDs                = [a[0] for a in inletIDs if a[0] not in lastStepFrozenGlobIDs]                     # inletIDsType: 1 & 2 - partially & fully inside.
+        #inletIDs                = [a[0] for a in inletIDs if a[0] not in lastStepFrozenGlobIDs]                     # inletIDsType: 1 & 2 - partially & fully inside.
+        inletIDs                = [a[0] for a in inletIDs]                     # inletIDsType: 1 & 2 - partially & fully inside.
         inletIDsType            = {ID:inletIDsType[ID] for ID in inletIDs} 
   
     unresolvedOldRB   = list(l_RBub_centroids_old.keys())     # list of global IDs for RB  
@@ -638,7 +639,8 @@ def mainer(index):
             fakeBoxW, fakeBoxH      = 176,int(err.shape[0]/3)                                                           # generate  a fake bubble at inlet and add it to  previous frame data.
             fakeBox                 = {-1:[err.shape[1] - fakeBoxW + 1, fakeBoxH, fakeBoxW, fakeBoxH]}                  # this will make sure to gather new bubbles at inlet into single cluster.
             inletIDs, inletIDsType  = overlappingRotatedRectangles(l_rect_parms_old, fakeBox, returnType = 1)           # inletIDs: which old IDs are close to inlet? 
-            inletIDs                = [a[0] for a in inletIDs if a[0] not in lastStepFrozenGlobIDs]                     # inletIDsType: 1 & 2 - partially & fully inside.
+            #inletIDs                = [a[0] for a in inletIDs if a[0] not in lastStepFrozenGlobIDs]                     # inletIDsType: 1 & 2 - partially & fully inside.
+            inletIDs                = [a[0] for a in inletIDs if a[0]]                     # inletIDsType: 1 & 2 - partially & fully inside.
             inletIDsType            = {ID:inletIDsType[ID] for ID in inletIDs}                                                                                                            # note: if edge is shared, then its not fully inside. added 1 pix offset for edge of image
                                                            
 
@@ -671,24 +673,24 @@ def mainer(index):
             
         #------------------------------------------------------------------------------- deal with  frozen bubbles!! ----------------------------------------------
         # Drop frozen IDs from clusters, add as standalone objects.
-        frozenSeparated = False
-        allFrozenLocalIDs = sum(frozenIDs,[])
-        temp = []
-        for subTemp in cc_unique:
-            bfr = []
-            for elem in subTemp:
-                if elem not in allFrozenLocalIDs:bfr.append(elem)
-                else: frozenSeparated = True
-            temp.append(bfr)
-        cc_unique = temp
-        frozenIDs = np.array([a if type(a) != list else min(a) for a in frozenIDs])
+        #frozenSeparated = False
+        #allFrozenLocalIDs = sum(frozenIDs,[])
+        #temp = []
+        #for subTemp in cc_unique:
+        #    bfr = []
+        #    for elem in subTemp:
+        #        if elem not in allFrozenLocalIDs:bfr.append(elem)
+        #        else: frozenSeparated = True
+        #    temp.append(bfr)
+        #cc_unique = temp
+        #frozenIDs = np.array([a if type(a) != list else min(a) for a in frozenIDs])
         # why [42]-> 42? idk 10/02/23
         #if len(frozenIDs)>0: frozenIDsInfo[:,1] = np.array([a if type(a) != list else min(a) for a in frozenIDsInfo[:,1]])
         #frozenIDsInfo = np.array([a if type(a[1]) != list else [a[0]]+[min(a[1])]+[a[2:]] for a in frozenIDsInfo])
 
         jointNeighbors = {min(elem): elem for elem in cc_unique if len(elem)>0}
-        clusterMsg = 'Cluster groups: ' if frozenSeparated == False else f'Cluster groups (frozenIDs:{frozenIDs} detected): '
-        print(clusterMsg,"\n", list(jointNeighbors.values()))
+        #clusterMsg = 'Cluster groups: ' if frozenSeparated == False else f'Cluster groups (frozenIDs:{frozenIDs} detected): '
+        #print(clusterMsg,"\n", list(jointNeighbors.values()))
         # collect multiple contours into one object, store it for further check
         # on first iteration there are no more checks to be done. store it early
 
@@ -763,15 +765,18 @@ def mainer(index):
             elseOldNewDoubleCriteriumSubIDs     = {}
             oldNewDB                            = []
             
-            jointNeighborsWoFrozen              = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items() if mainNewID not in frozenIDs}   # drop frozen bubbles FB from clusters          e.g {15: [15, 18, 20, 22, 25, 30], 16: [16, 17], 27: [27]} (no frozen in this example)
+            #jointNeighborsWoFrozen              = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items() if mainNewID not in frozenIDs}   # drop frozen bubbles FB from clusters          e.g {15: [15, 18, 20, 22, 25, 30], 16: [16, 17], 27: [27]} (no frozen in this example)
+            jointNeighborsWoFrozen              = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items()}   # drop frozen bubbles FB from clusters          e.g {15: [15, 18, 20, 22, 25, 30], 16: [16, 17], 27: [27]} (no frozen in this example)
             #jointNeighborsWoFrozen              = {**jointNeighborsWoFrozen,**{ID:[ID] for ID in unresolvedNewRB}}                                        # add new RBs to clusters, since methods merged e.g {15: [... same, no rb here
             jointNeighborsWoFrozen_hulls        = {ID: cv2.convexHull(np.vstack(l_contours[subNewIDs])) for ID, subNewIDs in jointNeighborsWoFrozen.items()}# pre-calculate hulls (dims [N, 1, 2]),         e.g {15: array([[[1138,  488]...ype=int32), 16: array([[[395, 550]],...ype=int32), ...}
             jointNeighborsWoFrozen_bound_rect   = {ID: cv2.boundingRect(hull) for ID, hull in jointNeighborsWoFrozen_hulls.items()}                         # bounding rectangles,                          e.g {15: (857, 422, 282, 136), 16: (305, 495, 91, 98), 27: (648, 444, 164, 205)}
             jointNeighborsWoFrozen_c_a          = {ID: getCentroidPosContours(bodyCntrs = [hull]) for ID, hull in jointNeighborsWoFrozen_hulls.items()}     # centrouid and areas for a perfect match test  e.g {15: ((1009, 496), 28955), 16: ((...), 6829), 27: ((...), 21431)}
             
-            resolvedFrozenGlobalIDs         = [int(elem) for elem in frozenOldGlobNewLoc.values() if type(elem) == str]                                     # frozen global IDs are not recovered           e.g []
+            #resolvedFrozenGlobalIDs         = [int(elem) for elem in frozenOldGlobNewLoc.values() if type(elem) == str]                                     # frozen global IDs are not recovered           e.g []
+            #oldDistanceCentroidsWoFrozen    = {key:val for key,val in l_DBub_centroids_old.items()                                                          # drop frozens. not sure what is the difference
+            #                                   if key not in list(l_FBub_old_new_IDs_old.keys()) + resolvedFrozenGlobalIDs}                                 # between two lists                             e.g  {1: (366, 539), 2: (927, 505), 3: (741, 539), 4: (1080, 486), 7: (1204, 446)}
             oldDistanceCentroidsWoFrozen    = {key:val for key,val in l_DBub_centroids_old.items()                                                          # drop frozens. not sure what is the difference
-                                               if key not in list(l_FBub_old_new_IDs_old.keys()) + resolvedFrozenGlobalIDs}                                 # between two lists                             e.g  {1: (366, 539), 2: (927, 505), 3: (741, 539), 4: (1080, 486), 7: (1204, 446)}
+                                               }                                 # between two lists                             e.g  {1: (366, 539), 2: (927, 505), 3: (741, 539), 4: (1080, 486), 7: (1204, 446)}
 
             oldDBubAndUnresolvedOldRB       = {**oldDistanceCentroidsWoFrozen,**{ID:l_RBub_centroids_old[ID] for ID in unresolvedOldRB}}                      # merge old DB with all old RBs. since 
                                                                                                                                                             # old-newRB method was merged into this
@@ -1193,9 +1198,12 @@ def mainer(index):
                     jointNeighbors[min(subIDs)] = subIDs
             print(f'Reclustering jointNeighbors in case of discontinueties due to recovery. new Clusters: {jointNeighbors}')
             
-            centroidsResolved   = {**l_RBub_centroids,  **l_RBub_r_centroids,   **l_DBub_centroids,   **l_DBub_r_centroids,     **l_FBub_centroids,       **l_MBub_centroids}
-            areasResolved       = {**l_RBub_areas_hull, **l_RBub_r_areas_hull,  **l_DBub_areas_hull,  **l_DBub_r_areas_hull,    **l_FBub_areas_hull,      **l_MBub_areas_hull}
-            oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_FBub_old_new_IDs,     **l_MBub_old_new_IDs}
+           #centroidsResolved   = {**l_RBub_centroids,  **l_RBub_r_centroids,   **l_DBub_centroids,   **l_DBub_r_centroids,     **l_FBub_centroids,       **l_MBub_centroids}
+           #areasResolved       = {**l_RBub_areas_hull, **l_RBub_r_areas_hull,  **l_DBub_areas_hull,  **l_DBub_r_areas_hull,    **l_FBub_areas_hull,      **l_MBub_areas_hull}
+           #oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_FBub_old_new_IDs,     **l_MBub_old_new_IDs}
+            centroidsResolved   = {**l_RBub_centroids,  **l_RBub_r_centroids,   **l_DBub_centroids,   **l_DBub_r_centroids,     **l_MBub_centroids}
+            areasResolved       = {**l_RBub_areas_hull, **l_RBub_r_areas_hull,  **l_DBub_areas_hull,  **l_DBub_r_areas_hull,    **l_MBub_areas_hull}
+            oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_MBub_old_new_IDs}
             rectParamsOld       = {oldID:l_rect_parms_old[oldID] for oldID in unresolvedOldDB + unresolvedOldRB }#if oldID not in inletIDs        # old global IDs with bounding rectangle parameters
         
             resolvedContoursNew     = sum(oldNewIdsResolved.values(),[])
@@ -1407,8 +1415,10 @@ def mainer(index):
 
             # ==== clearing recovered DB bubbles ====
             if len(oldNewDB) > 0: # if all distance checks fail (oldNewDB)
-                unresolvedNewDB = [A for A in jointNeighbors.keys() if A not in oldNewDB[:,1] and A not in frozenOldGlobNewLoc.keys()];   # drop resolved new DB from unresolved new DB
-                unresolvedOldDB = [A for A in unresolvedOldDB if A not in oldNewDB[:,0] and A not in resolvedFrozenGlobalIDs];              # drop resolved old DB from unresolved old DB
+                #unresolvedNewDB = [A for A in jointNeighbors.keys() if A not in oldNewDB[:,1] and A not in frozenOldGlobNewLoc.keys()];   # drop resolved new DB from unresolved new DB
+                unresolvedNewDB = [A for A in jointNeighbors.keys() if A not in oldNewDB[:,1]];   # drop resolved new DB from unresolved new DB
+                #unresolvedOldDB = [A for A in unresolvedOldDB if A not in oldNewDB[:,0] and A not in resolvedFrozenGlobalIDs];              # drop resolved old DB from unresolved old DB
+                unresolvedOldDB = [A for A in unresolvedOldDB if A not in oldNewDB[:,0]];              # drop resolved old DB from unresolved old DB
                 for ID in unresolvedNewDB.copy():
                      subIDs =  jointNeighbors[ID]
                      if len(subIDs) == 1 and ID in unresolvedNewRB:              # >>>>>>>>>> not sure what it does <<<<<<<<<<<<<
@@ -1435,7 +1445,8 @@ def mainer(index):
     print(f'{globalCounter}:--------- Begin merge detection/processing --------\n')
     # ======== PART 00: test if two resolved contours share a contour on same frame. rare but happens. not completed! =========
     cc_oldIDs, cc_newIDs = [], []
-    oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_FBub_old_new_IDs,     **l_MBub_old_new_IDs}
+    #oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_FBub_old_new_IDs,     **l_MBub_old_new_IDs}
+    oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_MBub_old_new_IDs}
     # == take a look if resolved bubbles are sharing contours. there some rare cases where flat bubbles dont want to merge but permutations start to include them ==
     copyIDs,numCopies      =  np.unique(sum(list(oldNewIdsResolved.values()),[]), return_counts=True)
     if max(numCopies)>1:  # if some contour has more than one copy- it is shared between some bubbles
@@ -1526,9 +1537,11 @@ def mainer(index):
         # small old is missing, no new are missing. Target resolved old which has a history of 2+ steps. 
         # resolved centroid will be offset from predicted in derection of missing bubble.
         # if you were to consider total center of mass, of correct combination, it would be closer to resolved centroid.
-        rectParamsResolved  = {**l_RBub_r_rect_parms,**l_DBub_r_rect_parms,**l_RBub_rect_parms,**l_DBub_rect_parms, **l_MBub_rect_parms} # first time MB might have str key
-        centroidsResolved   = {**l_RBub_centroids,  **l_RBub_r_centroids,   **l_DBub_centroids,   **l_DBub_r_centroids,     **l_FBub_centroids,       **l_MBub_centroids}
-        areasResolved       = {**l_RBub_areas_hull, **l_RBub_r_areas_hull,  **l_DBub_areas_hull,  **l_DBub_r_areas_hull,    **l_FBub_areas_hull,      **l_MBub_areas_hull}
+        rectParamsResolved  = {**l_RBub_r_rect_parms,   **l_DBub_r_rect_parms,  **l_RBub_rect_parms,    **l_DBub_rect_parms,    **l_MBub_rect_parms} # first time MB might have str key
+        #centroidsResolved   = {**l_RBub_centroids,      **l_RBub_r_centroids,   **l_DBub_centroids,     **l_DBub_r_centroids,   **l_FBub_centroids,       **l_MBub_centroids}
+        #areasResolved       = {**l_RBub_areas_hull,     **l_RBub_r_areas_hull,  **l_DBub_areas_hull,    **l_DBub_r_areas_hull,  **l_FBub_areas_hull,      **l_MBub_areas_hull}
+        centroidsResolved   = {**l_RBub_centroids,      **l_RBub_r_centroids,   **l_DBub_centroids,     **l_DBub_r_centroids,   **l_MBub_centroids}
+        areasResolved       = {**l_RBub_areas_hull,     **l_RBub_r_areas_hull,  **l_DBub_areas_hull,    **l_DBub_r_areas_hull,  **l_MBub_areas_hull}
         rectParamsOld       = {oldID:l_rect_parms_old[oldID] for oldID in unresolvedOldDB + unresolvedOldRB }
         resolvedGlobals      = list(oldNewDB[:,0]) + list(RBOldNewDist[:,0])   # holds global IDs of resolved
         resolvedLocals      = list(oldNewDB[:,1]) + list(RBOldNewDist[:,1])   # holds local IDs of resolved
@@ -1845,8 +1858,8 @@ def mainer(index):
             l_DBub_old_new_IDs_old[globalID]    = l_DBub_old_new_IDs[localID]
             l_DBub_areas_hull_old[globalID]     = l_DBub_areas_hull[localID]
             l_contours_hull[globalID]           = l_DBub_contours_hull[localID]
-        l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old = {},{},{},{},{}            
-        l_FBub_old_new_IDs_old = {}
+        #l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old = {},{},{},{},{}            
+        #l_FBub_old_new_IDs_old = {}
         #print('g_bubble_type',g_bubble_type)
         #l_bubble_type_old = {ID:val[0] for ID,val in g_bubble_type.items()}
         #print('l_bubble_type',l_bubble_type)
@@ -1861,38 +1874,40 @@ def mainer(index):
         # print('l_DBub_centroids',l_DBub_centroids)
         
         # ============== frozen tricks ============
-        oldLocIDs2 = frozenIDsInfo[:,0] if len(frozenIDsInfo)>0 else np.array([]) # 10/02/23
-        oldGlobIDs = {}
-        for oldLocID in oldLocIDs2:
-            if type(oldLocID) == str: oldGlobIDs[oldLocID] = int(oldLocID)
-            else: oldGlobIDs[oldLocID] = max(g_bubble_type) + 1
+        #oldLocIDs2 = frozenIDsInfo[:,0] if len(frozenIDsInfo)>0 else np.array([]) # 10/02/23
+        #oldGlobIDs = {}
+        #for oldLocID in oldLocIDs2:
+        #    if type(oldLocID) == str: oldGlobIDs[oldLocID] = int(oldLocID)
+        #    else: oldGlobIDs[oldLocID] = max(g_bubble_type) + 1
         #oldGlobIDs02 = [
         #                    {ii:ID for ID, vals in l_old_new_IDs_old.items() if ii in vals} if type(ii) != str else {ii:int(ii)} 
         #                    for ii in oldLocIDs2 ] # relevant new:old dict   
         #oldGlobIDs = {};[oldGlobIDs.update(elem) for elem in oldGlobIDs02] # basically flatten [{x:a},{y:b}] into {x:a,y:b} or something  10/02/23
-        l_FBub_old_new_IDs_old = {oldGlobIDs[localOldID]:localNewIDs for localOldID, localNewIDs,_,_,_ in frozenIDsInfo}
-        for key in l_FBub_masks: # contains relation indices that satisfy distance
-            gKey = oldGlobIDs[key]
-            l_FBub_masks_old[gKey]                  = l_FBub_masks[key]
-            l_FBub_images_old[gKey]                 = l_FBub_images[key]
-            l_FBub_rect_parms_old[gKey]             = l_FBub_rect_parms[key]
-            l_FBub_centroids_old[gKey]              = l_FBub_centroids[key] 
-            l_FBub_areas_hull_old[gKey]             = l_FBub_areas_hull[key]
-            l_bubble_type[gKey]                     = typeFrozen if str(gKey) not in lastNStepsFrozenCentroids else typeRecoveredFrozen
-            l_contours_hull[gKey]                   = l_FBub_contours_hull[key]
-            if globalCounter not in frozenGlobal:
-                frozenGlobal[globalCounter]             = []
-                g_FBub_rect_parms[globalCounter]        = {}
-                g_FBub_centroids[globalCounter]         = {}
-                g_FBub_areas_hull[globalCounter]        = {}
+        #l_FBub_old_new_IDs_old = {oldGlobIDs[localOldID]:localNewIDs for localOldID, localNewIDs,_,_,_ in frozenIDsInfo}
+        #for key in l_FBub_masks: # contains relation indices that satisfy distance
+        #    gKey = oldGlobIDs[key]
+        #    l_FBub_masks_old[gKey]                  = l_FBub_masks[key]
+        #    l_FBub_images_old[gKey]                 = l_FBub_images[key]
+        #    l_FBub_rect_parms_old[gKey]             = l_FBub_rect_parms[key]
+        #    l_FBub_centroids_old[gKey]              = l_FBub_centroids[key] 
+        #    l_FBub_areas_hull_old[gKey]             = l_FBub_areas_hull[key]
+        #    #l_bubble_type[gKey]                     = typeFrozen if str(gKey) not in lastNStepsFrozenCentroids else typeRecoveredFrozen
+        #    l_bubble_type[gKey]                     = typeFrozen
+        #    l_contours_hull[gKey]                   = l_FBub_contours_hull[key]
+        #    if globalCounter not in frozenGlobal:
+        #        frozenGlobal[globalCounter]             = []
+        #        g_FBub_rect_parms[globalCounter]        = {}
+        #        g_FBub_centroids[globalCounter]         = {}
+        #        g_FBub_areas_hull[globalCounter]        = {}
                
-            if gKey not in g_bubble_type: g_bubble_type[gKey] = {}
+        #    if gKey not in g_bubble_type: g_bubble_type[gKey] = {}
             
-            g_bubble_type[gKey][globalCounter]      = typeFrozen if str(gKey) not in lastNStepsFrozenCentroids else typeRecoveredFrozen
-            frozenGlobal[globalCounter].append(gKey)
-            g_FBub_rect_parms[globalCounter][gKey]  = l_FBub_rect_parms[key]
-            g_FBub_centroids[globalCounter][gKey]   = l_FBub_centroids[key]
-            g_FBub_areas_hull[globalCounter][gKey]  = l_FBub_areas_hull[key]
+        #    #g_bubble_type[gKey][globalCounter]      = typeFrozen if str(gKey) not in lastNStepsFrozenCentroids else typeRecoveredFrozen
+        #    g_bubble_type[gKey][globalCounter]      = typeFrozen 
+        #    frozenGlobal[globalCounter].append(gKey)
+        #    g_FBub_rect_parms[globalCounter][gKey]  = l_FBub_rect_parms[key]
+        #    g_FBub_centroids[globalCounter][gKey]   = l_FBub_centroids[key]
+        #    g_FBub_areas_hull[globalCounter][gKey]  = l_FBub_areas_hull[key]
 
         for [old,new] in oldNewDB: # contains relation indices that satisfy distance
             l_bubble_type[old]                  = typeElse 
@@ -1974,7 +1989,8 @@ def mainer(index):
         for gID,localID in zip(range(startID,startID+len(unresolvedNewDB),1), unresolvedNewDB):#enumerate(unresolvedNewDB): 
             l_bubble_type[gID]                  = typeElse
             g_bubble_type[gID]                  = {}
-            g_bubble_type[gID][globalCounter]   = typeElse if localID not in frozenIDs else typeFrozen
+            #g_bubble_type[gID][globalCounter]   = typeElse if localID not in frozenIDs else typeFrozen
+            g_bubble_type[gID][globalCounter]   = typeElse 
             
             l_DBub_masks_old[gID]               = l_DBub_masks[localID]
             l_DBub_images_old[gID]              = l_DBub_images[localID]
@@ -2069,7 +2085,8 @@ def mainer(index):
         else:
             updateValue                     = l_areas_hull_old[key]
             historyLen                      = len(g_predict_area_hull[key])
-            timeStep                        = globalCounter-1 if key not in lastNStepsFrozenLatestTimes else lastNStepsFrozenLatestTimes[key]
+            #timeStep                        = globalCounter-1 if key not in lastNStepsFrozenLatestTimes else lastNStepsFrozenLatestTimes[key]
+            timeStep                        = globalCounter-1
             if historyLen == 1:
                 prevVals                        = [g_predict_area_hull[key][timeStep][0],updateValue]
                 hullAreaMean                    = np.mean(prevVals)
@@ -2117,7 +2134,8 @@ def mainer(index):
             pCentroid                       = l_predict_displacement[key][0] # current frame prediction based on prev history
             updateValue                     = l_predict_displacement[key][1] # difference between current frame prediction and resolved centroid
             historyLen                      = len(g_predict_displacement[key])
-            timeStep                        = globalCounter-1 if key not in lastNStepsFrozenLatestTimes else lastNStepsFrozenLatestTimes[key]
+            #timeStep                        = globalCounter-1 if key not in lastNStepsFrozenLatestTimes else lastNStepsFrozenLatestTimes[key]
+            timeStep                        = globalCounter-1
             if historyLen == 1:
                 prevVals                        = [g_predict_displacement[key][globalCounter-1][1],updateValue]
                 pc2CMean                        = np.mean(prevVals)

@@ -218,7 +218,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 600 #736 #300 #  53+3+5
-dataNum             = 48 #130 # 7+5   
+dataNum             = 46 #130 # 7+5   
 
 assistManually      = 1
 assistFramesG       = [1068]#751,976
@@ -226,7 +226,7 @@ assistFrames        = [a - dataStart for a in assistFramesG]
 doIntermediateData              = 1                                         # dump backups ?
 intermediateDataStepInterval    = 1                                        # dumps latest data field even N steps
 readIntermediateData            = 1                                         # load backups ?
-startIntermediateDataAtG        = 620                                     # frame stack index ( in X_Data). START FROM NEXT FRAME
+startIntermediateDataAtG        = 643                                     # frame stack index ( in X_Data). START FROM NEXT FRAME
 startIntermediateDataAt         = startIntermediateDataAtG - dataStart      # to global, which is pseudo global ofc. global to dataStart
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
@@ -470,7 +470,8 @@ def mainer(index):
                         activeFrozen[ID] = []
                         counter = 0
                     else: counter = activeFrozen[ID][2]
-                    activeFrozen[ID] = [[displacementFromStartMean,displacementFromStartStd],[areaMean,areaStd],counter+1]
+                    cntrd = list(np.mean(path,axis=0).astype(int))
+                    activeFrozen[ID] = [[displacementFromStartMean,displacementFromStartStd],[areaMean,areaStd],counter+1,cntrd,l_rect_parms_old[ID]]
                     if ID not in allFrozenIDs: allFrozenIDs[globalCounter] = []
                     allFrozenIDs[globalCounter].append(ID)
                 else: activeFrozen.pop(ID,None)
@@ -484,15 +485,48 @@ def mainer(index):
                                             {ID:val for ID,val in l_rect_parms_all.items() if ID not in contoursFilter_RectParams_dropIDs},
                                            fakeBox, returnType = 1)          # inletIDs, inletIDsType after frozen part
         inletIDsNew                     = [a[0] for a in inletIDsNew]
+        inletFullyInside                = [ID for ID,bType in inletIDsTypeNew.items() if bType == 2]
         #inletIDsNew                     =  [ID for ID in inletIDsNew if cv2.contourArea(l_contours[ID]) > minAreaInlet]
         #[contoursFilter_RectParams_dropIDs.remove(x) for x in inletIDsNew if x in contoursFilter_RectParams_dropIDs]                # remove-drop == which to keep.
         dropKeysOld                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs_old)   # dropping frozens from inlet since
-        dropKeysNew                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs        + inletIDsNew)  # bubbles act bad there, might false-positive
+        dropKeysNew                                             = lambda lib: dropKeys(lib,contoursFilter_RectParams_dropIDs + inletFullyInside)  # bubbles act bad there, might false-positive
         [stuckRectParams,stuckAreas,stuckCentroids]             = list(map(dropKeysOld,[stuckRectParams,stuckAreas,stuckCentroids] ))
         [fbStoreRectParams2,fbStoreAreas2,fbStoreCentroids2]    = list(map(dropKeysNew,[l_rect_parms_all,l_areas_all,l_centroids_all] ))
+        a = 1
+        if globalCounter == 44:
+            activeFBub_RP = {str(ID):vals[4] for ID,vals in activeFrozen.items()}
+            intersectingCombs = overlappingRotatedRectangles(activeFBub_RP,fbStoreRectParams2)
+            cc_unique   = graphUniqueComponents([str(ID) for ID in activeFBub_RP.keys()], intersectingCombs)          # clusters. if one real FB has multiple IDs
         
-        
+            #cc_unique = [['a',1,2],['b','c',3],['d','e',4,5]]
+            fbInCC = [[subID for subID in comb if type(subID) == str] for comb in cc_unique ]                         # they will both trigger match. if there is one.
+            notfbInCC = [[subID for subID in comb if type(subID) != str] for comb in cc_unique ]                      # split clusters into oldFB and others
+            a = 1
+            frCulpr = []
+            for i,c in enumerate(fbInCC):                                       # fbInCC: [[a],[d],[b,c]], notfbInCC:[[1],[2,3],[4,5]]
+                cases = []                                                      #
+                for fID in c:                                                   # if [b,c]- > take [b,perms(4,5)] calc best
+                    a = 1
+                    predictCentroid = np.array(activeFrozen[int(fID)][3],int)   # then sol_b = [b,dist_b,subIDs_b]
+                    dist,dStd       = activeFrozen[int(fID)][0]                 # then sol_c = [c,dist_c,subIDs_c]
+                    area,_          = activeFrozen[int(fID)][1]                 # then sol is lowest dist_ 
+                    numCounts       = activeFrozen[int(fID)][2]
+                    
+                    permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,fbStoreRectParams2, activeFBub_RP[fID], notfbInCC[i], fbStoreCentroids2, fbStoreAreas2,
+                                                    predictCentroid,5 + dist + 5*dStd, area, relAreaCheck = 0.7, debug = 0)
+                cases.append([fID,permDist2,permIDsol2])
+                where = np.argmin([b for _,b,_ in cases])
+                frCulpr.append(cases[where])
+                
+            # when dist sols
+                a = 1
+                    #subPerms = sum([list(itertools.combinations(notfbInCC[i], r)) for r in range(1,len(notfbInCC[i])+1)],[])
+                    #allSubCombs = [[fID]+list(elem) for elem in subPerms]
+            #    if len(c) > :
+            #        1
+        #if len(intersectingCombs)>0:
 
+        a = 1
         # frozen bubbles, other than from previous time step should be considered.================================
         # take frozen bubbles from last N steps. frozen bubbles found in old step are already accounted in else/dist data, get all other.
         lastStepFrozenGlobIDs           = list(l_FBub_old_new_IDs_old.keys())                   # Frozens from last step
@@ -510,7 +544,7 @@ def mainer(index):
 
         fields = [stuckRectParams,fbStoreRectParams2,stuckAreas,fbStoreAreas2,stuckCentroids,fbStoreCentroids2]
         
-        frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, l_contours, globalCounter, frozenLocal, relArea = 0.5, relDist = 3, maxAngle = 10, maxArea = 2000) # TODO breaks on higher relDist, probly not being split correctly
+        frozenIDs,frozenIDsInfo = detectStuckBubs(*fields, l_contours, globalCounter, frozenLocal, relArea = 0.0, relDist = 0, maxAngle = 1, maxArea = 1) # TODO breaks on higher relDist, probly not being split correctly
         print(f'frozenLocal:{frozenLocal}')
 
         #[cv2.drawContours( blank, l_contours, ID, cyclicColor(key), -1) for ID in cntrIDlist]    # IMSHOW
@@ -2406,7 +2440,9 @@ if os.path.exists(os.path.join(intermediateDataFolder,'data.pickle')) and readIn
             if displacementFromStartMean < 5:                                                                          # 
                 activeFrozen2[ID] = []
                 counter = allFrozenIDs_numPromotes.count(ID)
-                activeFrozen2[ID] = [[displacementFromStartMean,displacementFromStartStd],[areaMean,areaStd],counter]
+                recPar = frozenBuffer_old2[ID][max(list(frozenBuffer_old2[ID].keys()))][2]
+                cntrd = list(np.mean(path,axis=0).astype(int))
+                activeFrozen2[ID] = [[displacementFromStartMean,displacementFromStartStd],[areaMean,areaStd],counter,cntrd,recPar]
                 
          
     print(activeFrozen2==activeFrozen)

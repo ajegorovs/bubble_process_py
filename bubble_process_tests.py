@@ -14,7 +14,7 @@ import cv2
 #                                   inverse_gaussian_gradient,
 #                                   checkerboard_level_set)
 import numpy as np, itertools, networkx as nx
-import os#, multiprocessing
+import os, glob#, multiprocessing
 # import glob
 from matplotlib import pyplot as plt
 # from skimage.morphology import disk
@@ -183,8 +183,8 @@ toList = lambda x: [x] if type(x) != list else x
 mainOutputFolder            = r'.\imageMainFolder_output'                        # these are main themed folders, sub-projects go inside.
 mainIntermediateDataFolder  = r'.\intermediateData'                              # these are main themed folders, sub-projects go inside.
 mainManualMasksFolder       = r'.\manualMask'                                    # these are main themed folders, sub-projects go inside.
-
-for directory in [mainOutputFolder, mainIntermediateDataFolder, mainManualMasksFolder]:
+mainInputImageFolder        = r'.\inputFolder'   
+for directory in [mainOutputFolder, mainIntermediateDataFolder, mainManualMasksFolder, mainInputImageFolder]:
         if not os.path.exists(directory):
              os.mkdir(directory) 
 
@@ -193,11 +193,13 @@ mainOutputSubFolders= ['ringDetect']                                            
 imageFolder             = mainOutputFolder                                       # defaults output to main folder
 intermediateDataFolder  = mainIntermediateDataFolder                             # defaults output to main folder
 manualMasksFolder       = mainManualMasksFolder                                  # defaults output to main folder
+manualInputImageFolder  = mainInputImageFolder
 for folderName in mainOutputSubFolders:                                          # or creates heararchy of folders "subfolder/subsub/.."
     imageFolder             = os.path.join(imageFolder,             folderName)
     intermediateDataFolder  = os.path.join(intermediateDataFolder,  folderName)
     manualMasksFolder       = os.path.join(manualMasksFolder,       folderName)
-    for directory in [imageFolder, intermediateDataFolder, manualMasksFolder]:
+    manualInputImageFolder  = os.path.join(manualInputImageFolder,  folderName)
+    for directory in [imageFolder, intermediateDataFolder, manualMasksFolder,manualInputImageFolder]:
         if not os.path.exists(directory):
              os.mkdir(directory) 
 
@@ -218,7 +220,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 600 #736 #300 #  53+3+5
-dataNum             = 400 #130 # 7+5   
+dataNum             = 0 #130 # 7+5   
 
 assistManually      = 1
 assistFramesG       = [763,1068]#751,976
@@ -280,12 +282,16 @@ def debugOnlyGFX(section):
         return False
 predictVectorPathFolder = r'./debugImages/predictVect'
 if not os.path.exists(predictVectorPathFolder): os.makedirs(predictVectorPathFolder)
+
+
+
 imgNum = 46
 
-imageMainFolder = r'D:/Alex/Darbs.exe/Python_general/bubble_process/imageMainFolder/'
-init(imageMainFolder,imgNum)
+#imageMainFolder = r'D:/Alex/Darbs.exe/Python_general/bubble_process/imageMainFolder/'
+#init(imageMainFolder,imgNum)
 
-X_data, mean, imageLinks = initImport(mode,workBigArray,recalcMean,readSingleFromArray,pickleNewDataLoad,pickleNewDataSave,pickleSingleCaseSave)
+
+
 
 def exportFirstFrame(markFirstExport,dataStart):
     #global manualMasksFolder
@@ -346,6 +352,67 @@ def extractManualMask2(index = dataStart, debug  = 0): # either draw red masks o
     IDs = np.arange(0,len(params))
     return {ID:contour for ID,contour in enumerate(contours)},{ID:param for ID,param in enumerate(params)}
 #typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge,typeRecoveredFrozen = np.int8(0),np.int8(1),np.int8(2),np.int8(3), np.int8(4), np.int8(5), np.int8(6), np.int8(7)
+def adjustBrightness(image,adjustBrightness):
+    if adjustBrightness == 1:
+        brightness = np.sum(image) / (255 * np.prod(image.shape))
+        minimum_brightness = 0.66
+        ratio = brightness / minimum_brightness
+        if ratio >= 1:
+            print("Image already bright enough")
+            return image
+        # Otherwise, adjust brightness to get the target brightness
+        return cv2.convertScaleAbs(image, alpha = 1 / ratio, beta = 0)
+    else:
+        return image
+
+def undistort(image):
+    mapXY = (np.load('./mapx.npy'), np.load('./mapy.npy'))
+    return cv2.remap(image,mapXY[0],mapXY[1],cv2.INTER_LINEAR)
+
+def cropImage(image , importMaskLink,cropUsingMask):
+    if cropUsingMask == 1:
+        mask          = cv2.imread(importMaskLink,1)
+        mask   = cv2.cvtColor(mask, cv2.COLOR_BGR2HSV)[:,:,0]
+        ret, thresh = cv2.threshold(mask, 127, 255, 0)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        [X, Y, W, H] = cv2.boundingRect(contours[0])
+        # cv2.imshow("mask" , image[Y:Y+H, X:X+W])
+        return image[Y:Y+H, X:X+W]
+    else:
+        return image
+
+imageLinks = glob.glob(manualInputImageFolder + "**/*.bmp", recursive=True) 
+img     = cv2.imread (imageLinks[0],0)
+#cv2.imshow('img',img)
+bright  = adjustBrightness(img,0)
+#cv2.imshow('bright',bright)
+dist    = undistort(bright)
+#cv2.imshow('dist',dist)
+cropMaskName = mainOutputSubFolders[0] if len(mainOutputSubFolders)>0 else 'cropMask'
+cropMaskPath = os.path.join(mainManualMasksFolder, f"{cropMaskName}.png")
+if not os.path.exists(cropMaskPath):
+    print(f"No crop mask in {mainManualMasksFolder} folder!, creating mask : {cropMaskName}.png")
+    cv2.imwrite(cropMaskPath, convertGray2RGB(undistort(cv2.imread(imageLinks[0],0))))
+    input( "modify it and press a key to continue..")
+    cropMask = cv2.imread(cropMaskPath,1)
+else:
+    cropMask = cv2.imread(cropMaskPath,1)
+cropMask = cv2.cvtColor(cropMask, cv2.COLOR_BGR2HSV)
+
+lower_red = np.array([(0,50,50), (170,50,50)])
+upper_red = np.array([(10,255,255), (180,255,255)])
+
+# Create a mask that only contains red color
+manualMask = cv2.inRange(cropMask, lower_red[0], upper_red[0])
+manualMask += cv2.inRange(cropMask, lower_red[1], upper_red[1])
+cv2.imshow(f'extractManualMask {1}: red', manualMask)
+contours = cv2.findContours(manualMask,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
+[X, Y, W, H] = cv2.boundingRect(contours[0])
+img = img[Y:Y+H, X:X+W]
+cv2.imshow(f'img', img)
+a = 1
+X_data, mean, imageLinks = initImport(mode,workBigArray,recalcMean,readSingleFromArray,pickleNewDataLoad,pickleNewDataSave,pickleSingleCaseSave)
+
 
 [typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge,typeRecoveredFrozen,typeMerge] = np.array([0,1,2,3,4,5,6,7,8])
 typeStrFromTypeID = {tID:tStr for tID,tStr in zip(np.array([0,1,2,3,4,5,6,7,8]),['OB','RB', 'rRB', 'DB', 'FB', 'rDB', 'pm', 'rF', 'MB'])}
@@ -367,6 +434,7 @@ l_centroids_old_all, l_Areas_old,l_Areas_hull_old, l_rect_parms_all, l_rect_parm
 g_predict_displacement, g_predict_area_hull  = {}, {}; frozenIDs = []
 l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old, l_contours_hull_old = {}, {}, {}, {}, {}, {}, {}, {}
 fakeBox, steepAngle, g_bublle_type_by_gc_by_type, g_dropIDs = {}, {} ,{}, {}   # inlet area rectangle
+test666 = {}
 def mainer(index):
     global globalCounter, g_contours, g_contours_hull, frozenBubs, frozenBubsTimes, l_centroids_old_all, l_Areas_old, l_Areas_hull_old, l_rect_parms_all, l_rect_parms_all_old, g_areas_hull
     global l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_old_new_IDs_old
@@ -501,11 +569,11 @@ def mainer(index):
         #[stuckRectParams,stuckAreas,stuckCentroids]             = list(map(dropKeysOld,[stuckRectParams,stuckAreas,stuckCentroids] ))
         [fbStoreRectParams2,fbStoreAreas2,fbStoreCentroids2]    = list(map(dropKeysNew,[l_rect_parms_all,l_areas_all,l_centroids_all] ))
         a = 1
-        if globalCounter == 44:
+        if 1 == 1:
             activeFBub_RP = {str(ID):vals[4] for ID,vals in activeFrozen.items()}
             intersectingCombs = overlappingRotatedRectangles(activeFBub_RP,fbStoreRectParams2)
             cc_unique   = graphUniqueComponents([str(ID) for ID in activeFBub_RP.keys()], intersectingCombs)          # clusters. if one real FB has multiple IDs
-        
+            cc_unique   = [comb for comb in cc_unique if len(comb)>1]
             #cc_unique = [['a',1,2],['b','c',3],['d','e',4,5]]
             fbInCC = [[subID for subID in comb if type(subID) == str] for comb in cc_unique ]                         # they will both trigger match. if there is one.
             notfbInCC = [[subID for subID in comb if type(subID) != str] for comb in cc_unique ]                      # split clusters into oldFB and others
@@ -517,17 +585,28 @@ def mainer(index):
                     a = 1
                     predictCentroid = np.array(activeFrozen[int(fID)][3],int)   # then sol_b = [b,dist_b,subIDs_b]
                     dist,dStd       = activeFrozen[int(fID)][0]                 # then sol_c = [c,dist_c,subIDs_c]
-                    area,_          = activeFrozen[int(fID)][1]                 # then sol is lowest dist_ 
+                    area,aStd          = activeFrozen[int(fID)][1]                 # then sol is lowest dist_ 
                     numCounts       = activeFrozen[int(fID)][2]
-                    
+                    if numCounts < 3:
+                        dist += 2
+                    dStd = max(1,dStd)
+                    aStd = max(0.1*area, aStd)
                     permIDsol2, permDist2, permRelArea2 = centroidAreaSumPermutations(l_contours,fbStoreRectParams2, activeFBub_RP[fID], notfbInCC[i], fbStoreCentroids2, fbStoreAreas2,
-                                                    predictCentroid,5 + dist + 5*dStd, area, relAreaCheck = 0.7, debug = 0)
-                cases.append([fID,permDist2,permIDsol2])
-                where = np.argmin([b for _,b,_ in cases])
-                frCulpr.append(cases[where])
-                
+                                                    predictCentroid,dist + 3*dStd, area, relAreaCheck = 0.7, debug = 0)
+                    if len(permIDsol2)>0:
+                        area2 = cv2.contourArea(cv2.convexHull(np.vstack(l_contours[permIDsol2])))
+                        cases.append([int(fID), permIDsol2, permDist2, area, aStd, area2])
+                if len(cases)>0:
+                    where = np.argmin([b[2] for b in cases])
+                    frCulpr.append(cases[where])
+        for old,new, dist,areaOld, aStdOld, areaNew in frCulpr:
+            areaCrit  = np.abs(areaNew-areaOld)/ aStdOld  
+            if areaCrit < 3:
+                test666[globalCounter] = []
+                test666[globalCounter].append(frCulpr)
+   
             # when dist sols
-                a = 1
+                #a = 1
                     #subPerms = sum([list(itertools.combinations(notfbInCC[i], r)) for r in range(1,len(notfbInCC[i])+1)],[])
                     #allSubCombs = [[fID]+list(elem) for elem in subPerms]
             #    if len(c) > :
@@ -607,7 +686,7 @@ def mainer(index):
         inletIDsType            = {ID:inletIDsType[ID] for ID in inletIDs} 
   
     unresolvedOldRB   = list(l_RBub_centroids_old.keys())     # list of global IDs for RB  
-    unresolvedOldDB   = list(l_DBub_centroids_old.keys())     # and DB, from previous step. empty if gc = 0
+    unresolvedOldDB   = list(l_DBub_centroids_old.keys()) + list(l_FBub_centroids_old.keys())     # and DB, from previous step. empty if gc = 0
     unresolvedNewRB   = list(whereChildrenAreaFiltered.keys())
  
     print("unresolvedNewRB (new typeRing bubbles):\n",  unresolvedNewRB)
@@ -619,6 +698,7 @@ def mainer(index):
     RBOldNewDist = np.empty((0,2), np.uint16)
     rRBOldNewDist = np.empty((0,2), np.uint16)
     rDBOldNewDist = np.empty((0,2), np.uint16)
+    FBOldNewDist = np.empty((0,2), np.uint16)
             
     # 2.1 ====================== RECOVER UNRESOLVED BUBS VIA DISTANCE CLUSTERING ======================= 
 
@@ -761,10 +841,47 @@ def mainer(index):
                     dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
                     tempStore2(subIDs, l_contours, ID, err, orig, dataSets, concave = 0)    
 
-                    
+        # =============================== S E C T I O N - -  0 0 ==================================       
+        # ------------------ RECOVER FROZEN BUBBLES BASED ACTIVE FROZEN IDS ----------------------  
+        print(f'{globalCounter}:--------- Frozen bubble recovery ---------')  
+        # --------------- drop data in local storage --------------
+        activeFrozenLocalIDs = []
+        for oldID, newIDs, dist, areaOld, aStdOld, areaNew in frCulpr:
+            newID = min(newIDs)
+            areaCrit  = np.abs(areaNew-areaOld)/ aStdOld
+            if areaCrit < 3:
+                activeFrozenLocalIDs.append(newIDs)
+                dataSets = [l_FBub_masks,l_FBub_images,l_FBub_old_new_IDs,l_FBub_rect_parms,l_FBub_centroids,l_FBub_areas_hull,l_FBub_contours_hull]
+                tempStore2(newIDs, l_contours, newID, err, orig, dataSets, concave = 0)
+                if int(old) in unresolvedOldDB: unresolvedOldDB.remove(int(old))
+
+                FBOldNewDist    = np.append(FBOldNewDist,[[oldID,newID]],axis=0)
+    
+                l_predict_displacement[oldID]                       = [tuple(map(int,dataSets[4][newID])), dist]       
+                if oldID in l_FBub_centroids_old:   print(f'-{oldID}:Restored oldFB-newrFB (restored from past): {oldID} & {newID}:{newIDs}.')
+                else:                               print(f'-{oldID}:Restored oldFB-newrFB (from previous frame): {oldID} & {newID}:{newIDs}.')
+
+        # ---- recluster jointNeighbors ----
+        
+        for subIDsF in activeFrozenLocalIDs:
+            jointNeighbors = {ID:[elem for elem in sub if elem not in subIDsF] for ID,sub in jointNeighbors.copy().items()}
+            [unresolvedNewRB.remove(ID) for ID in subIDsF if ID in unresolvedNewRB]
+
+        jointNeighbors = {min(subIDs):subIDs for subIDs in jointNeighbors.values() if len(subIDs)>0}
+        if len(activeFrozenLocalIDs) > 0:
+            print("(updated) unresolvedOlDRB (all old D,rD bubbles):\n",  unresolvedOldDB)
+            print("(updated) unresolvedNewRB (new typeRing bubbles):\n",  unresolvedNewRB)
+            print(f'{globalCounter}:--------- Frozen bubble (FB): {FBOldNewDist[:,0]} recovery ended ---------\n')
+        else: print(f'{globalCounter}:--------- No Frozen bubble (FB) recovered ---------\n')
+
+
+
+
+
+
         # =============================== S E C T I O N - -  0 1 ==================================       
         # ------------------ RECOVER UNRESOLVED BUBS VIA DISTANCE CLUSTERING ----------------------   
-        # ------------------ join with unresolvedNewRB and search relations --------------------- 
+        # ------------------ join with unresolvedNewRB and search relations ----------------------
         # jointNeighbors is a rough estimate. In an easy case neighbor bubs will be far enough away
         # so clusters wont overlap. rather strict area/centroid displ restrictions can be satisfied
         # if it fails, take overlapped cluster IDs and start doing permutations and check dist/areas
@@ -786,7 +903,7 @@ def mainer(index):
                                                }                                 # between two lists                             e.g  {1: (366, 539), 2: (927, 505), 3: (741, 539), 4: (1080, 486), 7: (1204, 446)}
 
             oldDBubAndUnresolvedOldRB       = {**oldDistanceCentroidsWoFrozen,**{ID:l_RBub_centroids_old[ID] for ID in unresolvedOldRB}}                      # merge old DB with all old RBs. since 
-                                                                                                                                                            # old-newRB method was merged into this
+            oldDBubAndUnresolvedOldRB       = {**oldDBubAndUnresolvedOldRB  ,**{ID:val for ID,val in l_FBub_centroids_old.items() if ID in unresolvedOldDB}}    # if FB is unresolved, try to find it. this way it can continue to live as regular bubble                                                                                                                                           # old-newRB method was merged into this
 
             print(f'recovering DB bubbles :{list(oldDistanceCentroidsWoFrozen.keys())}') if len(unresolvedOldRB) == 0 else print(f'recovering DB+RB bubbles :{list(oldDBubAndUnresolvedOldRB.keys())}')
             if len(inletIDs)>0:  print(f'except old inlet bubbles: {inletIDs}')
@@ -931,8 +1048,9 @@ def mainer(index):
                 # bounds are calculated by finding a minimal interval length that holds to some given % of a total area
                 # MODIFICTATION: most bubbles are of elliptical shape, with this loss rotational symmetry, elliptical
                 # curves are considered instead of rings
-                
-                if all(clusterElementFailed.values()) and fixedFrame == 0:                                              # if all cluster matches have failed + if it is a manual mask frame, dont let it do permutations
+                oneClusterOneElem = True if len(clusterElementFailed) == 1 and len(overlapIDs[list(overlapIDs.keys())[0]]) == 1 else False # if there was only one option of one element. (ussually only 1 choice)
+                                                                                                                                           # no point doing permutations, same result as perfect-match.
+                if all(clusterElementFailed.values()) and fixedFrame == 0 and not oneClusterOneElem:                    # if all cluster matches have failed + if it is a manual mask frame, dont let it do permutations
                     cvr = 0.90                                                                                          # consider cvr*100% of total area for bounds calculation
                     ellipseParams   = l_ellipse_parms_old[oldID]                                                        # have to check if old bubble was of elliptical shape
                     a,b             = ellipseParams[1]                                                                  # major, minor axis (not semi-axis)
@@ -1892,9 +2010,10 @@ def mainer(index):
           
     # ================================= Save other iterations ====================================== 
     if globalCounter >= 1:
-        l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_old_new_IDs_old = {}, {}, {}, {}, {}
-        l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old, l_DBub_centroids_old, l_DBub_old_new_IDs_old = {}, {}, {}, {}, {}
-        l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old = {},{},{},{},{}
+        frozensLastStep = list(l_FBub_masks_old.keys())
+        l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_areas_hull_old, l_RBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
+        l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old, l_DBub_centroids_old, l_DBub_areas_hull_old, l_DBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
+        l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old, l_FBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
         l_MBub_masks_old, l_MBub_images_old, l_MBub_rect_parms_old, l_MBub_centroids_old, l_MBub_areas_hull_old, l_MBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
         l_MBub_info_old = {}
         # print('l_DBub_centroids',l_DBub_centroids)
@@ -1934,6 +2053,17 @@ def mainer(index):
         #    g_FBub_rect_parms[globalCounter][gKey]  = l_FBub_rect_parms[key]
         #    g_FBub_centroids[globalCounter][gKey]   = l_FBub_centroids[key]
         #    g_FBub_areas_hull[globalCounter][gKey]  = l_FBub_areas_hull[key]
+        for [old,new] in FBOldNewDist: # contains relation indices that satisfy distance
+            bubType = typeFrozen if old in frozensLastStep else typeRecoveredFrozen
+            l_bubble_type[old]                  = typeFrozen 
+            g_bubble_type[old][globalCounter]   = typeFrozen 
+            l_FBub_masks_old[old]               = l_FBub_masks[new]
+            l_FBub_images_old[old]              = l_FBub_images[new]
+            l_FBub_rect_parms_old[old]          = l_FBub_rect_parms[new]
+            l_FBub_centroids_old[old]           = l_FBub_centroids[new]
+            l_FBub_old_new_IDs_old[old]         = l_FBub_old_new_IDs[new]
+            l_FBub_areas_hull_old[old]          = l_FBub_areas_hull[new]
+            l_contours_hull[old]                = l_FBub_contours_hull[new]
 
         for [old,new] in oldNewDB: # contains relation indices that satisfy distance
             l_bubble_type[old]                  = typeElse 

@@ -13,8 +13,24 @@ def init(folder,imageNumber): # initialize some globals, so i dont have to pass 
     global imageMainFolder,imgNum
     imageMainFolder = folder
     imgNum = imageNumber
-    # print(imageMainFolder,imgNum)  
-    
+    # print(imageMainFolder,imgNum)
+    #   
+def adjustBrightness(image,adjustBrightness):
+    if adjustBrightness == 1:
+        brightness = np.sum(image) / (255 * np.prod(image.shape))
+        minimum_brightness = 0.66
+        ratio = brightness / minimum_brightness
+        if ratio >= 1:
+            print("Image already bright enough")
+            return image
+        # Otherwise, adjust brightness to get the target brightness
+        return cv2.convertScaleAbs(image, alpha = 1 / ratio, beta = 0)
+    else:
+        return image
+def undistort(image):
+    mapXY = (np.load('./mapx.npy'), np.load('./mapy.npy'))
+    return cv2.remap(image,mapXY[0],mapXY[1],cv2.INTER_LINEAR)
+
 def initImport(mode, workBigArray,recalcMean,readSingleFromArray,pickleNewDataLoad,pickleNewDataSave,pickleSingleCaseSave):
     if mode == 0: # start new array with new pictures
         workBigArray = 1
@@ -51,10 +67,10 @@ def initImport(mode, workBigArray,recalcMean,readSingleFromArray,pickleNewDataLo
             print("readding image files")   
             for myFile in imageLinks:
                 # print(myFile)
-                img = cv2.imread (myFile,0)
+                img     = cv2.imread (myFile,0)
                 bright  = adjustBrightness(img,adjustBrightness)
                 dist    = undistort(bright)
-                masks = glob.glob('./masks'+'/*.bmp')
+                masks   = glob.glob('./masks'+'/*.bmp')
                 cropped = cropImage(image = dist,importMaskLink=  masks[0], cropUsingMask = cropUsingMask)
                 X_data.append(cropped)
                 

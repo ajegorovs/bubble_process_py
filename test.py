@@ -1081,15 +1081,15 @@ if 1 == -1:
         dataStartOffseted = dataStart
         cntr = 0
 
-import os
-import glob
-import re
-folder_path = r'.\inputFolder\ringDetect'  # specify the path to the folder
-files = glob.glob(os.path.join(folder_path, '*.bmp'))  # get all files with extension .txt in the folder
-
-#b = [i for x in files]
-files.sort(key=lambda x: int(re.findall('\d+', os.path.basename(x))[0]))  # sort files numerically by integer part in the file name
-print(files) 
+mixed_list = [25, '29']#[1, 'apple', 2, 'banana', 3, 'orange']
+a = sorted([i for i in mixed_list if type(i) == int])+sorted([i for i in mixed_list if type(i) != int])
+b = 1
+def sortMixedStrIntList(arr):
+    string_list = [str(x) for x in arr]
+    string_list.sort()
+    return [int(x) if x.isdigit() else x for x in string_list]
+mixed_list = [1,  2, 0, 4]
+print(sortMixedStrIntList(mixed_list))
 
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key

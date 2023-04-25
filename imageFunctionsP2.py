@@ -1767,7 +1767,11 @@ def mergeSplitDetect(contours,contourIDs, direction, position, gc = 0, id = 0, d
     return isThereASplit , sideOneContourIDs, sideTwoContourIDs
 
 
-    
+def sortMixed(arr):
+    return sorted([i for i in arr if type(i) != str]) + sorted([i for i in arr if type(i) == str])
+    #string_list = [str(x) for x in arr]
+    #string_list.sort()
+    #return [int(x) if x.isdigit() else x for x in string_list]
 
 def graphUniqueComponents(nodes, edges, edgesAux= [], debug = 0, bgDims = {1e3,1e3}, centroids = [], centroidsAux = [], contours = [], contoursAux = []):
     # generally provide nodes and pairs of connections (edges), then retreave unique interconnected clusters.
@@ -1782,8 +1786,10 @@ def graphUniqueComponents(nodes, edges, edgesAux= [], debug = 0, bgDims = {1e3,1
         H.add_edges_from([[str(i),j] for i,j in edgesAux])
         connected_components_all = [list(nx.node_connected_component(H, key)) for key in nodes]
         connected_components_main = [sorted([subID for subID in IDs if type(subID) != str]) for IDs in connected_components_all]
-    else:
-        connected_components_main = [list(sorted(nx.node_connected_component(H, key), key=int)) for key in nodes]       # sort for mixed type [2, 1, '1'] -> ['1', 1, 2]
+    else:   
+        #connected_components_main = [list(sorted(nx.node_connected_component(H, key), key=int)) for key in nodes]       # sort for mixed type [2, 1, '1'] -> ['1', 1, 2]
+        connected_components_main = [sortMixed(list(nx.node_connected_component(H, key))) for key in nodes]
+       # connected_components_main = [list(nx.node_connected_component(H, key)) for key in nodes] 
 
     connected_components_unique = []
     [connected_components_unique.append(x) for x in connected_components_main if x not in connected_components_unique]  # remove duplicates

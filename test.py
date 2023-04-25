@@ -1081,11 +1081,16 @@ if 1 == -1:
         dataStartOffseted = dataStart
         cntr = 0
 
-oldNewIdsResolved = {19: [19], 24: [24], 52: [52], 27: [27], 15: [15, 23,27, 29,44], 22: [22, 28, 37], 48: [48], 16: [16], 44: [44, 47]}
-sharr_g = {17: [39, 34],18: [9, 4]}
-combs = sum([[[cID,gID] for gID in gIDs] for cID,gIDs in sharr_g.items()],[])
-print(combs)
-a = 1
+import os
+import glob
+import re
+folder_path = r'.\inputFolder\ringDetect'  # specify the path to the folder
+files = glob.glob(os.path.join(folder_path, '*.bmp'))  # get all files with extension .txt in the folder
+
+#b = [i for x in files]
+files.sort(key=lambda x: int(re.findall('\d+', os.path.basename(x))[0]))  # sort files numerically by integer part in the file name
+print(files) 
+
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyAllWindows()

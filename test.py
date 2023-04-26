@@ -1081,15 +1081,26 @@ if 1 == -1:
         dataStartOffseted = dataStart
         cntr = 0
 
-mixed_list = [25, '29']#[1, 'apple', 2, 'banana', 3, 'orange']
-a = sorted([i for i in mixed_list if type(i) == int])+sorted([i for i in mixed_list if type(i) != int])
-b = 1
-def sortMixedStrIntList(arr):
-    string_list = [str(x) for x in arr]
-    string_list.sort()
-    return [int(x) if x.isdigit() else x for x in string_list]
-mixed_list = [1,  2, 0, 4]
-print(sortMixedStrIntList(mixed_list))
+import cv2
+import numpy as np
+
+# Define two rotated rectangles
+#rect1 = cv2.RotatedRect((100, 100), (50, 100), 45)
+#rect2 = cv2.RotatedRect((150, 100), (100, 50), 0)
+rect1 = ((100,100), (100,100), 0)
+#x2,y2,w2,h2 = group1Params[keyOld]
+rect2 = ((200,100), (100,100), 0)
+
+# Calculate the intersection points
+result = cv2.rotatedRectangleIntersection(rect1, rect2)
+
+# If there is an intersection
+if result[0] > 0:
+    points = np.array(result[1], dtype=np.int32)
+    intersection_area = cv2.contourArea(points)
+    print("Intersection area:", intersection_area)
+else:
+    print("No intersection")
 
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key

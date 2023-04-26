@@ -1186,7 +1186,7 @@ def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [],
     #    #plt.show()
     return returnVec
 
-def overlappingRotatedRectangles(group1Params,group2Params,returnType = 0):
+def overlappingRotatedRectangles(group1Params, group2Params, returnType = 0, typeAreaThreshold = 0):
     #group1IDs, group2IDs = list(group1Params.keys()),list(group2Params.keys())
     #allCombs = list(itertools.product(group1Params, group1Params))#;print(f'allCombs,{allCombs}')
     intersectionType    = {}
@@ -1202,11 +1202,17 @@ def overlappingRotatedRectangles(group1Params,group2Params,returnType = 0):
         rotatedRectangle_new = ((x1+w1/2, y1+h1/2), (w1, h1), 0)
         x2,y2,w2,h2 = group1Params[keyOld]
         rotatedRectangle_old = ((x2+w2/2, y2+h2/2), (w2, h2), 0)
-        interType   = cv2.rotatedRectangleIntersection(rotatedRectangle_new, rotatedRectangle_old)[0]
+        interType, points  = cv2.rotatedRectangleIntersection(rotatedRectangle_new, rotatedRectangle_old)
         if interType > 0:
-            intersectingCombs.append([keyOld,keyNew]) # rough neighbors combinations
             if returnType == 1:
+                if typeAreaThreshold > 0 and interType == 1:                                   # consider contours with partial overlap
+                    intersection_area = cv2.contourArea( np.array(points, dtype=np.int32))     # group1 and group2 intersection area
+                    relArea = intersection_area/(h2*w2)                           # partial intersection area vs group1 area
+                    if relArea < typeAreaThreshold: continue                                      # if group1 is weakly intersection group2 drop him
                 intersectionType[keyOld] = interType
+                intersectingCombs.append([keyOld,keyNew]) # rough neighbors combinations
+            else: intersectingCombs.append([keyOld,keyNew])
+            
     if returnType == 0: return intersectingCombs
     else: return intersectingCombs, intersectionType
 

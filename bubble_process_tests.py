@@ -224,16 +224,16 @@ mode = 1 # mode: 0 - read new images into new array, 1- get one img from existin
 big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
-dataStart           = 600 #736 #300 #  53+3+5
-dataNum             = 480 #130 # 7+5   
+dataStart           = 0 #736 #300 #  53+3+5
+dataNum             = 550 #130 # 7+5   
 
 assistManually      = 1
-assistFramesG       = []#751,976,763,1068
+assistFramesG       = [48]#751,976,763,1068
 assistFrames        = [a - dataStart for a in assistFramesG]
 doIntermediateData              = 1                                         # dump backups ?
 intermediateDataStepInterval    = 15                                        # dumps latest data field even N steps
 readIntermediateData            = 1                                         # load backups ?
-startIntermediateDataAtG        = 821                                  # frame stack index ( in X_Data). START FROM NEXT FRAME
+startIntermediateDataAtG        = 1272                                  # frame stack index ( in X_Data). START FROM NEXT FRAME
 startIntermediateDataAt         = startIntermediateDataAtG - dataStart      # to global, which is pseudo global ofc. global to dataStart
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
@@ -555,7 +555,7 @@ def mainer(index):
     # get contours from binary image. filter out useless. 
     
     contoursFilter_RectParams_dropIDs,l_centroids_all = [], {}
-    topFilter, bottomFilter, minArea    = 80, 10, 180                                                                                           # instead of deleting contours at inlet, i should merge
+    topFilter, bottomFilter, minArea    = 80, 40, 180                                                                                           # instead of deleting contours at inlet, i should merge
     # topFilter will drop bubbles on top, they will be resolved with new IDS. removed possible dropped RBs (whereChildrenAreaFiltered) from dropped                                                                                                                                      # them into one. since there is only ~one bubble at a time
     (l_contours,
      whereParentOriginal,
@@ -563,8 +563,9 @@ def mainer(index):
      whereChildrenAreaFiltered)             = cntParentChildHierarchy(err,1, 1200,130,0.1)                                                      # whereParentOriginal all non-child contours.
     g_contours[globalCounter]               = l_contours                                                                                        # add contours to global storage.
     contoursFilter_RectParams               = {ID: cv2.boundingRect(l_contours[ID]) for ID in whereParentOriginal}                              # remember bounding rectangle parameters for all primary contours.
-    contoursFilter_RectParams_dropIDs       = [ID for ID,params in contoursFilter_RectParams.items() 
-                                                                        if sum(params[0:3:2])<topFilter and ID not in whereChildrenAreaFiltered]# filter out bubbles at left image edge, keep those outside 80 pix boundary. x+w < 80 pix.
+    contoursFilter_RectParams_dropIDs       = [ID for ID,params in contoursFilter_RectParams.items() if (sum(params[0:3:2])<topFilter and
+                                                                       ID not in whereChildrenAreaFiltered )]                                 # filter out bubbles at left image edge, keep those outside 80 pix boundary. x+w < 80 pix.
+    contoursFilter_RectParams_dropIDs       += [ID for ID,params in contoursFilter_RectParams.items() if params[0]> err.shape[1]- bottomFilter]
     #contoursFilter_RectParams_dropIDs_inlet = [ID for ID,params in contoursFilter_RectParams.items() if params[0] > err.shape[1]- bottomFilter] # top right corner is within box that starts at len(img)-len(box)
     #contoursFilter_RectParams_dropIDs       = contoursFilter_RectParams_dropIDs + contoursFilter_RectParams_dropIDs_inlet
     l_areas_all_IDs                         = [ID for ID in contoursFilter_RectParams if ID not in contoursFilter_RectParams_dropIDs]
@@ -580,7 +581,7 @@ def mainer(index):
  
     fakeBoxW, fakeBoxH      = 176,int(err.shape[0]/3)                                             # generate a fake bubble at inlet and add it to previous frame data.
     fakeBox                 = {-1:[err.shape[1] - fakeBoxW + 1, fakeBoxH, fakeBoxW, fakeBoxH]}    # this will make sure to gather new bubbles at inlet into single cluster.
-
+    _,yFb,_,hFB = fakeBox[-1] 
     if globalCounter >= 1:
         # try to find old contours or cluster of contours that did not move during frame transition.
         # double overlay of old global and old local IDs, remove local & keep global.
@@ -1029,13 +1030,27 @@ def mainer(index):
                 else: newType   = typeElse                                                                              # if not (r)RB, then DB. rDB lost its meaning here. maybe on final matchTemplates()
 
                 # ===== GET STATISTICAl DATA ON OLD BUBBLE: PREDICT CENTROID, AREA =====
-                if oldID in inletIDsType:    (mis,mio) = (10,1)                                                            # mis = maxInterpSteps; mio = maxInterpOrder
-                else:   (mis,mio) = (3,2)                                                                                  # i think i should give inlet IDs more history, but lower order
+                if oldID in inletIDsType:
+                    (mis,mio,ss,fs) = (10,1,100,0)                                                            # mis = maxInterpSteps; mio = maxInterpOrder
+                    maxAreaCrit1 = 3
+                    maxAreaCrit = 3 
+                else:
+                    (mis,mio,ss,fs) = (3,2,0.3,1)                                                                                  # i think i should give inlet IDs more history, but lower order
+                    maxAreaCrit1 = 3
+                    maxAreaCrit = 5 
                    
                 trajectory                                          = list(g_Centroids[oldID].values())                 # all previous path for oldID                                           e.g [(411, 547), (402, 545), (390, 543), (378, 542), (366, 539)]
                 predictCentroid_old, _, distCheck2, distCheck2Sigma = g_predict_displacement[oldID][globalCounter-1]    # g_predict_displacement is an evaluation on how good predictor works.  e.g [(366, 540), 1, 10, 6]
                                                                                                                         # [old predicted value (used only for debug), old predictor error, mean error, stdev] 
                                                                                                                         # you can see than last known position was (366, 539), and it was 
+                #if oldID == 40 :
+                #    debugVecPredict = 1
+                #    ss = 100
+                #    fs = 0
+                #else:
+                #    debugVecPredict = 0
+                #    ss = 0.3
+                #    fs = 1
                 tempArgs                                            = [                                                 # predicted to be at (366, 540), which is an error of 1. 
                                                                         [distCheck2,distCheck2Sigma],                   # dist criterium
                                                                         g_predict_displacement[oldID],5,mis,mio,            # dist prediction history, # of stdevs, max steps for interp, max interp order
@@ -1043,7 +1058,7 @@ def mainer(index):
                                                                         predictCentroid_old,oldID,globalCounter,[-3,0]  # old centroid, timestep, ID for debug and zeroth displacement. (not used?)
                                                                       ]
 
-                predictCentroid                                     = distStatPredictionVect2(trajectory, *tempArgs)    # predicted centroid for this frame, based on previous history.         e.g array([354, 537])
+                predictCentroid                                     = distStatPredictionVect2(trajectory, *tempArgs,ss = ss, fixSharp = fs)    # predicted centroid for this frame, based on previous history.         e.g array([354, 537])
                 
                 oldMeanArea                                         = g_predict_area_hull[oldID][globalCounter-1][1]    # mean area                                                             e.g 6591
                 oldAreaStd                                          = g_predict_area_hull[oldID][globalCounter-1][2]    # mean area                                                             e.g 620
@@ -1075,7 +1090,7 @@ def mainer(index):
                     dist2                   = np.linalg.norm(np.array(newCentroid) - np.array(predictCentroid))         # find distance between (cluster and predicted) centroids               e.g 2.2360 (predicted array([354, 537]))
                     areaCrit                = np.abs(newArea-oldMeanArea)/ oldAreaStd                                   # calculate area difference in terms of stdev                           e.g 0.3838 (old mean 6591, old stdev 620)
                     
-                    if dist2 <= distCheck2 + 5*distCheck2Sigma and areaCrit < 3:                                        # test if criteria within acceptable limits                             e.g dist vs 10+5*6  ( which is kind of alot)      
+                    if dist2 <= distCheck2 + 5*distCheck2Sigma and areaCrit < maxAreaCrit1:                                        # test if criteria within acceptable limits                             e.g dist vs 10+5*6  ( which is kind of alot)      
                         
                         tempID                         = oldID                                                          # l_RBub_r and l_DBub_r have global IDs.
                         hull                           = jointNeighborsWoFrozen_hulls[mainNewID]                        # retrieve pre-computed hull
@@ -1189,7 +1204,7 @@ def mainer(index):
                                                        [distCheck2, distCheck2Sigma, areaCheck, oldMeanArea, oldAreaStd, clusterCritValues],
                                                        globalCounter, oldID, mainNewID, l_MBub_info_old, debug = dddd)
                         
-                        if len(permIDsol2)>0 and permDist2 < distCheck2 +5* distCheck2Sigma and permRelArea2 < 5:       # check if given solution satisfies criterium
+                        if len(permIDsol2)>0 and permDist2 < distCheck2 +5* distCheck2Sigma and permRelArea2 < maxAreaCrit:       # check if given solution satisfies criterium
 
                             app = np.array((oldID, ID2S(permIDsol2)), dtype=[('integer', '<i4'), ('string', '<U60')])
 
@@ -1344,7 +1359,7 @@ def mainer(index):
                         previousInfo            = l_MBub_info_old[oldID][3:]      #[0.4*rads,tcc,25]
                         debugs = 0 #if globalCounter != 16 else 1
                         #debugs = 0 if (globalCounter != 20 aor globalCounter != 19) else 1 #if globalCounter < 21 else 1
-                        #debugs = 1 if globalCounter >14 and globalCounter < 21 else 0
+                        debugs = 1 if globalCounter >14 and globalCounter < 21 else 0
                         a = 1
                         hull, newParams, mCrit  = mergeCrit(permIDsol2, l_contours, previousInfo, pCentr = predictCentroid, alphaParam = 0.05, debug = debugs,debug2 = 0, gc = globalCounter, id = oldID)    # calculated modified hull
                        
@@ -1727,8 +1742,8 @@ def mainer(index):
             unresolvedOldRB = [A for A in unresolvedOldRB if A not in resolvedOldAll];
 
 
-            resolvedNewRBs = list([b for _,b in RBOldNewDist]) + list([b for _,b in rRBOldNewDist]) + list([b for _,b in FBOldNewDist])
-            resolvedNewDBs = list([b for _,b in DBOldNewDist]) + list([b for _,b in rDBOldNewDist])
+            resolvedNewDBs = list([b for _,b in DBOldNewDist]) + list([b for _,b in rDBOldNewDist]) + list([b for _,b in FBOldNewDist])
+            resolvedNewRBs = list([b for _,b in RBOldNewDist]) + list([b for _,b in rRBOldNewDist]) 
             resolvedNewMBs = list([b for _,b in MBOldNewDist])
             
             resolvedNewAll = resolvedNewDBs + resolvedNewRBs + resolvedNewMBs
@@ -1868,7 +1883,9 @@ def mainer(index):
     if globalCounter >= 1 :#and len(unresolvedOldDB)>1 and len(jointNeighbors)>1
         rectParamsOld       = {oldID:l_rect_parms_old[oldID] for oldID in unresolvedOldDB + unresolvedOldRB }
         # ======== PART 01: test if two old bubbles are unresolved and new is unresolved. might hint on merge =========
-        rectParamsNew   = {subID:l_rect_parms_all[subID] for subID in sum(list(jointNeighbors.values()),[])}    # all unresolved cluster elements IDs and bound rect.
+        #rectParamsNew   = {subID:l_rect_parms_all[subID] for subID in sum(list(jointNeighbors.values()),[])}    # all unresolved cluster elements IDs and bound rect.
+        unresolvedNewID69 = [ID for ID in sum(list(jointNeighbors.values()),[]) if ID not in resolvedNewAllSubIDs]  # lets try restricting merge to unresolved contours
+        rectParamsNew   = {subID:l_rect_parms_all[subID] for subID in unresolvedNewID69} 
         combosOldNew    = np.array(overlappingRotatedRectangles(rectParamsOld,rectParamsNew),int)               # form [[old1,new1],[old1,new2],[old2,new1]]
         #values          = list(set(combosOldNew[:,1]))
         #counts          = [combosOldNew[:,1].count(a) for a in values]
@@ -2066,7 +2083,10 @@ def mainer(index):
         #rRBOldNewDist   = rRBOldNewDist if len(rRBOldNewDist) > 0   else np.empty((0,2), np.uint16)
         #oldNewDB        = oldNewDB      if len(oldNewDB) > 0        else np.empty((0,2), np.uint16)
         #rDBOldNewDist   = rDBOldNewDist if len(rDBOldNewDist) > 0   else np.empty((0,2), np.uint16)
+
+        # =========================================================================================================
         # ===================================== SIMPLE SPLIT DETECTION ============================================
+        # =========================================================================================================
         # === gather all relevant resolved clusters ===
         #resLoc              = np.concatenate((oldNewDB[:,1],RBOldNewDist[:,1],rRBOldNewDist[:,1],rDBOldNewDist[:,1]))
         #resGlob             = np.concatenate((oldNewDB[:,0],RBOldNewDist[:,0],rRBOldNewDist[:,0],rDBOldNewDist[:,0]))
@@ -2083,124 +2103,156 @@ def mainer(index):
         #resLoc      = resolvedNewDBs + resolvedNewRBs
         oldNewIdsResolved2  = {**l_RBub_old_new_IDs,    **l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs,   **l_DBub_r_old_new_IDs} # drop l_MBub_old_new_IDs. no point splitting merge back!!!  drop l_FBub_old_new_IDs
         rectParamsResolved2 = {**l_RBub_r_rect_parms,   **l_DBub_r_rect_parms,  **l_RBub_rect_parms,    **l_DBub_rect_parms}
+        # ======================================== Regular 2 element contours ================================================
         resolvedPair        = {ID:subIDs for ID,subIDs in oldNewIdsResolved2.items() if ID in resLoc and len(subIDs) == 2}
         overBox             = overlappingRotatedRectangles(fakeBox,{ID:params for ID,params in rectParamsResolved2.items() if ID in resolvedPair})
         dropBoxIDs          = [b for _,b in overBox]
-        
+        # ============================================== inlet clusters ======================================================
+        resolvedInletIDs    = overlappingRotatedRectangles(rectParamsResolved2, fakeBox, returnType = 1, typeAreaThreshold = 0.15)[1]
+        inletTestSubIDs     = {ID:subIDs for ID,subIDs in oldNewIdsResolved2.items() if ID in resolvedInletIDs and len(subIDs) >= 2 and ID in resLoc}
+        inletRectP          = {ID:{subID:cv2.boundingRect(l_contours[subID]) for subID in subIDs} for ID,subIDs in inletTestSubIDs.items()}#[x-2,yFb,w+2,hFB]
+        inletRectPModed     = {ID:{subID:[x-5,yFb,w+5,hFB] for subID,[x,_,w,_] in subDict.items()} for ID,subDict in inletRectP.items()}
+        resolvedPairInlet   = {}
+        for ID,subDict in inletRectPModed.items():
+            inletSelfInter  = overlappingRotatedRectangles(subDict,subDict) 
+            cc_unique       = graphUniqueComponents(list(subDict.keys()), inletSelfInter)
+            if len(cc_unique)==2:
+                resolvedPairInlet[ID] = cc_unique
         # first times when cluster splits into two, it registers potential split into "l_splits[gID]"
         # it can continue to stay split but it is being related back to OG ID.
 
         resolvedPair        = {ID:vals for ID,vals in resolvedPair.items() if ID not in dropBoxIDs}
         # === gather all relevant un-resolved clusters ===
-        unresolvedPair      = {ID:subIDs for ID,subIDs in jointNeighbors.items() if len(subIDs) == 2 if ID in unresolvedNewDB}           # unresolved clusters with 2 contours
+        unresolvedPair      = {ID:subIDs for ID,subIDs in jointNeighbors.items() if len(subIDs) == 2 if ID in unresolvedNewDB}  # unresolved clusters with 2 contours
         unresolvedNewRP     = {ID:cv2.boundingRect(np.vstack(l_contours[jointNeighbors[ID]])) for ID in unresolvedPair}
-        missingSplits       = [ID for ID in unresolvedOldDB + unresolvedOldRB if ID in l_splits_old]            # unresolved old IDs that were registred splitting
-        missingSplitsOldRP  = {ID:params for ID,params in l_rect_parms_old.items() if ID in missingSplits}     # rectangle parametrs of unres Old Split for ovelap
-        #missingSplitsNewRP  = {ID:subIDs for ID,subIDs in rectParamsResolved2.items() if ID in unresolvedPair}  # rectangle parametrs of unres New clust for ovelap  
-        #missingSplitOVP     = overlappingRotatedRectangles(missingSplitsOldRP, missingSplitsNewRP)              # 
+        missingSplits       = [ID for ID in unresolvedOldDB + unresolvedOldRB if ID in l_splits_old]                            # unresolved old IDs that were registred splitting
+        missingSplitsOldRP  = {ID:params for ID,params in l_rect_parms_old.items() if ID in missingSplits}                      # rectangle parametrs of unres Old Split for ovelap
+        #missingSplitsNewRP  = {ID:subIDs for ID,subIDs in rectParamsResolved2.items() if ID in unresolvedPair}                 # rectangle parametrs of unres New clust for ovelap  
+        #missingSplitOVP     = overlappingRotatedRectangles(missingSplitsOldRP, missingSplitsNewRP)                               
         rectParamsResolved2 = {**rectParamsResolved2,**unresolvedNewRP}
         missingSplitOVP     = overlappingRotatedRectangles(missingSplitsOldRP, unresolvedNewRP) 
         oldUnresID          = -1                                                                                # default to empty list. it will be searched
         if len(missingSplitOVP) == 1:
             oldUnresID      = missingSplitOVP[0][0]
             newUnresID      = missingSplitOVP[0][1]
-            resolvedPair    = {**resolvedPair,**{newUnresID:jointNeighbors[newUnresID]}}
-            resLoc = resLoc + [newUnresID]
+            resolvedPair    = {**resolvedPair,**{newUnresID:jointNeighbors[newUnresID]}}                        # something related to missing bubs
+            resLoc = resLoc + [newUnresID]                                                                      # give it unique ID = -1
             resGlob = resGlob + [oldUnresID]
             #resLoc          = np.concatenate((resLoc,[newUnresID]))
             #resGlob         = np.concatenate((resGlob,[oldUnresID]))
-
-        for ID,subIDs in resolvedPair.items():    
+        resolvedPair = {**resolvedPair,**resolvedPairInlet}
+        for ID,subIDs in resolvedPair.items(): 
+            if type(subIDs[0]) != list: subIDs = [[a] for a in subIDs]
             ID1,ID2 = subIDs                      
             #dist = int(closes_point_contours(l_contours[ID1],l_contours[ID1])[1])
             x0,y0,w0,h0 = rectParamsResolved2[ID]
-            blanks      = {subID:np.zeros((h0,w0),np.uint8)             for subID in subIDs}
-            splitHulls  = {subID:cv2.convexHull(l_contours[subID])      for subID in subIDs}
-            [cv2.drawContours( blanks[subID],   [splitHulls[subID]-[x0,y0]], -1, 255, -1)  for subID in subIDs] 
+            blanks      = {min(subID):np.zeros((h0,w0),np.uint8)                                for subID in subIDs}
+            splitHulls  = {min(subID):cv2.convexHull(np.vstack(l_contours[subID]))              for subID in subIDs}
+            [cv2.drawContours( blanks[min(subID)],   [splitHulls[min(subID)]-[x0,y0]], -1, 255, -1)  for subID in subIDs] 
 
             inter = cv2.bitwise_and(*list(blanks.values()))
             interArea = int(np.sum(inter/255))
         
-            if interArea >0: break
+            if interArea >0: continue
             gWhere                  = resLoc.index(ID)
             gID                     = resGlob[gWhere]
             predictCentroid         = np.array(l_predict_displacement[gID][0],int)
             splitCentroidsAreas     = {ID:getCentroidPosContours(bodyCntrs = [hull]) for ID,hull in splitHulls.items()}         
             splitCentroidDistances  = {ID:np.linalg.norm(predictCentroid - CA[0]).astype(int) for ID,CA in splitCentroidsAreas.items()}
-            splitSmallestDistID     = min(splitCentroidDistances, key=splitCentroidDistances.get)           # local solution ID
-            l_splits[gID]           = [False, splitCentroidsAreas, [[ID1], [ID2]]]
+            # in regular case take centoid closest to predicted. in case of inlet, take one on top. (min centroid x)        
+            if ID not in resolvedPairInlet:  splitSmallestDistID     = min(splitCentroidDistances, key=splitCentroidDistances.get)           # local solution ID
+            else:                               splitSmallestDistID  = min(splitCentroidsAreas, key=lambda x:  splitCentroidsAreas[x][0][0])
+
+            l_splits[gID]           = [False, splitCentroidsAreas, [ID1, ID2]]
             if gID in l_splits_old:
                 nLast = 2
                 subG = {t:list(a.keys()) for t,a in g_splits.items() if t >= globalCounter-nLast }
-                numIDSplits = list(subG.values()).count(gID)                # count how many times ID was in splits last nLast steps (except this). nLast + 1 in total
+                numIDSplits = sum(list(subG.values()),[]).count(gID)                # count how many times ID was in splits last nLast steps (except this). nLast + 1 in total
                 if numIDSplits == nLast or gID == oldUnresID:               # it was in split whole time! OR past split went missing due to crit failure!
+                    if ID in unresolvedNewDB: unresolvedNewDB.remove(ID)                    # drop cluster from unesolved. recluster it next
                     # ====== drop split ID as unresolved ======
-                    dropID = [ID for ID in subIDs if ID != splitSmallestDistID][0]
-                    if gID == oldUnresID: jointNeighbors.pop(ID,None)               # in case it was missing, pop it from jointNeighbors
-                    jointNeighbors = {**jointNeighbors,**{str(dropID):[dropID]}}         # add to unresolved, i dont think its used anymore
-                
-                    if dropID in whereChildrenAreaFiltered:                         # RBs (with childern)
+                    jointNeighbors.pop(ID,None)  # i think i need to remove it straight away
+                    dropIDs = [IDs for IDs in subIDs if min(IDs) != splitSmallestDistID][0]
+                    if gID == oldUnresID: jointNeighbors.pop(ID,None)                       # ???
+                    jointNeighbors = {**jointNeighbors,**{ID2S(dropIDs):dropIDs}}           # add to unresolved, i dont think its used anymore
+
+                    if len(dropIDs) == 1 and dropIDs[0] in whereChildrenAreaFiltered:                   # if only sol is a ring
+                        unresolvedNewRB.append(str(dropIDs[0]))
                         dataSets = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
-                        unresolvedNewRB.append(str(dropID))
-                    else:
+                        unresolvedNewRB.append(str(dropIDs[0]))
+                        if ID in resolvedNewRBs: resolvedNewRBs.remove(ID) 
+                    else:                                                                               # if not solo RB, it is a cluster.
+                        unresolvedNewDB.append(ID2S(dropIDs))                                           # add as unresolved cluster
+                        [unresolvedNewRB.remove(str(x)) for x in dropIDs if str(x) in unresolvedNewRB]  # remove possible RBs since they are inside DB cluster now
                         dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
-                        unresolvedNewDB = list(unresolvedNewDB)
-                        unresolvedNewDB.append(str(dropID))
-                    tempStore2([dropID], l_contours, str(dropID), err, orig, dataSets, concave = 0)
-                
+                    tempStore2(dropIDs, l_contours, ID2S(dropIDs), err, orig, dataSets, concave = 0)
+
+                       
                     # ====== modify OG contour data =======
                 
                     dist2                       = splitCentroidDistances[splitSmallestDistID]
                     newArea                     = splitCentroidsAreas[splitSmallestDistID][1]
                     areaCrit                    = np.abs(newArea-oldMeanArea)/ oldAreaStd
-                    l_predict_displacement[gID] = [tuple(map(int,predictCentroid)), int(dist2)] 
-                    if splitSmallestDistID in whereChildrenAreaFiltered: singleRB = True
+                    l_predict_displacement[gID] = [tuple(map(int,predictCentroid)), int(dist2)]
+
+                    restIDs = [IDs for IDs in subIDs if min(IDs) == splitSmallestDistID][0]
+
+                    jointNeighbors = {**jointNeighbors,**{ID2S(restIDs):restIDs}} 
+
+                    if len(restIDs)==1 and splitSmallestDistID in whereChildrenAreaFiltered: singleRB = True
                     else: singleRB = False
-                    
+
+                    [unresolvedNewRB.remove(str(x)) for x in restIDs if str(x) in unresolvedNewRB]
                     # if it was a part of resolved, depending if it turned in RB, it will modify according data storage.
                     # if it was not resolved it will check if it was RB->make new entry or make new DB entry    
                     if gID in [a[0] for a in DBOldNewDist]:                                               
                             
                         if singleRB == False:
                             where = [a[0] for a in DBOldNewDist].index(gID)
-                            DBOldNewDist[where] = np.array((gID, str(splitSmallestDistID)), dtype=[('integer', '<i4'), ('string', '<U60')])
+                            DBOldNewDist[where] = np.array((gID, ID2S(restIDs)), dtype=[('integer', '<i4'), ('string', '<U60')])
                             dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
                         else:
                             DBOldNewDist    = np.array([a for a in DBOldNewDist     if a[0] != gID], dtype=[('integer', '<i4'), ('string', '<U60')])
+                            RBOldNewDist    = np.append(RBOldNewDist,np.array((gID, ID2S(restIDs)), dtype=[('integer', '<i4'), ('string', '<U60')]))
+                            dataSets = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
                         
                     elif gID in [a[0] for a in rRBOldNewDist]:
                         if singleRB == False:
                             where = [a[0] for a in rRBOldNewDist].index(gID)                       
-                            rRBOldNewDist[where] = np.array((gID, str(splitSmallestDistID)), dtype=[('integer', '<i4'), ('string', '<U60')])
+                            rRBOldNewDist[where] = np.array((gID, ID2S(restIDs)), dtype=[('integer', '<i4'), ('string', '<U60')])
                             dataSets    = [l_RBub_r_masks,l_RBub_r_images,l_RBub_r_old_new_IDs,l_RBub_r_rect_parms,l_RBub_r_centroids,l_RBub_r_areas_hull,l_RBub_contours_hull]
                         else:
                             rRBOldNewDist    = np.array([a for a in rRBOldNewDist     if a[0] != gID], dtype=[('integer', '<i4'), ('string', '<U60')])
+                            RBOldNewDist    = np.append(RBOldNewDist,np.array((gID, ID2S(restIDs)), dtype=[('integer', '<i4'), ('string', '<U60')]))
+                            dataSets = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
                     elif gID in [a[0] for a in rDBOldNewDist]:
                         if singleRB == False:
                             where = [a[0] for a in rDBOldNewDist].index(gID)                       
-                            rDBOldNewDist[where] = np.array((gID, str(splitSmallestDistID)), dtype=[('integer', '<i4'), ('string', '<U60')])
+                            rDBOldNewDist[where] = np.array((gID, ID2S(restIDs)), dtype=[('integer', '<i4'), ('string', '<U60')])
                             dataSets    = [l_DBub_r_masks,l_DBub_r_images,l_DBub_r_old_new_IDs,l_DBub_r_rect_parms,l_DBub_r_centroids,l_DBub_r_areas_hull,l_DBub_contours_hull]
                         else:
                             rDBOldNewDist    = np.array([a for a in rDBOldNewDist     if a[0] != gID], dtype=[('integer', '<i4'), ('string', '<U60')])
-                    if singleRB == True:
-                        RBOldNewDist    = np.append(RBOldNewDist,np.array((gID, str(splitSmallestDistID)), dtype=[('integer', '<i4'), ('string', '<U60')]))
-                        dataSets = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
+                            RBOldNewDist    = np.append(RBOldNewDist,np.array((gID, ID2S(restIDs)), dtype=[('integer', '<i4'), ('string', '<U60')]))
+                            dataSets = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
                     else:
-                        DBOldNewDist    = np.append(DBOldNewDist,np.array((gID, str(splitSmallestDistID)), dtype=[('integer', '<i4'), ('string', '<U60')]))
-                        dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
+                        if singleRB == True:
+                            RBOldNewDist    = np.append(RBOldNewDist,np.array((gID, ID2S(restIDs)), dtype=[('integer', '<i4'), ('string', '<U60')]))
+                            dataSets = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
+                        else:
+                            DBOldNewDist    = np.append(DBOldNewDist,np.array((gID, ID2S(restIDs)), dtype=[('integer', '<i4'), ('string', '<U60')]))
+                            dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
+                    
                    
                     
                 
                     [unresolvedOldRB.remove(ID) for ID in [gID] if ID in unresolvedOldRB]        # delete if prev was unresolved.
                     [unresolvedOldDB.remove(ID) for ID in [gID] if ID in unresolvedOldDB]
-                    [unresolvedNewRB.remove(ID) for ID in [str(splitSmallestDistID)] if ID in unresolvedNewRB]
-                    [unresolvedNewDB.remove(ID) for ID in [ID] if ID in unresolvedNewDB]
-                    #if splitSmallestDistID in whereChildrenAreaFiltered:                         # RBs (with childern)
-                    #    dataSets = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
-                    #else:
-                    #    dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
-                    tempStore2([splitSmallestDistID], l_contours, str(splitSmallestDistID), err, orig, dataSets, concave = 0)
-                    l_splits[gID]           = [True, splitCentroidsAreas, [[ID1], [ID2]]]
+                    #if ID in resolvedNewDBs: resolvedNewDBs.remove(ID) 
+                    #[unresolvedNewDB.remove(ID) for ID in [ID] if ID in unresolvedNewDB]
+
+                    tempStore2(restIDs, l_contours, ID2S(restIDs), err, orig, dataSets, concave = 0)
+                    l_splits[gID]           = [True, splitCentroidsAreas, [ID1, ID2]]
+                    
                     
     a = 1
     # ==============================================================================================
@@ -2222,22 +2274,30 @@ def mainer(index):
                                                                         missingNewSubIDs_bound_rect)      
             cc_unique                   = graphUniqueComponents(unresolvedOldAll, oldNewConnectivity)
             cc_unique                   = [comb for comb in cc_unique if len(comb)>1]
-            for oldID,newID in cc_unique:
-                subIDs              = jointNeighbors[newID]
-                predictCentroid     = l_predict_displacement[oldID][0]
-                centroidReal        = missingNewSubIDs_c_a[newID][0]
-                dist2               = np.linalg.norm(np.array(predictCentroid) - np.array(centroidReal))
+            olds = [[i for i in comb if type(i) != str] for comb in cc_unique]
+            news = [[i for i in comb if type(i) == str] for comb in cc_unique]
+            for oldIDs,newIDs in zip(olds,news):
+                subIDs              = sum([jointNeighbors[newID] for newID in newIDs],[])
+                predictCentroid     = np.mean([l_predict_displacement[oldID][0] for oldID in oldIDs],axis = 0).astype(int)
+                centroidReal        = np.mean([missingNewSubIDs_c_a[newID][0]   for newID in newIDs],axis = 0).astype(int)
+                dist2               = np.linalg.norm(np.array(predictCentroid) - np.array(centroidReal)).astype(int)
                 if dist2 < 100:
-                    if oldID in unresolvedOldDB: unresolvedOldDB.remove(oldID)
-                    if oldID in unresolvedOldRB: unresolvedOldRB.remove(oldID)
-                    if newID in unresolvedNewDB: unresolvedNewDB.remove(newID)
-                    if newID in unresolvedNewRB: unresolvedNewRB.remove(newID)
-                    app = np.array((oldID, newID), dtype=[('integer', '<i4'), ('string', '<U60')])
+                    [unresolvedOldDB.remove(ID) for ID in oldIDs if ID in unresolvedOldDB]
+                    [unresolvedOldRB.remove(ID) for ID in oldIDs if ID in unresolvedOldRB]
+                    [unresolvedNewDB.remove(ID) for ID in newIDs if ID in unresolvedNewDB]
+                    [unresolvedNewRB.remove(ID) for ID in newIDs if ID in unresolvedNewRB]
+                    relevantIDs = {ID:l_areas_hull_old[ID] for ID in oldIDs}
+                    oldID = max(relevantIDs, key=lambda x: relevantIDs[x])
+                    #if oldID in unresolvedOldDB: unresolvedOldDB.remove(oldID)
+                    #if oldID in unresolvedOldRB: unresolvedOldRB.remove(oldID)
+                    #if newID in unresolvedNewDB: unresolvedNewDB.remove(newID)
+                    #if newID in unresolvedNewRB: unresolvedNewRB.remove(newID)
+                    app = np.array((oldID, ID2S(subIDs)), dtype=[('integer', '<i4'), ('string', '<U60')])
                     DBOldNewDist    = np.append(DBOldNewDist,app)
                     dataSets        = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
-                    tempStore2(subIDs, l_contours, newID, err, orig, dataSets, concave = missingNewSubIDs_hulls[newID])
+                    tempStore2(subIDs, l_contours, ID2S(subIDs), err, orig, dataSets, concave = 0)
                     l_predict_displacement[oldID][1] = int(dist2)
-                    print(f'-{oldID}:Resolved (Cleanup) oldID: {oldID} & {newID}:{subIDs}. prediction centroid - actual centroid distnace: {int(dist2)}')
+                    print(f'-{oldID}:Resolved (Cleanup) oldID: {oldID} (of {oldIDs}) => {newIDs}. prediction centroid - actual centroid distnace: {int(dist2)}')
                         
         else: print(f'--Performing global cleanup: no candidates ...\n')
 
@@ -2917,8 +2977,8 @@ if os.path.exists(os.path.join(intermediateDataFolder,'data.pickle')) and readIn
                 activeFrozen2[ID] = [[displacementFromStartMean,displacementFromStartStd],[areaMean,areaStd],counter,cntrd,recPar]
                 
          
-    print(activeFrozen2==activeFrozen)
-    a = 1;print(frozenBuffer_old2==frozenBuffer_old)
+    #print(activeFrozen2==activeFrozen)
+    a = 1;#print(frozenBuffer_old2==frozenBuffer_old)
     activeFrozen = activeFrozen2
     frozenBuffer_old = frozenBuffer_old2
     rbs = [g_bublle_type_by_gc_by_type[globalCounter][bType] for bType in [typeRing,typeRecoveredRing]]

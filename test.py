@@ -1083,24 +1083,76 @@ if 1 == -1:
 
 import cv2
 import numpy as np
+import numpy as np
+import matplotlib.pyplot as plt
 
-# Define two rotated rectangles
-#rect1 = cv2.RotatedRect((100, 100), (50, 100), 45)
-#rect2 = cv2.RotatedRect((150, 100), (100, 50), 0)
-rect1 = ((100,100), (100,100), 0)
-#x2,y2,w2,h2 = group1Params[keyOld]
-rect2 = ((200,100), (100,100), 0)
+import numpy as np
+from scipy.interpolate import interp1d
 
-# Calculate the intersection points
-result = cv2.rotatedRectangleIntersection(rect1, rect2)
+points = np.array([(1255, 403), (1257, 401), (1250, 403), (1244, 403), (1239, 421), (1237, 467), (1228, 469), (1225, 481), (1228, 464), (1224, 461), (1216, 465), (1192, 478), (1188, 484), (1196, 454)])
 
-# If there is an intersection
-if result[0] > 0:
-    points = np.array(result[1], dtype=np.int32)
-    intersection_area = cv2.contourArea(points)
-    print("Intersection area:", intersection_area)
-else:
-    print("No intersection")
+def extrapolate(data, maxInterpSteps = 15, maxInterpOrder = 1, smoothingScale = 211, zerothDisp = [],fixSharp = 1, angleLimit = 30, debug = 0, axes=[], pltString = ''):
+    data = np.array(data).reshape(len(data),-1) #[1,2]->[[1],[2]]; [[11,12],[21,22]]-> itself
+    numPointsInTraj = data.shape[0]
+    numStepsInTraj = numPointsInTraj - 1 #;print(f'numPointsInTraj:{numPointsInTraj}, numStepsInTraj:{numStepsInTraj}')
+    numDims = data.shape[1]
+    # start-> take last maxInterpSteps
+    start = 0 if numStepsInTraj < maxInterpSteps else numStepsInTraj-maxInterpSteps
+    if numStepsInTraj == 0:
+        zeroth = [0]*numDims if len(zerothDisp) == 0 else zerothDisp
+        return data[0] + zeroth
+    k = min(numStepsInTraj,maxInterpOrder)
+    t = np.arange(0,numPointsInTraj-start,1)#;print(f't:{t},(numPointsInTraj-star):{numPointsInTraj-start}')
+    if numDims == 1:data = np.hstack([t.reshape(len(t),-1),data])
+    splitSubsetComponents = data[start:].T#;print(data)
+    #if debug == 1: tDebug = np.arange(0,numPointsInTraj-start+0.01,0.2)#;print(f'tDebug:{tDebug}')
+    sMod = numPointsInTraj+np.sqrt(2*numPointsInTraj) # max proper range from docs.
+    if fixSharp == 1:
+        alphaMax = 1.2
+        alphas = np.arange(smoothingScale,alphaMax+0.0001,0.2)
+        for alpha in alphas:
+            sMod2 = alpha*sMod
+            spline0, _ = interpolate.splprep(splitSubsetComponents, u = t, s = sMod2, k = k)
+
+            extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0),int)
+            dv0 = np.diff(extrapolatedPoint0).reshape(max(2,numDims))
+            z = np.polyfit(*splitSubsetComponents[:,-3:], 1);#print(f'z:{z}')
+            x0,x1 = splitSubsetComponents[0,-min(numPointsInTraj,3)], splitSubsetComponents[0,-1]
+            p0,p1 = np.array([x0,np.dot([x0,1],z)]),np.array([x1,np.dot([x1,1],z)]) #[ x0,y(x0)], or use poly1d lol
+            dv = (lambda x: x/np.linalg.norm(x)) (p1-p0)*np.linalg.norm(dv0)
+            angleDeg = (lambda x,y: np.degrees(np.arccos(np.clip(np.dot(x / np.linalg.norm(x), y / np.linalg.norm(y)), -1.0, 1.0))))(dv0,dv)
+            if angleDeg <= angleLimit or alpha == alphas[-1]:
+                returnVec =  extrapolatedPoint0[:,-1]
+                break
+            
+    else:
+        alpha = smoothingScale
+        sMod2 = alpha*sMod
+        spline0, _ = interpolate.splprep(splitSubsetComponents, u = t, s = sMod2, k = k)
+        extrapolatedPoint0 = np.array(interpolate.splev([t[-1],t[-1]+1], spline0,ext=0),int)
+        returnVec = extrapolatedPoint0[:,-1]
+
+    if debug == 1:
+        tDebug = np.arange(0,numPointsInTraj-start+0.01,0.2)
+        extrapolatedPointsDebug2 = np.array(interpolate.splev(tDebug, spline0,ext=0))
+        axes.plot(*extrapolatedPointsDebug2,'-o',label = f'order: {k}, smoothing: {alpha:0.1f}*sMax ({sMod2:0.1f})',ms= 3)
+        if fixSharp == 1:
+            axes.plot(*np.array([p0,p1]).T,'--',label = f'3 step linear fit (*)')
+            axes.plot([p0[0]+dv[0],p0[0],p0[0]+dv0[0]],[p0[1]+dv[1],p0[1],p0[1]+dv0[1]],'-',label = f'angleDeg between (*) and exterp:{angleDeg:0.1f}',lw=3)
+        axes.plot(*splitSubsetComponents,'x',label = 'Original pts (subset)',ms= 13);print(f'splitSubsetComponents:{splitSubsetComponents}')
+        axes.legend(prop={'size': 6})
+        axes.set_title(pltString+"extrapolate() debug")
+        #plt.show()
+    return returnVec if numDims > 1 else returnVec[1]
+fig, axes = plt.subplots(1,1 , figsize=( 1*5,5), sharex=True, sharey=True)
+a = extrapolate(points,axes = axes, debug = 1)
+
+# Plot the original and interpolated/extrapolated trajectories
+#plt.plot(*new_points.T, 'ro-', label='Original')
+#plt.plot(new_x, new_y, 'b.-', label='Interpolated/Extrapolated')
+plt.legend()
+plt.show()
+
 
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key

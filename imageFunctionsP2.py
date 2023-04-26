@@ -9,6 +9,18 @@ from scipy import interpolate
 from matplotlib import pyplot as plt
 import alphashape
 
+def opossiteAngles(p1,p2p3):
+    # given a point p1 return oposite to p1 angles
+    # point oredr anti-clockwise, angles too
+    p1,[p2,p3] = np.array(p1), np.array(p2p3)
+    a = np.linalg.norm(p2 - p3)
+    b = np.linalg.norm(p1 - p3)
+    c = np.linalg.norm(p1 - p2)
+ 
+    angle1 = np.rad2deg(np.arccos((a**2 + c**2 - b**2) / (2 * a * c)))
+    angle2 = np.rad2deg(np.arccos((a**2 + b**2 - c**2) / (2 * b * a)))
+    
+    return angle1,angle2
 def init(folder,imageNumber): # initialize some globals, so i dont have to pass them. EDIT: IDK wth does it do, looks like nothing
     global imageMainFolder,imgNum
     imageMainFolder = folder
@@ -1090,13 +1102,13 @@ def extrapolate(data, maxInterpSteps = 3, maxInterpOrder = 2, smoothingScale = 0
         #plt.show()
     return returnVec if numDims > 1 else returnVec[1]
 
-def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [], numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug = 0, savePath = r'./', predictvec_old = [], bubID = 1, timestep = 0, zerothDisp = [0,0]):
+def distStatPredictionVect2(trajectory, sigmasDeltas = [],sigmasDeltasHist = [], numdeltas = 5, maxInterpSteps = 3, maxInterpOrder = 2, debug = 0, savePath = r'./', predictvec_old = [], bubID = 1, timestep = 0, zerothDisp = [0,0],ss = .5, fixSharp = 1):
     #global showDistDecay
     returnVec = []
     #debug = 1 if timestep >= 0 and bubID == 5 else 0
     if debug == 1: _, axes = plt.subplots(1,2 , figsize=( 13,5), sharex=False, sharey=False) # a = x if else y-> does not work for some reason
     else: _, axes = 1,[1]
-    returnVec = extrapolate(trajectory, maxInterpSteps = maxInterpSteps, maxInterpOrder = 1, smoothingScale = .3, zerothDisp = zerothDisp, fixSharp = 1, angleLimit = 10, debug = debug,axes = axes[0], pltString = f'bubID:{bubID},timestep:{timestep}|')
+    returnVec = extrapolate(trajectory, maxInterpSteps = maxInterpSteps, maxInterpOrder = 1, smoothingScale = ss, zerothDisp = zerothDisp, fixSharp = fixSharp, angleLimit = 10, debug = debug,axes = axes[0], pltString = f'bubID:{bubID},timestep:{timestep}|')
     trajectory = trajectory[-1*maxInterpSteps:] #may redo to -min something
     if debug == 1:
         axes[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=3, fancybox=True, shadow=True)
@@ -1557,8 +1569,11 @@ def mergeCrit(contourIDs, contours, previousInfo, pCentr = None, alphaParam = 0.
                 oldDefNewDefRelation.append([i,uniqtt[0]])                                                          # predicted /w index i matches current defect /w idx 0 -> [i,j]
         passNewDef1 = [b for _,b in oldDefNewDefRelation]
         passNewDef2 = [i for i in passNewDef1 if int(defectsLength2[i]/256) > 0.5*refDistance]
-        #passNewDef3 = [i for i in passNewDef1 if int(defectsLength2[i]/256) > 0.5*refDistance]
-        baseDefectsOut = [stats for i, stats in enumerate(zip(defectsFarpoints2p,defectsDirection2,defectsLength2)) if i in passNewDef2]
+        twoAngles = {}                                                                                              # added removal criterium for wide defect.
+        for i in passNewDef2:                                                                                       # wide defects may persist for too long
+            twoAngles[i] = np.mean(opossiteAngles(baseContour[defectsFarpoints2[i]].reshape(1,2), baseContour[defectsIndicies2[i]].reshape(2,2)))
+        passNewDef3 = [i for i in passNewDef2 if twoAngles[i]>25]
+        baseDefectsOut = [stats for i, stats in enumerate(zip(defectsFarpoints2p,defectsDirection2,defectsLength2)) if i in passNewDef3]
         defectsDiscard = [i for i in range(len(defectsFarpoints2p)) if i not in passNewDef2]
     defectsIndicies = defectsIndicies2
     defectsLength = defectsLength2
@@ -1905,7 +1920,7 @@ def radialAnal( OGparams, SLparams, PermParams, StatParams, globalCounter, oldID
         if oldID in l_MBub_info_old:                                                    # it was part of a merge (big or small)
             ddd = 0 #if globalCounter != 3 and oldID != 4 else 1
             previousInfo        = l_MBub_info_old[oldID][3:] 
-            hull, newParams, _  = mergeCrit(permIDsol2, l_contours, previousInfo, alphaParam = 0.05, debug = ddd ,debug2 = ddd, gc = globalCounter, id = oldID)
+            hull, newParams, _  = mergeCrit(permIDsol2, l_contours, previousInfo, pCentr = predictCentroid, alphaParam = 0.05, debug = ddd ,debug2 = ddd, gc = globalCounter, id = oldID)
         else:
             hull                = cv2.convexHull(np.vstack(l_contours[permIDsol2]))
                                 

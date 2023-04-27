@@ -232,8 +232,8 @@ assistFramesG       = [48]#751,976,763,1068
 assistFrames        = [a - dataStart for a in assistFramesG]
 doIntermediateData              = 1                                         # dump backups ?
 intermediateDataStepInterval    = 15                                        # dumps latest data field even N steps
-readIntermediateData            = 1                                         # load backups ?
-startIntermediateDataAtG        = 1272                                  # frame stack index ( in X_Data). START FROM NEXT FRAME
+readIntermediateData            = 0                                         # load backups ?
+startIntermediateDataAtG        = 0                                  # frame stack index ( in X_Data). START FROM NEXT FRAME
 startIntermediateDataAt         = startIntermediateDataAtG - dataStart      # to global, which is pseudo global ofc. global to dataStart
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
@@ -1934,49 +1934,93 @@ def mainer(index):
             cc_unique           = graphUniqueComponents(unresolvedOldDB, combosOldNew)  # clusters: old unresolved intersect resolved old. e.g [[old lobal, old local]]: [['2', 21]]
             cc_unique           = [a for a in cc_unique if len(a)>1]                                                        # sometimes theres no intersection, cluster of 1 element. drop it.
             cc_unique           = [[a for a in b if type(a) != str]+[a for a in b if type(a) == str] for b in cc_unique]    # follow convension [str(ID1), ID2]
-            whereOldGlobals     = [resolvedLocals.index(b) for [_,b] in cc_unique]    
-            oldResolvedGlobals  = [resolvedGlobals[i] for i in whereOldGlobals]                                             # global IDs of resolved old bubbles.               e.g [3]
-            oldPreMergeGlobals  = [[a,oldResolvedGlobals[i]] for i,[a,_] in enumerate(cc_unique)]                      # global IDs of possible merged bubbles.            e.g [[2, 3]]
-            oldResolvedLocals   = [resolvedLocals[i] for i in whereOldGlobals]                                              # local ID of old resolved bubble (on new frame)    e.g [21]
-            oldAreas            = [np.array([l_areas_hull_old[ID] for ID in IDs], int)          for IDs in oldPreMergeGlobals]  # hull areas             of old globals         e.g [array([ 3683, 15179])]
-            oldCentroids        = [np.array([l_predict_displacement[ID][0] for ID in IDs], int) for IDs in oldPreMergeGlobals]  # predicted centroids    of old globals         e.g [array([[1069,  476], [ 969,  462]])]
-            centroidTest        = [np.average(a, weights = b,axis = 0).astype(int)      for a,b in zip(oldCentroids,oldAreas)]  # weighted predicted centroid.                  e.g [array([988, 464])]
-            a = 1                                                                                                                # if merge happened, buble will be about here.
-            realCentroids       = {ID:centroidsResolved[ID] for ID in oldResolvedLocals}                                    # actual centroid of new found bubble (local ID)    e.g {21: (986, 464)}
-            predictedCentroids  = {ID:l_predict_displacement[ID][0] for ID in oldResolvedGlobals}                           # expected centroid of that bubble                  e.g {3: (969, 462)}
-            previousInfo        = [getMergeCritParams(l_ellipse_parms_old, old, 0.4, 25) for old in oldPreMergeGlobals]     # params to constuct convex-concave hull based on prev bubble orientation.
-            mergeCritStuff      = [mergeCrit(oldNewIdsResolved[lID], l_contours, pInfo, alphaParam = 0.06, debug = 0) for lID,pInfo in zip(oldResolvedLocals,previousInfo)]
-            areasTest           = [int(cv2.contourArea(hull)) for hull,_,_ in mergeCritStuff]                               # potentially better variant of hull area.          e.g [18373]
-            predictedAreas      = [l_areas_hull_old[ID] for ID in oldResolvedGlobals]                                       # expected old OG bubble area.                      e.g [15179]
-            realArea            = [areasResolved[ID] for ID in oldResolvedLocals]                                           # actual new bubble area                            e.g [20791]
-            areaPass            = [False]*len(oldResolvedGlobals)                                                           # containers to track state of failure
-            distPass            = [False]*len(oldResolvedGlobals)                                                           # practical (e.g) example shows that Test centroid and Areas are closer to real vals.
-            for i,[realValue, myVariant, oldVariant] in enumerate(zip(realArea,areasTest,predictedAreas)):                  # compare predicted OG vals to (new and recovered (considering merge happened))
-                relArea = lambda area: np.abs(realValue-area)/realValue
-                if relArea(myVariant) < relArea(oldVariant): areaPass[i] = True                                             # if relative area change w.r.t new are is smaller for merged than solo->...
+            for comb in cc_unique:
+                if len(comb)>2: continue
+                whereOldGlobals     = resolvedLocals.index(comb[1])   
+                oldResolvedGlobals  = resolvedGlobals[whereOldGlobals]                                             # global IDs of resolved old bubbles.               e.g [3]
+                oldPreMergeGlobals  = [comb[0],oldResolvedGlobals]                     # global IDs of possible merged bubbles.            e.g [[2, 3]]
+                oldResolvedLocals   = resolvedLocals[whereOldGlobals]                                            # local ID of old resolved bubble (on new frame)    e.g [21]
+                oldAreas            = np.array([l_areas_hull_old[ID] for ID in oldPreMergeGlobals], int)  # hull areas             of old globals         e.g [array([ 3683, 15179])]
+                oldCentroids        = np.array([l_predict_displacement[ID][0] for ID in oldPreMergeGlobals], int)  # predicted centroids    of old globals         e.g [array([[1069,  476], [ 969,  462]])]
+                centroidTest        = np.average(oldCentroids, weights = oldAreas,axis = 0).astype(int)  # weighted predicted centroid.                  e.g [array([988, 464])]
+                a = 1                                                                                                                # if merge happened, buble will be about here.
+                realCentroids       = centroidsResolved[oldResolvedLocals]                                    # actual centroid of new found bubble (local ID)    e.g {21: (986, 464)}
+                predictedCentroids  = l_predict_displacement[oldResolvedGlobals][0]                           # expected centroid of that bubble                  e.g {3: (969, 462)}
+                previousInfo        = getMergeCritParams(l_ellipse_parms_old, oldPreMergeGlobals, 0.4, 25)    # params to constuct convex-concave hull based on prev bubble orientation.
+                mergeCritStuff      = mergeCrit(oldNewIdsResolved[oldResolvedLocals], l_contours, previousInfo, alphaParam = 0.06, debug = 0)
+                areasTest           = int(cv2.contourArea(mergeCritStuff[0]))                             # potentially better variant of hull area.          e.g [18373]
+                predictedAreas      = l_areas_hull_old[oldResolvedGlobals]                                      # expected old OG bubble area.                      e.g [15179]
+                realArea            = areasResolved[oldResolvedLocals]                                         # actual new bubble area                            e.g [20791]
+                areaPass            = False                                                           # containers to track state of failure
+                distPass            = False                                                           # practical (e.g) example shows that Test centroid and Areas are closer to real vals.
+                                 # compare predicted OG vals to (new and recovered (considering merge happened))
+                relArea = lambda area: np.abs(realArea-area)/realArea
+                if relArea(areasTest) < relArea(predictedAreas): areaPass = True                                             # if relative area change w.r.t new are is smaller for merged than solo->...
             
-            for i,[realValue, myVariant, oldVariant] in enumerate(zip(list(realCentroids.values()),centroidTest,list(predictedCentroids.values()))):
-                dist = lambda centroid: np.linalg.norm(np.array(realValue) - np.array(centroid))   
-                if dist(myVariant) <= dist(oldVariant): distPass[i] = True                                                  # compare distance from new to (predicted old and recustructed assuming merge)
+                dist = lambda centroid: np.linalg.norm(np.array(realCentroids) - np.array(centroid))   
+                if dist(centroidTest) <= dist(predictedCentroids): distPass = True                                                  # compare distance from new to (predicted old and recustructed assuming merge)
             
-            for i, [passA,passD] in enumerate(zip(areaPass,distPass)):
-                if passA == True and passD == True:
+                
+                if areaPass == True and distPass == True:
                     allResDBGlobs  = [a[0] for a in DBOldNewDist]
                     allResDBGlobs  = [a[0] for a in DBOldNewDist]
-                    DBOldNewDist    = np.array([a for a in DBOldNewDist     if a[0] != oldResolvedGlobals[i]], dtype=[('integer', '<i4'), ('string', '<U60')])
-                    rDBOldNewDist   = np.array([a for a in rDBOldNewDist    if a[0] != oldResolvedGlobals[i]], dtype=[('integer', '<i4'), ('string', '<U60')])
-                    RBOldNewDist    = np.array([a for a in RBOldNewDist     if a[0] != oldResolvedGlobals[i]], dtype=[('integer', '<i4'), ('string', '<U60')])
-                    rRBOldNewDist   = np.array([a for a in rRBOldNewDist    if a[0] != oldResolvedGlobals[i]], dtype=[('integer', '<i4'), ('string', '<U60')])
-                    MBOldNewDist    = np.array([a for a in MBOldNewDist     if a[0] != oldResolvedGlobals[i]], dtype=[('integer', '<i4'), ('string', '<U60')])
+                    DBOldNewDist    = np.array([a for a in DBOldNewDist     if a[0] != oldResolvedGlobals], dtype=[('integer', '<i4'), ('string', '<U60')])
+                    rDBOldNewDist   = np.array([a for a in rDBOldNewDist    if a[0] != oldResolvedGlobals], dtype=[('integer', '<i4'), ('string', '<U60')])
+                    RBOldNewDist    = np.array([a for a in RBOldNewDist     if a[0] != oldResolvedGlobals], dtype=[('integer', '<i4'), ('string', '<U60')])
+                    rRBOldNewDist   = np.array([a for a in rRBOldNewDist    if a[0] != oldResolvedGlobals], dtype=[('integer', '<i4'), ('string', '<U60')])
+                    MBOldNewDist    = np.array([a for a in MBOldNewDist     if a[0] != oldResolvedGlobals], dtype=[('integer', '<i4'), ('string', '<U60')])
                     #oldNewDB  = np.array([[a,b] for a,b in oldNewDB  if a != oldResolvedGlobals[i]])            # drop resolved status from bubble.
                     #RBOldNewDist    = np.array([[a,b] for a,b in RBOldNewDist    if a != oldResolvedGlobals[i]])            # easier to re-construct array than looking if ID is in, then where to delete.
                     
-                    cc_oldIDs.append(oldPreMergeGlobals[i])
-                    newIDs = oldNewIdsResolved[oldResolvedLocals[i]]
+                    cc_oldIDs.append(oldPreMergeGlobals)
+                    newIDs = oldNewIdsResolved[oldResolvedLocals]
                     cc_newIDs.append(newIDs)
-                    preCalculated[ID2S(newIDs)] = [oldAreas[i], centroidTest[i], mergeCritStuff[i][0], mergeCritStuff[i][1]]
+                    preCalculated[ID2S(newIDs)] = [oldAreas, centroidTest, mergeCritStuff[0], mergeCritStuff[1]]
                     #preCalculated[min(newIDs)] = [oldAreas[i], centroidTest[i], mergeCritStuff[i][0], None]                 # new system puts None on first time merge
-                    print(f'Merge detected between old:{oldPreMergeGlobals[i]} and new:{newIDs}')
+                    print(f'Merge detected between old:{oldPreMergeGlobals} and new:{newIDs}')
+            #whereOldGlobals     = [resolvedLocals.index(b) for [_,b] in cc_unique]    
+            #oldResolvedGlobals  = [resolvedGlobals[i] for i in whereOldGlobals]                                             # global IDs of resolved old bubbles.               e.g [3]
+            #oldPreMergeGlobals  = [[a,oldResolvedGlobals[i]] for i,[a,_] in enumerate(cc_unique)]                      # global IDs of possible merged bubbles.            e.g [[2, 3]]
+            #oldResolvedLocals   = [resolvedLocals[i] for i in whereOldGlobals]                                              # local ID of old resolved bubble (on new frame)    e.g [21]
+            #oldAreas            = [np.array([l_areas_hull_old[ID] for ID in IDs], int)          for IDs in oldPreMergeGlobals]  # hull areas             of old globals         e.g [array([ 3683, 15179])]
+            #oldCentroids        = [np.array([l_predict_displacement[ID][0] for ID in IDs], int) for IDs in oldPreMergeGlobals]  # predicted centroids    of old globals         e.g [array([[1069,  476], [ 969,  462]])]
+            #centroidTest        = [np.average(a, weights = b,axis = 0).astype(int)      for a,b in zip(oldCentroids,oldAreas)]  # weighted predicted centroid.                  e.g [array([988, 464])]
+            #a = 1                                                                                                                # if merge happened, buble will be about here.
+            #realCentroids       = {ID:centroidsResolved[ID] for ID in oldResolvedLocals}                                    # actual centroid of new found bubble (local ID)    e.g {21: (986, 464)}
+            #predictedCentroids  = {ID:l_predict_displacement[ID][0] for ID in oldResolvedGlobals}                           # expected centroid of that bubble                  e.g {3: (969, 462)}
+            #previousInfo        = [getMergeCritParams(l_ellipse_parms_old, old, 0.4, 25) for old in oldPreMergeGlobals]     # params to constuct convex-concave hull based on prev bubble orientation.
+            #mergeCritStuff      = [mergeCrit(oldNewIdsResolved[lID], l_contours, pInfo, alphaParam = 0.06, debug = 0) for lID,pInfo in zip(oldResolvedLocals,previousInfo)]
+            #areasTest           = [int(cv2.contourArea(hull)) for hull,_,_ in mergeCritStuff]                               # potentially better variant of hull area.          e.g [18373]
+            #predictedAreas      = [l_areas_hull_old[ID] for ID in oldResolvedGlobals]                                       # expected old OG bubble area.                      e.g [15179]
+            #realArea            = [areasResolved[ID] for ID in oldResolvedLocals]                                           # actual new bubble area                            e.g [20791]
+            #areaPass            = [False]*len(oldResolvedGlobals)                                                           # containers to track state of failure
+            #distPass            = [False]*len(oldResolvedGlobals)                                                           # practical (e.g) example shows that Test centroid and Areas are closer to real vals.
+            #for i,[realValue, myVariant, oldVariant] in enumerate(zip(realArea,areasTest,predictedAreas)):                  # compare predicted OG vals to (new and recovered (considering merge happened))
+            #    relArea = lambda area: np.abs(realValue-area)/realValue
+            #    if relArea(myVariant) < relArea(oldVariant): areaPass[i] = True                                             # if relative area change w.r.t new are is smaller for merged than solo->...
+            
+            #for i,[realValue, myVariant, oldVariant] in enumerate(zip(list(realCentroids.values()),centroidTest,list(predictedCentroids.values()))):
+            #    dist = lambda centroid: np.linalg.norm(np.array(realValue) - np.array(centroid))   
+            #    if dist(myVariant) <= dist(oldVariant): distPass[i] = True                                                  # compare distance from new to (predicted old and recustructed assuming merge)
+            
+            #for i, [passA,passD] in enumerate(zip(areaPass,distPass)):
+            #    if passA == True and passD == True:
+            #        allResDBGlobs  = [a[0] for a in DBOldNewDist]
+            #        allResDBGlobs  = [a[0] for a in DBOldNewDist]
+            #        DBOldNewDist    = np.array([a for a in DBOldNewDist     if a[0] != oldResolvedGlobals[i]], dtype=[('integer', '<i4'), ('string', '<U60')])
+            #        rDBOldNewDist   = np.array([a for a in rDBOldNewDist    if a[0] != oldResolvedGlobals[i]], dtype=[('integer', '<i4'), ('string', '<U60')])
+            #        RBOldNewDist    = np.array([a for a in RBOldNewDist     if a[0] != oldResolvedGlobals[i]], dtype=[('integer', '<i4'), ('string', '<U60')])
+            #        rRBOldNewDist   = np.array([a for a in rRBOldNewDist    if a[0] != oldResolvedGlobals[i]], dtype=[('integer', '<i4'), ('string', '<U60')])
+            #        MBOldNewDist    = np.array([a for a in MBOldNewDist     if a[0] != oldResolvedGlobals[i]], dtype=[('integer', '<i4'), ('string', '<U60')])
+            #        #oldNewDB  = np.array([[a,b] for a,b in oldNewDB  if a != oldResolvedGlobals[i]])            # drop resolved status from bubble.
+            #        #RBOldNewDist    = np.array([[a,b] for a,b in RBOldNewDist    if a != oldResolvedGlobals[i]])            # easier to re-construct array than looking if ID is in, then where to delete.
+                    
+            #        cc_oldIDs.append(oldPreMergeGlobals[i])
+            #        newIDs = oldNewIdsResolved[oldResolvedLocals[i]]
+            #        cc_newIDs.append(newIDs)
+            #        preCalculated[ID2S(newIDs)] = [oldAreas[i], centroidTest[i], mergeCritStuff[i][0], mergeCritStuff[i][1]]
+            #        #preCalculated[min(newIDs)] = [oldAreas[i], centroidTest[i], mergeCritStuff[i][0], None]                 # new system puts None on first time merge
+            #        print(f'Merge detected between old:{oldPreMergeGlobals[i]} and new:{newIDs}')
         for old,new in zip(cc_oldIDs,cc_newIDs):
             
             # grab new that is known (not stray) EG. is in unresolved new. EDIT 17/03/23 its not clear what next line does. i think error is in unresolvedNewDB containing min(subIDs), which is not used correctly here

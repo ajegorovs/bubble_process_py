@@ -285,33 +285,41 @@ def dumpPickle(exportFileName, data, folders=[]):
 toList = lambda x: [x] if type(x) != list else x
 
 # =========== BUILD OUTPUT FOLDERS =============//
-
+inputOutsideRoot            = 1                                                  # bmp images inside root, then input folder hierarchy will
+mainInputImageFolder        = r'.\inputFolder'                                   # be created with final inputImageFolder, else custom.
+inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\Field OFF\Series 7\350 sccm'
 mainOutputFolder            = r'.\imageMainFolder_output'                        # these are main themed folders, sub-projects go inside.
 mainIntermediateDataFolder  = r'.\intermediateData'                              # these are main themed folders, sub-projects go inside.
 mainManualMasksFolder       = r'.\manualMask'                                    # these are main themed folders, sub-projects go inside.
-mainInputImageFolder        = r'.\inputFolder'   
 mainDataArchiveFolder       = r'.\archives'
 for directory in [mainOutputFolder, mainIntermediateDataFolder, mainManualMasksFolder, mainInputImageFolder, mainDataArchiveFolder]:
         if not os.path.exists(directory):
              os.mkdir(directory) 
 
 #mainOutputSubFolders= ['ringDetect']                                             # specific sub-project folder heirarchy
-mainOutputSubFolders= ['fieldOff','sccm350']   
+mainOutputSubFolders= ['fieldOff','sccm350', "07500-10000"]                        # "00001-02500"
                                                                                 
+
 imageFolder             = mainOutputFolder                                       # defaults output to main folder
 intermediateDataFolder  = mainIntermediateDataFolder                             # defaults output to main folder
 manualMasksFolder       = mainManualMasksFolder                                  # defaults output to main folder
-inputImageFolder        = mainInputImageFolder
 dataArchiveFolder       = mainDataArchiveFolder
 for folderName in mainOutputSubFolders:                                          # or creates heararchy of folders "subfolder/subsub/.."
+    
+        
     imageFolder             = os.path.join(imageFolder,             folderName)
     intermediateDataFolder  = os.path.join(intermediateDataFolder,  folderName)
     manualMasksFolder       = os.path.join(manualMasksFolder,       folderName)
-    inputImageFolder        = os.path.join(inputImageFolder,        folderName)
     dataArchiveFolder       = os.path.join(dataArchiveFolder,       folderName)
-    for directory in [imageFolder, intermediateDataFolder, manualMasksFolder,inputImageFolder,dataArchiveFolder]:
-        if not os.path.exists(directory):
-             os.mkdir(directory) 
+    if inputOutsideRoot == 0:
+        inputImageFolder        = os.path.join(inputImageFolder,        folderName)
+        for directory in [imageFolder, intermediateDataFolder, manualMasksFolder,dataArchiveFolder,inputImageFolder]:
+            if not os.path.exists(directory):
+                 os.mkdir(directory)
+    else:
+        for directory in [imageFolder, intermediateDataFolder, manualMasksFolder,dataArchiveFolder]:
+            if not os.path.exists(directory):
+                 os.mkdir(directory)
 
 # //=========== BUILD OUTPUT FOLDERS =============
 
@@ -330,15 +338,15 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 0 #736 #300 #  53+3+5
-dataNum             = 550 #130 # 7+5   
+dataNum             = 2501 #130 # 7+5   
 
 assistManually      = 1
-assistFramesG       = []#751,976,763,1068
+assistFramesG       = []#845,810,1234 2070,2187
 assistFrames        = [a - dataStart for a in assistFramesG]
 doIntermediateData              = 1                                         # dump backups ?
-intermediateDataStepInterval    = 100                                        # dumps latest data field even N steps
-readIntermediateData            = 0                                         # load backups ?
-startIntermediateDataAtG        = 111110                                  # frame stack index ( in X_Data). START FROM NEXT FRAME
+intermediateDataStepInterval    = 50                                       # dumps latest data field even N steps
+readIntermediateData            = 1                                         # load backups ?
+startIntermediateDataAtG        = 11243                              # frame stack index ( in X_Data). START FROM NEXT FRAME
 startIntermediateDataAt         = startIntermediateDataAtG - dataStart      # to global, which is pseudo global ofc. global to dataStart
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
@@ -379,9 +387,13 @@ debugVecPredict = 0
 exportArchive   = 0
 
 rotateImageBy   = cv2.ROTATE_180 # -1= no rotation, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_180 
-startFrom       = 1
-numImages       = 1500
-postfix         = '_1-500'
+startFrom       = 0   #0 or 1 for sub exp       # offset from ordered list of images- global offset?! yes archive adds images from list as range(startFrom, numImages)
+numImages       = 2500                          # take this many, but it will be updated: min(dataNum,len(imageLinks)-startFrom), if there are less available
+postfix         = '-07500-10000'
+
+intervalStart   = 7500                          # in ordered list of images start from number intervalStart
+intervalStop    = intervalStart + numImages     # and end at number intervalStop
+
 archivePath     = os.path.join(dataArchiveFolder, "-".join(mainOutputSubFolders)+postfix+".pickle")
 meanImagePath   = os.path.join(dataArchiveFolder, "-".join(["mean"]+mainOutputSubFolders)+".pickle")
 
@@ -399,8 +411,7 @@ if exportArchive == 1:
     # here is an example of badly padded data: [.\imt3509,.\img351,.\img3510,.\img3511,...]
     # ------------------------ can filter out integer values out of range -------------------------------
     # ---------------------------------------------------------------------------------------------------
-    intervalStart   = 0
-    intervalStop    = numImages          
+             
     
     extractIntergerFromFileName = lambda x: int(re.findall('\d+', os.path.basename(x))[0])
     imageLinks = list(filter(lambda x: intervalStop > extractIntergerFromFileName(x) > intervalStart , imageLinks))
@@ -523,7 +534,7 @@ l_centroids_old_all, l_Areas_old,l_Areas_hull_old, l_rect_parms_all, l_rect_parm
 g_predict_displacement, g_predict_area_hull  = {}, {}; frozenIDs = []
 l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old, l_contours_hull_old = {}, {}, {}, {}, {}, {}, {}, {}
 fakeBox, steepAngle, g_bublle_type_by_gc_by_type, g_dropIDs = {}, {} ,{}, {}   # inlet area rectangle
-test666 = {}
+test666 = {};STBubs = {}
 def mainer(index):
     global globalCounter, g_contours, g_contours_hull, frozenBubs, frozenBubsTimes, l_centroids_old_all, l_Areas_old, l_Areas_hull_old, l_rect_parms_all, l_rect_parms_all_old, g_areas_hull
     global l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old, l_RBub_areas_hull_old, l_RBub_old_new_IDs_old
@@ -536,7 +547,7 @@ def mainer(index):
     global l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old, l_contours_hull_old
     global fakeBox, drawAfter, steepAngle, assistManually, assistFrames, dataStart, frozenBuffer_old, frozenBufferSize, allFrozenIDs, activeFrozen
     global debugVecPredict, contoursFilter_RectParams_dropIDs_old, contoursFilter_RectParams, contoursFilter_RectParams_dropIDs, frozenBufferMaxDT
-    global frozenGlobal, imageFolder, g_bublle_type_by_gc_by_type, g_areas_IDs, g_dropIDs, breakLoopInsert, g_splits, l_splits_old
+    global frozenGlobal, imageFolder, g_bublle_type_by_gc_by_type, g_areas_IDs, g_dropIDs, breakLoopInsert, g_splits, l_splits_old, STBubs
     orig0           = dataArchive[index]
     # wanted to replace code below with cv2.subtract, but there are alot of problems with dtypes and results are a bit different
     orig            = orig0 -cv2.blur(meanImage, (5,5),cv2.BORDER_REFLECT)
@@ -641,7 +652,46 @@ def mainer(index):
                                                                                                                         # from active list.
         for ID in list(activeFrozen.keys()).copy():                                                                     # stop tracking IDs that
             if ID not in frozenBuffer_old: activeFrozen.pop(ID,None)                                                    # are out of buffer
-        #frozenBuffer_old = 
+
+        # ==============================================================================================================
+        # ===================== Find which old resolved cluster elements did not move ==================================
+        declusterNewFRLocals = []
+        NStepsLocalFreeze = 2                                                                 # NStepsLocalFreeze steps in total except current
+        locFRAreaThreshold = 600
+        if globalCounter> NStepsLocalFreeze:
+            lastNSteps = range(globalCounter-NStepsLocalFreeze, globalCounter, 1)
+            nonFrozenGlobIDsTimes = {time:sum(                                                # these are non frozen global IDs present last steps
+                                                [IDs for bType,IDs in g_bublle_type_by_gc_by_type[time].items() if bType != typeFrozen],
+                                                []) for time in lastNSteps}
+            resolvedLocalIDsTimes = {time:sum(                                                # these are local IDs of non frozen globals
+                                                [g_old_new_IDs[subID][time] for subID in gIDs],
+                                                []) for time,gIDs in nonFrozenGlobIDsTimes.items()}
+            relevantContoursTimes = {time:{subID:g_contours[time][subID] for subID in IDs} for time,IDs in resolvedLocalIDsTimes.items()}
+
+            relevantBRTimes       = {time:                                                    # all boundingRect params
+                                            {ID: cv2.boundingRect(contour) for ID, contour in vals.items()}
+                                    for time, vals in relevantContoursTimes.items()}
+            relevantBRTimesFilter = {time:                                                    # filter out big ones
+                                            {ID: [x,y,w,h] for ID, [x,y,w,h] in vals.items() if w*h < locFRAreaThreshold}
+                                    for time, vals in relevantBRTimes.items()}
+            step1RPtime,step2RPtime = list(lastNSteps)[-2:]                                   # manually select last 2 steps
+            step1RP = {str(ID): params for ID,params in relevantBRTimesFilter[step1RPtime].items()}
+            step2RP = {ID: params for ID,params in relevantBRTimesFilter[step2RPtime].items()}
+            overlap = overlappingRotatedRectangles(step1RP, step2RP)                          # find overlap of small resolved subIds
+            allOldLIDs  = [a[0] for a in overlap]
+            allNextLIDs = [a[1] for a in overlap]
+            oldCAs      = {ID:getCentroidPosContours(bodyCntrs = [relevantContoursTimes[step1RPtime][int(ID)]]) for ID in allOldLIDs}
+            nextCAs     = {ID:getCentroidPosContours(bodyCntrs = [relevantContoursTimes[step2RPtime][int(ID)]]) for ID in allNextLIDs}
+            calcD = lambda ID1,ID2: np.linalg.norm(np.array(oldCAs[ID1][0]) - np.array(nextCAs[ID2][0]))
+            calcA = lambda ID1,ID2: np.abs(oldCAs[ID1][1]-nextCAs[ID2][1])/nextCAs[ID2][1]
+            overlapDA   = [[calcD(ID1,ID2),calcA(ID1,ID2)] for ID1,ID2 in overlap]            # find c-c dist and rel area of overlap combos
+            overlapPass = [True if a<=3 and b< 0.4 else False for a,b in overlapDA]
+            overlapFRLoc = [combo for i,combo in enumerate(overlap) if overlapPass[i] == True]# take ones that are close dist and area
+
+            # ================ continued after global Frozens are resolved and dropped from current locals =================
+            # ==============================================================================================================
+
+            #splitCentroidsAreas     = {ID:getCentroidPosContours(bodyCntrs = [hull]) for ID,hull in splitHulls.items()}   
         #l_rect_parms_old
         #cntrRemainingIDs = [cID for cID in whereParentOriginal if cID not in contoursFilter_RectParams_dropIDs ] #+ dropAllRings + dropRestoredIDs
         a  = 1
@@ -876,7 +926,8 @@ def mainer(index):
 
         #jointNeighbors = {min(elem): elem for elem in cc_unique if len(elem)>0}
         jointNeighbors = {ID2S(elem): elem for elem in cc_unique if len(elem)>0}
-        unresolvedNewRB = [ID2S([a]) for a in unresolvedNewRB]
+        unresolvedNewRB = [ID2S(subElem) for subElem in cc_unique if len(subElem)==1 and subElem[0] in unresolvedNewRB.copy()]      # had to remove clustered new RBs
+        #unresolvedNewRB = [ID2S([a]) for a in unresolvedNewRB]
         #clusterMsg = 'Cluster groups: ' if frozenSeparated == False else f'Cluster groups (frozenIDs:{frozenIDs} detected): '
         #print(clusterMsg,"\n", list(jointNeighbors.values()))
         # collect multiple contours into one object, store it for further check
@@ -970,7 +1021,7 @@ def mainer(index):
                     app = np.array((oldID, ID2S(newIDs)), dtype=[('integer', '<i4'), ('string', '<U60')])
                     #FBOldNewDist    = np.append(FBOldNewDist,[[oldID,newID]],axis=0)
                     FBOldNewDist    = np.append(FBOldNewDist,app)
-    
+                    if oldID in unresolvedOldDB: unresolvedOldDB.remove(oldID)
                     l_predict_displacement[oldID]                       = [tuple(map(int,dataSets[4][ID2S(newIDs)])), dist]       
                     if oldID in l_FBub_centroids_old:   print(f'-{oldID}:Restored oldFB-newrFB (restored from past): {oldID} & {newID}:{newIDs}.')
                     else:                               print(f'-{oldID}:Restored oldFB-newrFB (from previous frame): {oldID} & {newID}:{newIDs}.')
@@ -982,16 +1033,67 @@ def mainer(index):
                 [unresolvedNewRB.remove(str(ID)) for ID in subIDsF if str(ID) in unresolvedNewRB]
 
             jointNeighbors = {ID2S(subIDs):subIDs for subIDs in jointNeighbors.values() if len(subIDs)>0}
+            #if len(activeFrozenLocalIDs) > 0:
+            #    print("(updated) unresolvedOlDRB (all old D,rD bubbles):\n",  unresolvedOldDB)
+            #    print("(updated) unresolvedNewRB (new typeRing bubbles):\n",  unresolvedNewRB)
+            #    print(f'{globalCounter}:--------- Frozen bubble (FB): {[a[0] for a in FBOldNewDist]} recovery ended ---------\n')
+            #else: print(f'{globalCounter}:--------- No Frozen bubble (FB) recovered ---------\n')
+            
+            
+            if len(overlapFRLoc) >0:
+                newRelevantLocals   = sum(list(jointNeighbors.values()),[])
+                newRelevantRPs      = {ID:l_rect_parms_all[ID] for ID in newRelevantLocals if l_rect_parms_all[ID][2]*l_rect_parms_all[ID][3] < locFRAreaThreshold}
+                relevantNextIDs     = [a[1] for a in overlapFRLoc]
+                overlapFRLoc2       = overlappingRotatedRectangles({str(ID):step2RP[ID] for ID in relevantNextIDs}, newRelevantRPs) 
+                if len(overlapFRLoc2)>0:
+                    releveantNextIDs2 = [a[0] for a in overlapFRLoc2]
+                    releveantNewIDs = [a[1] for a in overlapFRLoc2]
+                    a = 1
+                    nextCAs     = {str(ID):vals for ID,vals in nextCAs.copy().items() if str(ID) in releveantNextIDs2}
+                    newCAs      = {ID:[l_centroids_all[ID],l_areas_all[ID]] for ID in releveantNewIDs}
+                    
+                    calcD = lambda ID1,ID2: np.linalg.norm(np.array(nextCAs[ID1][0]) - np.array(newCAs[ID2][0]))
+                    calcA = lambda ID1,ID2: np.abs(nextCAs[ID1][1]-newCAs[ID2][1])/newCAs[ID2][1]
+
+                    overlapDA   = [[calcD(ID1,ID2),calcA(ID1,ID2)] for ID1,ID2 in overlapFRLoc2]            # find c-c dist and rel area of overlap combos
+                    overlapPass = [True if a<=3 and b< 0.4 else False for a,b in overlapDA]
+                    overlapFRLoc = [combo for i,combo in enumerate(overlapFRLoc2) if overlapPass[i] == True]
+                    declusterNextFRLocals2  = [int(a[0]) for a in overlapFRLoc]
+                    declusterNewFRLocals    = [a[1] for a in overlapFRLoc]
+                    if len(declusterNewFRLocals)>0:
+                        jointNeighbors  = {ID: [elem for elem in sub if elem not in declusterNewFRLocals]
+                                          for ID,sub in jointNeighbors.copy().items()}
+                        [unresolvedNewRB.remove(str(ID)) for ID in declusterNewFRLocals if str(ID) in unresolvedNewRB]
+                            
+
+                        jointNeighbors = {ID2S(subIDs):subIDs for subIDs in jointNeighbors.values() if len(subIDs)>0}
+                        for oldID,subIDs in l_old_new_IDs_old.items():
+                            if len(subIDs) == 1 and subIDs[0] in declusterNextFRLocals2:
+                                where = declusterNextFRLocals2.index(subIDs[0])
+                                newID = declusterNewFRLocals[where]
+                                newIDs = [newID]
+                                dist = calcD(str(subIDs[0]),newID)
+                                
+                                activeFrozenLocalIDs.append(subIDs)
+                                dataSets = [l_FBub_masks,l_FBub_images,l_FBub_old_new_IDs,l_FBub_rect_parms,l_FBub_centroids,l_FBub_areas_hull,l_FBub_contours_hull]
+                                tempStore2(newIDs, l_contours, ID2S(newIDs), err, orig, dataSets, concave = 0)
+                                #if int(oldID) in unresolvedOldDB: unresolvedOldDB.remove(int(oldID))
+                                app = np.array((oldID, ID2S(newIDs)), dtype=[('integer', '<i4'), ('string', '<U60')])
+                                FBOldNewDist    = np.append(FBOldNewDist,app)
+                                if oldID in unresolvedOldDB: unresolvedOldDB.remove(oldID)
+                                l_predict_displacement[oldID]                       = [tuple(map(int,dataSets[4][ID2S(newIDs)])), dist]       
+                                if oldID in l_FBub_centroids_old:   print(f'-{oldID}:Restored oldFB-newrFB (restored from past): {oldID} & {newID}:{newIDs}.')
+                                else:                               print(f'-{oldID}:Restored oldFB-newrFB (from frozen cluster locals): {oldID} & {newID}:{newIDs}.')
+                                declusterNewFRLocals.remove(newID)  #
+                        # added to unresolved after
+                a = 1
             if len(activeFrozenLocalIDs) > 0:
                 print("(updated) unresolvedOlDRB (all old D,rD bubbles):\n",  unresolvedOldDB)
                 print("(updated) unresolvedNewRB (new typeRing bubbles):\n",  unresolvedNewRB)
                 print(f'{globalCounter}:--------- Frozen bubble (FB): {[a[0] for a in FBOldNewDist]} recovery ended ---------\n')
+            elif len(declusterNewFRLocals) > 0:
+                print(f'{globalCounter}:--------- Local Frozens: {declusterNewFRLocals} recovery ended ---------\n')
             else: print(f'{globalCounter}:--------- No Frozen bubble (FB) recovered ---------\n')
-
-
-
-
-
 
         # =============================== S E C T I O N - -  0 1 ==================================       
         # ------------------ RECOVER UNRESOLVED BUBS VIA DISTANCE CLUSTERING ----------------------   
@@ -1013,7 +1115,7 @@ def mainer(index):
             #resolvedFrozenGlobalIDs         = [int(elem) for elem in frozenOldGlobNewLoc.values() if type(elem) == str]                                     # frozen global IDs are not recovered           e.g []
             #oldDistanceCentroidsWoFrozen    = {key:val for key,val in l_DBub_centroids_old.items()                                                          # drop frozens. not sure what is the difference
             #                                   if key not in list(l_FBub_old_new_IDs_old.keys()) + resolvedFrozenGlobalIDs}                                 # between two lists                             e.g  {1: (366, 539), 2: (927, 505), 3: (741, 539), 4: (1080, 486), 7: (1204, 446)}
-            oldDistanceCentroidsWoFrozen    = {key:val for key,val in l_DBub_centroids_old.items()                                                          # drop frozens. not sure what is the difference
+            oldDistanceCentroidsWoFrozen    = {key:val for key,val in l_DBub_centroids_old.items()   if key in unresolvedOldDB                                                       # drop frozens. not sure what is the difference
                                                }                                 # between two lists                             e.g  {1: (366, 539), 2: (927, 505), 3: (741, 539), 4: (1080, 486), 7: (1204, 446)}
 
             oldDBubAndUnresolvedOldRB       = {**oldDistanceCentroidsWoFrozen,**{ID:l_RBub_centroids_old[ID] for ID in unresolvedOldRB}}                      # merge old DB with all old RBs. since 
@@ -1032,7 +1134,8 @@ def mainer(index):
             oldDBubAndUnresolvedOldRB = {**{ID:oldDBubAndUnresolvedOldRB[ID] for ID in oldDBubAndUnresolvedOldRB if ID in activeFrozen},  # think i should do prio for pseudo frozens
                                          **{ID:oldDBubAndUnresolvedOldRB[ID] for ID in notFrozenIDs if ID in partialInletIDs},
                                          **{ID:oldDBubAndUnresolvedOldRB[ID] for ID in notFrozenIDs if ID not in partialInletIDs}}        # so i can solve them, and drop from cluster.
-            
+            STs = sum([vals for time,vals in STBubs.items() if time > globalCounter - 4],[])                            # for see-though bubbles concave hull. its mostly magic
+            STIDs, STcounts = np.unique(STs, return_counts = True)                                                      # ST bubbles shed small bubbles when distorted. tracking concave hull gives more bias towards main mass, rather than sheeded bs
             #oldDBubAndUnresolvedOldRB = {ID:a for ID,a in oldDBubAndUnresolvedOldRB.items()}                            # moved if ID not in inletIDsType or (ID in inletIDsType and inletIDsType[ID] < 2) inside loop
             for oldID, oldCentroid in oldDBubAndUnresolvedOldRB.items():                                                # recovering RB, rRB, DB, rDB
 
@@ -1040,7 +1143,6 @@ def mainer(index):
                 if oldType == typeRing or oldType == typeRecoveredRing:                                                 # RB type inheritance should be fragile.
                     newType     = typeRecoveredElse if oldType == typeRecoveredRing else typeRecoveredRing              # recovered RB to rRB, recovered rRB to rDB. for safety...
                 else: newType   = typeElse                                                                              # if not (r)RB, then DB. rDB lost its meaning here. maybe on final matchTemplates()
-
                 # ===== GET STATISTICAl DATA ON OLD BUBBLE: PREDICT CENTROID, AREA =====
                 if oldID in inletIDsType:
                     (mis,mio,ss,fs) = (10,1,100,0)                                                            # mis = maxInterpSteps; mio = maxInterpOrder
@@ -1090,9 +1192,11 @@ def mainer(index):
                 if oldType == typeRing:
                     distCheck2Sigma += 1
                 
-                tempDistance, tempSol   = 10000000, []                                                         # tempDistance = min(tempDistance, dist2, permDist2)
-                dist2, permDist2        = 10000000, 10000000                                                         # dont want to re-use prev iteration values.
-                
+                tempDistance, tempSol   = 10000000, []                                                                  # tempDistance = min(tempDistance, dist2, permDist2)
+                dist2, permDist2        = 10000000, 10000000                                                            # dont want to re-use prev iteration values.
+                if oldID in STIDs:
+                    STNtimes = STcounts[STIDs.tolist().index(oldID)]                                                    # for see-though bubbles concave hull. its mostly magic
+                else: STNtimes = 0
                 # ===== TEST A CLUSTER ASSUMING ALL SUBELEMENTS ARE CORRECT (PERFECT MATCH TEST) =====
                 clusterElementFailed        = {ID:False for ID in overlapIDs}                                           # track if whole cluster is a solution                                  e.g {16: False}
                 clusterCritValues           = {}                                                                        # if cluster generally fails, store criterium values here, for info     e.g {}
@@ -1127,10 +1231,22 @@ def mainer(index):
                                 l_predict_displacement[oldID]  = [tuple(map(int,predictCentroid)), int(dist2)]          # 
 
 
+                        if STNtimes >= 2 and len(subNewIDs) == 1: hull = 1                                                  # for see-though bubbles concave hull. its mostly magic
+                        # FIX for ST bubbles shedding small bubbles!!!!
+                        if STNtimes >= 1 and len(subNewIDs) > 1:
+                            areas = {ID:l_areas_all[ID] for ID in subNewIDs}
+                            maxAID = max(areas, key=areas.get)
+                            #areasOther = {ID:areas[ID] for ID in subNewIDs if ID != maxAID}
+                            areasSmall = {ID:True if areas[ID] < 5000 else False for ID in subNewIDs if ID != maxAID}
+                            if all(areasSmall):
+                                subNewIDs = [maxAID]
+                                hull = 1
+
                         newRBinTemp = [A for A in unresolvedNewRB if int(A) in subNewIDs]                                  # all RB types in cluster. im not sure if ever works, since RBs are alone
 
                         if len(newRBinTemp) > 0:                                                                        # if there are RBs in solution
                             unresolvedNewRB   = [ ID for  ID in unresolvedNewRB if ID not in newRBinTemp]           # drop these RBs from new found list
+                        
                         
                         app = np.array((oldID, ID2S(subNewIDs)), dtype=[('integer', '<i4'), ('string', '<U60')])
                         overlapWORB = [a for a in subNewIDs if str(a) not in newRBinTemp]                                    # drop RBs from solution. subNewIDs always has entries.
@@ -1218,6 +1334,19 @@ def mainer(index):
                         
                         if len(permIDsol2)>0 and permDist2 < distCheck2 +5* distCheck2Sigma and permRelArea2 < maxAreaCrit:       # check if given solution satisfies criterium
 
+                            if STNtimes >= 2 and len(permIDsol2) == 1: hull = 1
+                            if STNtimes >= 1 and len(permIDsol2) > 1:
+                                areas = {ID:l_areas_all[ID] for ID in permIDsol2}
+                                maxAID = max(areas, key=areas.get)
+                                #areasOther = {ID:areas[ID] for ID in subNewIDs if ID != maxAID}
+                                areasSmall = {ID:True if areas[ID] < 5000 else False for ID in permIDsol2 if ID != maxAID}
+                                if all(areasSmall):
+                                    permIDsol2 = [maxAID]
+                                    
+                                    hull       = alphashapeHullModded(l_contours, permIDsol2, 0.05, 0)
+                                    centroid = getCentroidPosContours(bodyCntrs = [hull])[0]
+                                    permDist2             = np.linalg.norm(np.array(predictCentroid) - np.array(centroid)).astype(int)
+
                             app = np.array((oldID, ID2S(permIDsol2)), dtype=[('integer', '<i4'), ('string', '<U60')])
 
                             l_predict_displacement[oldID]   = [tuple(map(int,predictCentroid)), np.around(permDist2,2)] # store predictor error
@@ -1264,6 +1393,7 @@ def mainer(index):
                             #    resolved    = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs,**l_DBub_old_new_IDs,**l_DBub_r_old_new_IDs,**l_MBub_old_new_IDs}
                             #    assert tempID not in resolved, f"image: #{globalCounter+dataStart}=>MERGE ERROR: shared contour is also local IDs, mask by hand :("
                             #tempStore2(permIDsol2, l_contours, tempID, err, orig, dataSets, concave = hull)
+                            
                             tempStore2(permIDsol2, l_contours, ID2S(permIDsol2), err, orig, dataSets, concave = hull)
 
                             #if oldType == typeRing or oldType == typeRecoveredRing: unresolvedOldRB.remove(oldID)
@@ -1287,7 +1417,7 @@ def mainer(index):
                     otherSet = [ID for ID in subNewIDs if ID not in tempSol]                                                       
                     jointNeighbors[ID2S(otherSet)]       = otherSet                                                              # then you have to recalculate parameters.
                                                                                                                                 # but it should be rare.
-                    jointNeighborsWoFrozen              = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items()}  
+                    jointNeighborsWoFrozen              = {mainNewID: subNewIDs for mainNewID, subNewIDs in jointNeighbors.items() if len(subNewIDs) > 0}  
                     jointNeighborsWoFrozen_hulls        = {ID: cv2.convexHull(np.vstack(l_contours[subNewIDs])) for ID, subNewIDs in jointNeighborsWoFrozen.items()}
                     jointNeighborsWoFrozen_bound_rect   = {ID: cv2.boundingRect(hull) for ID, hull in jointNeighborsWoFrozen_hulls.items()}                         
                     jointNeighborsWoFrozen_c_a          = {ID: getCentroidPosContours(bodyCntrs = [hull]) for ID, hull in jointNeighborsWoFrozen_hulls.items()}
@@ -1501,8 +1631,8 @@ def mainer(index):
             #MBIntersectCount = {}
             #for ID,subIDs in l_MBub_old_new_IDs.items():
             #    MBIntersectCount[ID] = [[ID2 for ID2,cluster in jointNeighbors.items() if b in cluster] for b in subIDs]
-
-            oldNewIdsResolvedD      = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_FBub_old_new_IDs,     **l_MBub_old_new_IDs}
+            #if len(delResolvedMB)>0:
+            oldNewIdsResolvedD      = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,  **l_MBub_old_new_IDs}
 
             removeFoundSubIDsAll    = sum(delResolvedMB,[])                                                                                         # get all subIDs of recovered MBs
             jointNeighborsDelSubIDs = []                                                                                                            # 
@@ -1534,16 +1664,16 @@ def mainer(index):
            #centroidsResolved   = {**l_RBub_centroids,  **l_RBub_r_centroids,   **l_DBub_centroids,   **l_DBub_r_centroids,     **l_FBub_centroids,       **l_MBub_centroids}
            #areasResolved       = {**l_RBub_areas_hull, **l_RBub_r_areas_hull,  **l_DBub_areas_hull,  **l_DBub_r_areas_hull,    **l_FBub_areas_hull,      **l_MBub_areas_hull}
            #oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_FBub_old_new_IDs,     **l_MBub_old_new_IDs}
-            centroidsResolved   = {**l_RBub_centroids,  **l_RBub_r_centroids,   **l_DBub_centroids,   **l_DBub_r_centroids,     **l_MBub_centroids}
-            areasResolved       = {**l_RBub_areas_hull, **l_RBub_r_areas_hull,  **l_DBub_areas_hull,  **l_DBub_r_areas_hull,    **l_MBub_areas_hull}
-            oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_MBub_old_new_IDs}
+            centroidsResolved   = {**l_RBub_centroids,  **l_RBub_r_centroids,   **l_DBub_centroids,   **l_DBub_r_centroids,     **l_MBub_centroids,     **l_FBub_centroids}
+            areasResolved       = {**l_RBub_areas_hull, **l_RBub_r_areas_hull,  **l_DBub_areas_hull,  **l_DBub_r_areas_hull,    **l_MBub_areas_hull,    **l_FBub_areas_hull}
+            oldNewIdsResolved   = {**l_RBub_old_new_IDs,**l_RBub_r_old_new_IDs, **l_DBub_old_new_IDs, **l_DBub_r_old_new_IDs,   **l_MBub_old_new_IDs,   **l_FBub_old_new_IDs}
             rectParamsOld       = {oldID:l_rect_parms_old[oldID] for oldID in unresolvedOldDB + unresolvedOldRB }#if oldID not in inletIDs        # old global IDs with bounding rectangle parameters
-        
+            unresolvedClusters  = {ID:subIDs for ID,subIDs in jointNeighbors.items() if ID not in oldNewIdsResolved}
             resolvedContoursNew     = sum(oldNewIdsResolved.values(),[])
-            unresolvedInletContours = [a for a in inletIDsNew if a not in resolvedContoursNew]
+            unresolvedInletContours = [a for a in inletIDsNew if a not in resolvedContoursNew + declusterNewFRLocals]
             temp = {}
             fullyOverlappingOldInletIDs = [oldID for oldID, cType in inletIDsType.items() if cType == 2]       # these are fully inside and are not resolved.
-            if len(jointNeighbors)>len(oldNewIdsResolved):                                                           # they are together with other new inlet elements
+            if len(unresolvedClusters)>0:                                                           # they are together with other new inlet elements
                 for ID,subIDs in jointNeighbors.items():                                        # determine which cluster is overlapping inlet recangle. might be done conentional way..
                     if ID not in oldNewIdsResolved:
                         match = [a in subIDs for a,tp in inletIDsTypeNew.items() if tp == 2]
@@ -1558,7 +1688,7 @@ def mainer(index):
             if crit1 or crit2:# inlet cluster  maybe fully resolved by old-newDB, which happens if its poking outside inlet box.
                 a = 1                                                                                   # so inletIDsNew = resolved subcluster.
                 idsInside   = [ID for ID, cType in inletIDsTypeNew.items() if cType == 2]               # ids fully inside inlet rectangle. might include parts of unresolved neighbor clusters
-                idsPartial  = [ID for ID, cType in inletIDsTypeNew.items() if cType == 1]               # ids that are partially inside inlet rectangle. again, might be part of unresolved clusters.
+                idsPartial  = [ID for ID, cType in inletIDsTypeNew.items() if cType == 1 if ID not in sum(list(oldNewIdsResolved.values()),[])]               # ids that are partially inside inlet rectangle. again, might be part of unresolved clusters.
                 overlappintPartialOldIDs    = [ID for ID,cType in inletIDsType.items() if cType == 1]   # there are partially overlaying old IDs
                 partiallyOverlappingOldInletIDs = [a for a in overlappintPartialOldIDs if a in unresolvedOldRB + unresolvedOldDB] # which of these are missing
 
@@ -1744,7 +1874,7 @@ def mainer(index):
             #         subIDs =  jointNeighbors[ID]
             #         if len(subIDs) == 1 and ID in unresolvedNewRB:              # >>>>>>>>>> not sure what it does <<<<<<<<<<<<<
             #             unresolvedNewDB.remove(ID)                              # if cluster is solo bubble and main ID is RB, it should be RB. should add it as RB
-            resolvedOldDBs = list([a for a,_ in DBOldNewDist]) + list([a for a,_ in rDBOldNewDist]) + list([a for a,_ in FBOldNewDist])
+            resolvedOldDBs = list([a for a,_ in DBOldNewDist]) + list([a for a,_ in rDBOldNewDist]) #+ list([a for a,_ in FBOldNewDist])
             resolvedOldRBs = list([a for a,_ in RBOldNewDist]) + list([a for a,_ in rRBOldNewDist])
             resolvedOldMBs = list([a for a,_ in MBOldNewDist])
 
@@ -1754,7 +1884,7 @@ def mainer(index):
             unresolvedOldRB = [A for A in unresolvedOldRB if A not in resolvedOldAll];
 
 
-            resolvedNewDBs = list([b for _,b in DBOldNewDist]) + list([b for _,b in rDBOldNewDist]) + list([b for _,b in FBOldNewDist])
+            resolvedNewDBs = list([b for _,b in DBOldNewDist]) + list([b for _,b in rDBOldNewDist]) #+ list([b for _,b in FBOldNewDist])
             resolvedNewRBs = list([b for _,b in RBOldNewDist]) + list([b for _,b in rRBOldNewDist]) 
             resolvedNewMBs = list([b for _,b in MBOldNewDist])
             
@@ -1832,7 +1962,7 @@ def mainer(index):
                             
                     elif subID in resolvedNewRBs:
                         if subID in resrRB:
-                            where = resrDB.index(subID)
+                            where = resrRB.index(subID)
                             oldID = list([a[0] for a in rRBOldNewDist])[where]
                         else:
                             where = resRB.index(subID)
@@ -2235,7 +2365,6 @@ def mainer(index):
                     if len(dropIDs) == 1 and dropIDs[0] in whereChildrenAreaFiltered:                   # if only sol is a ring
                         unresolvedNewRB.append(str(dropIDs[0]))
                         dataSets = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
-                        unresolvedNewRB.append(str(dropIDs[0]))
                         if ID in resolvedNewRBs: resolvedNewRBs.remove(ID) 
                     else:                                                                               # if not solo RB, it is a cluster.
                         unresolvedNewDB.append(ID2S(dropIDs))                                           # add as unresolved cluster
@@ -2351,7 +2480,11 @@ def mainer(index):
                     app = np.array((oldID, ID2S(subIDs)), dtype=[('integer', '<i4'), ('string', '<U60')])
                     DBOldNewDist    = np.append(DBOldNewDist,app)
                     dataSets        = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
-                    tempStore2(subIDs, l_contours, ID2S(subIDs), err, orig, dataSets, concave = 0)
+                    hull  = 0
+                    if len(oldIDs) == 1 and oldIDs[0] in STIDs:                               # recovering See Though bubble with concave hull.
+                        if STcounts[STIDs.tolist().index(oldID)] >= 2 and len(newIDs) == 1:
+                            hull = 1
+                    tempStore2(subIDs, l_contours, ID2S(subIDs), err, orig, dataSets, concave = hull)
                     l_predict_displacement[oldID][1] = int(dist2)
                     print(f'-{oldID}:Resolved (Cleanup) oldID: {oldID} (of {oldIDs}) => {newIDs}. prediction centroid - actual centroid distnace: {int(dist2)}')
                         
@@ -2362,9 +2495,13 @@ def mainer(index):
         for newID in unresolvedNewRB:       # looks like its needed- sets are empty before.
             dataSets = [l_RBub_masks,l_RBub_images,l_RBub_old_new_IDs,l_RBub_rect_parms,l_RBub_centroids,l_RBub_areas_hull,l_RBub_contours_hull]
             tempStore2([int(newID)], l_contours, newID, err, orig, dataSets, concave = 0)
-        for newID in unresolvedNewDB:       # looks like its needed- sets are empty before.
+        for newID in unresolvedNewDB:       # added dropped frozen cluster element from N last steps
             dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
             tempStore2(jointNeighbors[newID], l_contours, newID, err, orig, dataSets, concave = 0)
+        for newID in declusterNewFRLocals:       # added dropped frozen cluster element from N last steps
+            dataSets = [l_DBub_masks,l_DBub_images,l_DBub_old_new_IDs,l_DBub_rect_parms,l_DBub_centroids,l_DBub_areas_hull,l_DBub_contours_hull]
+            tempStore2([newID], l_contours, str(newID), err, orig, dataSets, concave = 0)
+        [unresolvedNewDB.append(str(ID)) for ID in declusterNewFRLocals]
     print(f'l_MBub_info_old: {l_MBub_info_old}\nl_MBub_info: {l_MBub_info}')  
     # ================================= Save first iteration ======================================  
     if globalCounter == 0 :
@@ -2643,6 +2780,14 @@ def mainer(index):
         g_old_new_IDs[key][globalCounter]   = l_old_new_IDs_old[key]
         g_contours_hull[key][globalCounter] = l_contours_hull_old[key]
         g_areas_hull[key][globalCounter]    = l_areas_hull_old[key]
+
+        if len(l_old_new_IDs_old[key]) == 1:
+            grays = np.array(np.where((l_images_old[key] < 200) & (l_images_old[key] > 45),255,0),np.uint8)
+            graysA = int(np.sum(grays)/255)
+            graysM = int(np.sum(l_masks_old[key])/255)
+            if graysA/graysM > 0.7:
+                if globalCounter not in STBubs: STBubs[globalCounter] = []
+                STBubs[globalCounter].append(key)
         # --------- take care of prediction storage: g_predict_area_hull & g_predict_displacement --------------
         # -- some extra treatment for merged bubbles before regular ones ---
         if  (key not in g_predict_area_hull and key in l_areas_hull_old and key in l_MBub_areas_hull_old):
@@ -2945,13 +3090,13 @@ def mainer(index):
     #if big != 1: cv2.imshow("aas",aas)
 
     if doIntermediateData == 1:
-        if globalCounter % intermediateDataStepInterval == 0:
-            storeDir = os.path.join(intermediateDataFolder,'data.pickle')
+        if globalCounter > 0 and globalCounter % intermediateDataStepInterval == 0 or globalCounter == min(dataArchive.shape[0]-2,dataStart+dataNum): # why -2 not -1? idk, it just works!
+            storeDir = os.path.join(intermediateDataFolder,'data'+postfix+'.pickle')
             with open(storeDir, 'wb') as handle:
                 pickle.dump(
                 [
                 globalCounter, g_contours, g_contours_hull, g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_areas_hull, g_dropIDs , allFrozenIDs,
-                g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,g_child_contours, frozenBuffer_old,
+                g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,g_child_contours, frozenBuffer_old,STBubs,
                 g_predict_displacement, g_predict_area_hull,  g_MBub_info, frozenGlobal,  g_bublle_type_by_gc_by_type, g_areas_IDs, g_splits, activeFrozen,
                 ], handle) 
  
@@ -2961,11 +3106,11 @@ def mainer(index):
 
 
 exportFirstFrame(markFirstExport,dataStart)    
-if os.path.exists(os.path.join(intermediateDataFolder,'data.pickle')) and readIntermediateData: 
-    with open(os.path.join(intermediateDataFolder,'data.pickle'), 'rb') as handle:
+if os.path.exists(os.path.join(intermediateDataFolder,'data'+postfix+'.pickle')) and readIntermediateData: 
+    with open(os.path.join(intermediateDataFolder,'data'+postfix+'.pickle'), 'rb') as handle:
                 [
                 backupStart, g_contours, g_contours_hull, g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_areas_hull, g_dropIDs , allFrozenIDs,
-                g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,g_child_contours, frozenBuffer_old,
+                g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,g_child_contours, frozenBuffer_old, STBubs,
                 g_predict_displacement, g_predict_area_hull,  g_MBub_info, frozenGlobal,  g_bublle_type_by_gc_by_type, g_areas_IDs, g_splits, activeFrozen,
                 ] = pickle.load(handle)
     a = 1
@@ -2986,8 +3131,8 @@ if os.path.exists(os.path.join(intermediateDataFolder,'data.pickle')) and readIn
                                                                                                g_Masks,g_Images,g_old_new_IDs,g_bubble_type,
                                                                                                g_predict_displacement,g_predict_area_hull,g_MBub_info,g_contours_hull])
 
-        [g_contours,g_dropIDs,g_bublle_type_by_gc_by_type,g_splits, allFrozenIDs,
-         g_areas_IDs,g_FBub_rect_parms,g_FBub_centroids,g_FBub_areas_hull]     = reduceFields2([g_contours,g_dropIDs,g_bublle_type_by_gc_by_type,g_splits, allFrozenIDs,
+        [g_contours,g_dropIDs,g_bublle_type_by_gc_by_type,g_splits, allFrozenIDs,STBubs,
+         g_areas_IDs,g_FBub_rect_parms,g_FBub_centroids,g_FBub_areas_hull]     = reduceFields2([g_contours,g_dropIDs,g_bublle_type_by_gc_by_type,g_splits, allFrozenIDs,STBubs,
                                                                                                 g_areas_IDs,g_FBub_rect_parms,g_FBub_centroids,g_FBub_areas_hull])
      
         

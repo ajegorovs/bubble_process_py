@@ -82,7 +82,111 @@ def print01(string,toggle):
         # strat- erode partial, dilate back full, extract partial.
         # mix partial +partial close by avg = 0, no solution yet.
 
+def debugOnly(section):
+    global globalCounter, debugSections, debugSteps
+    if debugSections[0] == -1 or debugSteps[0] == 0:
+        return False
+    if (section in debugSections or len(debugSections) == 0) and (globalCounter in debugSteps or len(debugSteps) ==0 ):
+        return True
+    else:
+        return False
 
+#  21- distance lines, 22- colored neighbors, 23 - match template & overlap contours, 31 - merge stuff
+debugSectionsGFX = [12, 21, 22, 23, 31]
+debugStepsGFX = [0]
+def debugOnlyGFX(section):
+    global globalCounter, debugSections, debugSteps
+    if debugSectionsGFX[0] == -1 or debugStepsGFX[0] == 0:
+        return False
+    if (section in debugSectionsGFX or len(debugSectionsGFX) == 0) and (globalCounter in debugStepsGFX or len(debugStepsGFX) ==0 ):
+        return True
+    else:
+        return False
+predictVectorPathFolder = r'./debugImages/predictVect'
+if not os.path.exists(predictVectorPathFolder): os.makedirs(predictVectorPathFolder)
+
+
+def ID2S(arr, delimiter = '-'):
+    return delimiter.join(list(map(str,sorted(arr))))
+imgNum = 46
+
+#imageMainFolder = r'D:/Alex/Darbs.exe/Python_general/bubble_process/imageMainFolder/'
+#init(imageMainFolder,imgNum)
+
+
+
+
+def exportFirstFrame(markFirstExport,dataStart):
+    #global manualMasksFolder
+    if markFirstExport == 1:
+
+        orig0 = dataArchive[dataStart]
+        orig = orig0 -cv2.blur(meanImage, (5,5),cv2.BORDER_REFLECT)
+    
+        orig[orig < 0] = 0                  # if orig0 > mean
+        orig = np.array(orig, dtype = np.uint8)
+        origTH = np.array(cv2.threshold(orig,thresh0,255,cv2.THRESH_BINARY)[1], dtype = np.uint8)
+        err = cv2.morphologyEx(origTH.copy(), cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
+        #exp = np.maximum.reduce([orig,origTH]) # element wise max() for two matrices. kind of useless
+        #cv2.imshow('orig',orig)
+        #cv2.imshow('origTH',origTH)
+        #cv2.imshow('exp',exp)
+        cv2.imwrite(os.path.join(manualMasksFolder, "frame"+str(dataStart).zfill(4)+".png") ,err)
+        return 1
+    else: return 0
+
+#def extractManualMask(index = dataStart, debug  = 0): # either draw red masks over or using Paint, set bg color to red and freehand select and delete areas.
+#    manualMask = cv2.imread(os.path.join(manualMasksFolder, "frame"+str(index).zfill(4)+" - Copy.png",),1)#"./manualMask/frame"+str(index).zfill(4)+" - Copy.png"
+    
+#    if debug == 1:
+#        cv2.imshow(f'extractManualMask {index}: import', manualMask)
+#        cv2.imshow(f'extractManualMask {index}: blue',  np.uint8(manualMask[:,:,0]))
+#        cv2.imshow(f'extractManualMask {index}: green', np.uint8(manualMask[:,:,1]))
+#        cv2.imshow(f'extractManualMask {index}: red',   np.uint8(manualMask[:,:,2]))
+#    manualMask = np.uint8(manualMask[:,:,2])
+#    manualMask = cv2.threshold(manualMask,230,255,cv2.THRESH_BINARY)[1]
+#    if debug == 1: cv2.imshow(f'extractManualMask {index}: red', manualMask)
+    
+#    #cv2.imshow('manualMask',manualMask)
+#    contours = cv2.findContours(manualMask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)[0]
+#    params = [cv2.boundingRect(c) for c in contours]
+#    #for x,y,w,h in params:
+#    #   cv2.rectangle(manualMask,(x,y),(x+w,y+h),128,3)
+#    #cv2.drawContours(manualMask, contours, -1, 128, 5)
+#    #cv2.imshow('manualMask',manualMask)
+#    IDs = np.arange(0,len(params))
+#    return contours,{ID:param for ID,param in enumerate(params)}
+
+
+#typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge,typeRecoveredFrozen = np.int8(0),np.int8(1),np.int8(2),np.int8(3), np.int8(4), np.int8(5), np.int8(6), np.int8(7)
+def adjustBrightness(image,adjustBrightness):
+    if adjustBrightness == 1:
+        brightness = np.sum(image) / (255 * np.prod(image.shape))
+        minimum_brightness = 0.66
+        ratio = brightness / minimum_brightness
+        if ratio >= 1:
+            print("Image already bright enough")
+            return image
+        # Otherwise, adjust brightness to get the target brightness
+        return cv2.convertScaleAbs(image, alpha = 1 / ratio, beta = 0)
+    else:
+        return image
+
+def undistort(image):
+    mapXY = (np.load('./mapx.npy'), np.load('./mapy.npy'))
+    return cv2.remap(image,mapXY[0],mapXY[1],cv2.INTER_LINEAR)
+
+def cropImage(image , importMaskLink,cropUsingMask):
+    if cropUsingMask == 1:
+        mask          = cv2.imread(importMaskLink,1)
+        mask   = cv2.cvtColor(mask, cv2.COLOR_BGR2HSV)[:,:,0]
+        ret, thresh = cv2.threshold(mask, 127, 255, 0)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        [X, Y, W, H] = cv2.boundingRect(contours[0])
+        # cv2.imshow("mask" , image[Y:Y+H, X:X+W])
+        return image[Y:Y+H, X:X+W]
+    else:
+        return image
 
 def matchTemplateBub(image,template,rectParams,graphics=0,prefix = ""):
     # https://docs.opencv.org/4.x/d4/dc6/tutorial_py_template_matching.html
@@ -191,7 +295,8 @@ for directory in [mainOutputFolder, mainIntermediateDataFolder, mainManualMasksF
         if not os.path.exists(directory):
              os.mkdir(directory) 
 
-mainOutputSubFolders= ['ringDetect']                                             # specific sub-project folder heirarchy
+#mainOutputSubFolders= ['ringDetect']                                             # specific sub-project folder heirarchy
+mainOutputSubFolders= ['fieldOff','sccm350']   
                                                                                 
 imageFolder             = mainOutputFolder                                       # defaults output to main folder
 intermediateDataFolder  = mainIntermediateDataFolder                             # defaults output to main folder
@@ -228,12 +333,12 @@ dataStart           = 0 #736 #300 #  53+3+5
 dataNum             = 550 #130 # 7+5   
 
 assistManually      = 1
-assistFramesG       = [48]#751,976,763,1068
+assistFramesG       = []#751,976,763,1068
 assistFrames        = [a - dataStart for a in assistFramesG]
 doIntermediateData              = 1                                         # dump backups ?
-intermediateDataStepInterval    = 15                                        # dumps latest data field even N steps
+intermediateDataStepInterval    = 100                                        # dumps latest data field even N steps
 readIntermediateData            = 0                                         # load backups ?
-startIntermediateDataAtG        = 0                                  # frame stack index ( in X_Data). START FROM NEXT FRAME
+startIntermediateDataAtG        = 111110                                  # frame stack index ( in X_Data). START FROM NEXT FRAME
 startIntermediateDataAt         = startIntermediateDataAtG - dataStart      # to global, which is pseudo global ofc. global to dataStart
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
@@ -265,127 +370,6 @@ globalCounter = 0
 debugSections = [11,21,12,22,31]
 debugSteps = [5]
 debugVecPredict = 0
-def debugOnly(section):
-    global globalCounter, debugSections, debugSteps
-    if debugSections[0] == -1 or debugSteps[0] == 0:
-        return False
-    if (section in debugSections or len(debugSections) == 0) and (globalCounter in debugSteps or len(debugSteps) ==0 ):
-        return True
-    else:
-        return False
-
-#  21- distance lines, 22- colored neighbors, 23 - match template & overlap contours, 31 - merge stuff
-debugSectionsGFX = [12, 21, 22, 23, 31]
-debugStepsGFX = [0]
-def debugOnlyGFX(section):
-    global globalCounter, debugSections, debugSteps
-    if debugSectionsGFX[0] == -1 or debugStepsGFX[0] == 0:
-        return False
-    if (section in debugSectionsGFX or len(debugSectionsGFX) == 0) and (globalCounter in debugStepsGFX or len(debugStepsGFX) ==0 ):
-        return True
-    else:
-        return False
-predictVectorPathFolder = r'./debugImages/predictVect'
-if not os.path.exists(predictVectorPathFolder): os.makedirs(predictVectorPathFolder)
-
-
-def ID2S(arr, delimiter = '-'):
-    return delimiter.join(list(map(str,sorted(arr))))
-imgNum = 46
-
-#imageMainFolder = r'D:/Alex/Darbs.exe/Python_general/bubble_process/imageMainFolder/'
-#init(imageMainFolder,imgNum)
-
-
-
-
-def exportFirstFrame(markFirstExport,dataStart):
-    #global manualMasksFolder
-    if markFirstExport == 1:
-
-        orig0 = dataArchive[dataStart]
-        orig = orig0 -cv2.blur(meanImage, (5,5),cv2.BORDER_REFLECT)
-    
-        orig[orig < 0] = 0                  # if orig0 > mean
-        orig = np.array(orig, dtype = np.uint8)
-        origTH = np.array(cv2.threshold(orig,thresh0,255,cv2.THRESH_BINARY)[1], dtype = np.uint8)
-        err = cv2.morphologyEx(origTH.copy(), cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
-        #exp = np.maximum.reduce([orig,origTH]) # element wise max() for two matrices. kind of useless
-        #cv2.imshow('orig',orig)
-        #cv2.imshow('origTH',origTH)
-        #cv2.imshow('exp',exp)
-        cv2.imwrite(os.path.join(manualMasksFolder, "frame"+str(dataStart).zfill(4)+".png") ,err)
-        return 1
-    else: return 0
-
-def extractManualMask(index = dataStart, debug  = 0): # either draw red masks over or using Paint, set bg color to red and freehand select and delete areas.
-    manualMask = cv2.imread(os.path.join(manualMasksFolder, "frame"+str(index).zfill(4)+" - Copy.png",),1)#"./manualMask/frame"+str(index).zfill(4)+" - Copy.png"
-    
-    if debug == 1:
-        cv2.imshow(f'extractManualMask {index}: import', manualMask)
-        cv2.imshow(f'extractManualMask {index}: blue',  np.uint8(manualMask[:,:,0]))
-        cv2.imshow(f'extractManualMask {index}: green', np.uint8(manualMask[:,:,1]))
-        cv2.imshow(f'extractManualMask {index}: red',   np.uint8(manualMask[:,:,2]))
-    manualMask = np.uint8(manualMask[:,:,2])
-    manualMask = cv2.threshold(manualMask,230,255,cv2.THRESH_BINARY)[1]
-    if debug == 1: cv2.imshow(f'extractManualMask {index}: red', manualMask)
-    
-    #cv2.imshow('manualMask',manualMask)
-    contours = cv2.findContours(manualMask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)[0]
-    params = [cv2.boundingRect(c) for c in contours]
-    #for x,y,w,h in params:
-    #   cv2.rectangle(manualMask,(x,y),(x+w,y+h),128,3)
-    #cv2.drawContours(manualMask, contours, -1, 128, 5)
-    #cv2.imshow('manualMask',manualMask)
-    IDs = np.arange(0,len(params))
-    return contours,{ID:param for ID,param in enumerate(params)}
-
-def extractManualMask2(index = dataStart, debug  = 0): # either draw red masks over or using Paint, set bg color to red and freehand select and delete areas.
-    #manualMask = cv2.imread("./manualMask/frame"+str(index).zfill(4)+" - Copy.png",1)
-    manualMask = cv2.imread(os.path.join(manualMasksFolder, "frame"+str(index).zfill(4)+" - Copy.png",),1)
-    if debug == 1:cv2.imshow(f'extractManualMask {index}: import', manualMask)
-    manualMask = np.array(np.where((manualMask[:,:,1] > 10) & (manualMask[:,:,1] < 245),255,0),np.uint8)
-    #manualMask = cv2.threshold(manualMask,230,255,cv2.THRESH_BINARY)[1]
-    if debug == 1: cv2.imshow(f'extractManualMask {index}: red', manualMask)
-    
-    #cv2.imshow('manualMask',manualMask)
-    contours = cv2.findContours(manualMask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)[0]
-    params = [cv2.boundingRect(c) for c in contours]
-    #for x,y,w,h in params:
-    #   cv2.rectangle(manualMask,(x,y),(x+w,y+h),128,3)
-    #cv2.drawContours(manualMask, contours, -1, 128, 5)
-    #cv2.imshow('manualMask',manualMask)
-    IDs = np.arange(0,len(params))
-    return {ID:contour for ID,contour in enumerate(contours)},{ID:param for ID,param in enumerate(params)}
-#typeFull,typeRing, typeRecoveredRing, typeElse, typeFrozen,typeRecoveredElse,typePreMerge,typeRecoveredFrozen = np.int8(0),np.int8(1),np.int8(2),np.int8(3), np.int8(4), np.int8(5), np.int8(6), np.int8(7)
-def adjustBrightness(image,adjustBrightness):
-    if adjustBrightness == 1:
-        brightness = np.sum(image) / (255 * np.prod(image.shape))
-        minimum_brightness = 0.66
-        ratio = brightness / minimum_brightness
-        if ratio >= 1:
-            print("Image already bright enough")
-            return image
-        # Otherwise, adjust brightness to get the target brightness
-        return cv2.convertScaleAbs(image, alpha = 1 / ratio, beta = 0)
-    else:
-        return image
-
-def undistort(image):
-    mapXY = (np.load('./mapx.npy'), np.load('./mapy.npy'))
-    return cv2.remap(image,mapXY[0],mapXY[1],cv2.INTER_LINEAR)
-
-def cropImage(image , importMaskLink,cropUsingMask):
-    if cropUsingMask == 1:
-        mask          = cv2.imread(importMaskLink,1)
-        mask   = cv2.cvtColor(mask, cv2.COLOR_BGR2HSV)[:,:,0]
-        ret, thresh = cv2.threshold(mask, 127, 255, 0)
-        contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        [X, Y, W, H] = cv2.boundingRect(contours[0])
-        # cv2.imshow("mask" , image[Y:Y+H, X:X+W])
-        return image[Y:Y+H, X:X+W]
-    else:
-        return image
 
 
 
@@ -394,11 +378,11 @@ def cropImage(image , importMaskLink,cropUsingMask):
 # ========================================================================================================
 exportArchive   = 0
 
-rotateImageBy   = cv2.ROTATE_180 #  cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_180 
-startFrom       = 0
-numImages         = 100
-
-archivePath     = os.path.join(dataArchiveFolder, "-".join(mainOutputSubFolders)+".pickle")
+rotateImageBy   = cv2.ROTATE_180 # -1= no rotation, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_180 
+startFrom       = 1
+numImages       = 1500
+postfix         = '_1-500'
+archivePath     = os.path.join(dataArchiveFolder, "-".join(mainOutputSubFolders)+postfix+".pickle")
 meanImagePath   = os.path.join(dataArchiveFolder, "-".join(["mean"]+mainOutputSubFolders)+".pickle")
 
 if exportArchive == 1:
@@ -406,14 +390,17 @@ if exportArchive == 1:
     # =========================== Get list of paths to image files in working folder ====================
     # ===================================================================================================
     imageLinks = glob.glob(inputImageFolder + "**/*.bmp", recursive=True) 
+    if len(imageLinks) == 0:
+        input("No files inside directory, copy them and press any key to continue...")
+        imageLinks = glob.glob(inputImageFolder + "**/*.bmp", recursive=True) 
     # ===================================================================================================
     # ========================== Splice and sort file names based on criteria ===========================
     # ===================================================================================================
     # here is an example of badly padded data: [.\imt3509,.\img351,.\img3510,.\img3511,...]
     # ------------------------ can filter out integer values out of range -------------------------------
     # ---------------------------------------------------------------------------------------------------
-    intervalStart   = 100
-    intervalStop    = 9100          
+    intervalStart   = 0
+    intervalStop    = numImages          
     
     extractIntergerFromFileName = lambda x: int(re.findall('\d+', os.path.basename(x))[0])
     imageLinks = list(filter(lambda x: intervalStop > extractIntergerFromFileName(x) > intervalStart , imageLinks))
@@ -422,7 +409,7 @@ if exportArchive == 1:
     # ===================================================================================================
     # ======== Crop using a mask (draw red rectangle on exportad sample in manual mask folder) ==========
     # ===================================================================================================
-    cropMaskName = "-".join(mainOutputSubFolders)
+    cropMaskName = "-".join(mainOutputSubFolders)+'-crop'
     cropMaskPath = os.path.join(mainManualMasksFolder, f"{cropMaskName}.png")
     if not os.path.exists(cropMaskPath):
         print(f"No crop mask in {mainManualMasksFolder} folder!, creating mask : {cropMaskName}.png")
@@ -449,10 +436,13 @@ if exportArchive == 1:
     print(f"{timeHMS()}: Processing and saving archive data on drive...")
 
     numImages = min(dataNum,len(imageLinks)-startFrom)
-    if rotateImageBy % 2 == 0: W,H = H,W                       # for cv2.XXX rotation commands
+    if rotateImageBy % 2 == 0 and rotateImageBy != -1: W,H = H,W                       # for cv2.XXX rotation commands
     dataArchive = np.zeros((numImages,H,W),np.uint8)
-    for i in range(startFrom, numImages):
-        dataArchive[i]    = undistort(cv2.imread (imageLinks[i],0))[Y:Y+H, X:X+W]
+    for i,j in enumerate(range(startFrom, numImages)):
+        if rotateImageBy != -1:
+            dataArchive[i]    = cv2.rotate(undistort(cv2.imread (imageLinks[j],0))[Y:Y+H, X:X+W],rotateImageBy)
+        else:
+            dataArchive[i]    = undistort(cv2.imread (imageLinks[j],0))[Y:Y+H, X:X+W]
         
     with open(archivePath, 'wb') as handle: 
         pickle.dump(dataArchive, handle) 
@@ -487,6 +477,28 @@ else:
         with open(meanImagePath, 'rb') as handle:
             meanImage = pickle.load(handle)
 #cv2.imshow(f'mean',meanImage.astype(np.uint8))
+
+
+
+
+def extractManualMask2(index = dataStart, debug  = 0): # either draw red masks over or using Paint, set bg color to red and freehand select and delete areas.
+    #manualMask = cv2.imread("./manualMask/frame"+str(index).zfill(4)+" - Copy.png",1)
+    manualMask = cv2.imread(os.path.join(manualMasksFolder, "frame"+str(index).zfill(4)+" - Copy.png",),1)
+    if debug == 1:cv2.imshow(f'extractManualMask {index}: import', manualMask)
+    manualMask = np.array(np.where((manualMask[:,:,1] > 10) & (manualMask[:,:,1] < 245),255,0),np.uint8)
+    #manualMask = cv2.threshold(manualMask,230,255,cv2.THRESH_BINARY)[1]
+    if debug == 1: cv2.imshow(f'extractManualMask {index}: red', manualMask)
+    
+    #cv2.imshow('manualMask',manualMask)
+    contours = cv2.findContours(manualMask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)[0]
+    params = [cv2.boundingRect(c) for c in contours]
+    #for x,y,w,h in params:
+    #   cv2.rectangle(manualMask,(x,y),(x+w,y+h),128,3)
+    #cv2.drawContours(manualMask, contours, -1, 128, 5)
+    #cv2.imshow('manualMask',manualMask)
+    IDs = np.arange(0,len(params))
+    return {ID:contour for ID,contour in enumerate(contours)},{ID:param for ID,param in enumerate(params)}
+
 a = 1
 #dataArchive, meanImage, imageLinks = initImport(mode,workBigArray,recalcMean,readSingleFromArray,pickleNewDataLoad,pickleNewDataSave,pickleSingleCaseSave)
 
@@ -533,7 +545,7 @@ def mainer(index):
 
     _,err           = cv2.threshold(orig.copy(),thresh0,255,cv2.THRESH_BINARY)
     err             = cv2.morphologyEx(err.copy(), cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
-    
+    #if globalCounter == 0: cv2.imshow(f'gc:{0}, binarization test', err)
     if globalCounter in assistFrames and not os.path.exists(os.path.join(manualMasksFolder, "frame"+str(index).zfill(4)+".png")):
         cv2.imwrite(os.path.join(manualMasksFolder, "frame"+str(index).zfill(4)+".png") ,err)
         print('Writing assist frame...')
@@ -1793,7 +1805,7 @@ def mainer(index):
         oldNewIdsResolvedDTotal = sum([a for a in oldNewIdsResolvedD.values()],[])
         # == take a look if resolved bubbles are sharing contours. there some rare cases where flat bubbles dont want to merge but permutations start to include them ==
         copyIDs,numCopies      =  np.unique(oldNewIdsResolvedDTotal, return_counts=True)
-        if max(numCopies)>1:  # if some contour has more than one copy- it is shared between some bubbles
+        if len(copyIDs)>0 and max(numCopies)>1:  # if some contour has more than one copy- it is shared between some bubbles
             whereShared     = np.argwhere(numCopies>1).flatten()         # where in copyIDs are there IDs with 2+ copies
             sharedContours  = copyIDs[whereShared]                       # which ID have 2+ copies
             sharr           = {ID:[subID for subID,vals in oldNewIdsResolvedD.items() if ID in vals] for ID in sharedContours}         # shared contour: [bubID1,bubID2,..]
@@ -3081,7 +3093,7 @@ if mode == 1:
     # print(ss)
     # mainer(ss)
     else:
-        for i in range(dataStartOffseted,dataStart+dataNum,1):
+        for i in range(dataStartOffseted,min(dataArchive.shape[0]-1,dataStart+dataNum),1):
             print(f'\n==================*IMG:{i}*========================')
             print(f'{timeHMS()}: Time step ID: {cntr} max ID: {dataNum-1}')
             mainer(i)

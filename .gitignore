@@ -1,21 +1,19 @@
 ﻿################################################################################
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
-
-/imageMainFolder_output/ringDetect
 /ideas
 /X_data.pickle
 /picklesImages
 /.vs/bubble_process_py/FileContentIndex
 /.vs
 /__pycache__
-/debugImages/predictVect
+/debugImages
 /manualMask
 /clusterPerms.pickle
-/imageMainFolder_output/rawContours
-/intermediateData/ringDetect/data.pickle
-/intermediateData/ringDetect/data - Copy.pickle
-/inputFolder/ringDetect
+/imageMainFolder_output
+/intermediateData
+/inputFolder
 /X_data - Copy.pickle
-/inputFolder/arrayTest
-/archives/ringDetect
+/inputFolder
+/archives
+

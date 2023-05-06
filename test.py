@@ -1017,7 +1017,7 @@ if  1==-1:
         extrapolate(data=data2,axes=axes3[i], debug = 1, maxInterpSteps = 5, maxInterpOrder = order[i], smoothingScale = smuch, zerothDisp = [], fixSharp = 0, angleLimit = 30, pltString = f'n: {order[i]} , s: {smuch}')
     plt.show()
 
-if 1==1:
+if 1==-11:
     print(list(range(0,5,1))[0:3:2])
 
 if 1 == -1:
@@ -1144,16 +1144,69 @@ def extrapolate(data, maxInterpSteps = 15, maxInterpOrder = 1, smoothingScale = 
         axes.set_title(pltString+"extrapolate() debug")
         #plt.show()
     return returnVec if numDims > 1 else returnVec[1]
-fig, axes = plt.subplots(1,1 , figsize=( 1*5,5), sharex=True, sharey=True)
-a = extrapolate(points,axes = axes, debug = 1)
+#fig, axes = plt.subplots(1,1 , figsize=( 1*5,5), sharex=True, sharey=True)
+#a = extrapolate(points,axes = axes, debug = 1)
 
-# Plot the original and interpolated/extrapolated trajectories
-#plt.plot(*new_points.T, 'ro-', label='Original')
-#plt.plot(new_x, new_y, 'b.-', label='Interpolated/Extrapolated')
-plt.legend()
-plt.show()
+## Plot the original and interpolated/extrapolated trajectories
+##plt.plot(*new_points.T, 'ro-', label='Original')
+##plt.plot(new_x, new_y, 'b.-', label='Interpolated/Extrapolated')
+#plt.legend()
+#plt.show()
+
+#resolvedNewAll	= ['43', '58-60-65', '52', '58-60-65']
+#newIDCopies	    = '58-60-65'
+#print(newIDCopies==resolvedNewAll[1])
+#print(np.argwhere(resolvedNewAll == newIDCopies))
+#a = np.array([1,2,3])
+#print(np.argwhere(a == a[1]))
 
 
+import numpy as np
+
+def random_walk(N, a):
+    # Generate N random steps from uniform distribution in range [-a, a]
+    steps = np.random.uniform(-a, a, N)
+    # Initialize the walk with the first step
+    walk = np.zeros(N)
+    walk[0] = steps[0]
+    # Calculate the random walk
+    for i in range(1, N):
+        walk[i] = walk[i-1] + steps[i]
+    return np.array(walk)
+
+N = 500
+case = random_walk(2500,0)
+
+arr = np.arange(0,len(case),1)
+
+plt.plot(arr, case)
+dN = N/2
+
+i = np.array(1/4*N+1/2*N*np.arange(1,int(len(arr)/(N/2)),1),int)
+wnd = {}
+wnd[0] = [0,N]
+for t in i:
+    wnd[t] = [t-int(0.5*N),min(t+int(0.5*N),max(arr))]
+wnd[i[-1]] = [wnd[i[-1]][0],max(arr)]
+#wnd[max(arr)] = [max(arr)-int(N),max(arr)]
+ordr = {t:i for i,t in enumerate(wnd)}
+print(wnd)
+print(ordr)
+def ff(t,case):
+    times = np.array(list(ordr))
+    sol = 0
+    for time in times:
+        if time <= t:sol = time
+        else: break
+    return ordr[sol]
+    #low,high  = wnd[sol]
+    #return np.mean(case[low:high])
+
+
+print(ff(2076,case))
+#pltS = np.array([[t,ff(t,case)] for t in arr])
+#plt.plot(*pltS.T)
+#plt.show()
 k = cv2.waitKey(0)
 if k == 27:  # close on esc key
     cv2.destroyAllWindows()

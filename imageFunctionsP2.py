@@ -1416,7 +1416,7 @@ def alphashapeHullModded(contours, contourIDs, param, debug):
             #centroid, area          =  getCentroidPosContours(bodyCntrs = [hull])
     else:
         print(f'alphashapeHullModded() subIDs: {contourIDs}-> OG geom type{alpha_shape.geom_type}')
-        for prm in np.arange(param-0.01,0,-0.01):
+        for prm in np.append(np.arange(param-0.01,0,-0.01),0):
             print(f'alphashapeHullModded() subIDs: {contourIDs}-> reducing alpha parameter from {param} to {np.around(prm,2)}, to resolve single polygon')
             alpha_shape2 = alphashape.alphashape(allPonts, prm)
             print(f'alphashapeHullModded() subIDs: {contourIDs}-> new geom type{alpha_shape2.geom_type}')
@@ -1502,7 +1502,8 @@ def mergeCrit(contourIDs, contours, previousInfo, pCentr = None, alphaParam = 0.
     refMergePoint           = previousInfo[3]
     baseDefects             = previousInfo[4]
     baseDefectsOut          = None
-    calculateAngle          = lambda vector: np.arccos(np.dot(refPlaneTangent, vector))     # chech angle between reference tangent and a vector
+    calculateAngle          = lambda vector: np.arccos( min(np.dot(refPlaneTangent, vector)/(np.linalg.norm(refPlaneTangent)*np.linalg.norm(refPlaneTangent)),1))
+                                                                                            # chech angle between reference tangent and a vector.>> problems with 0 deg angle...
     defectsIndicies         = []                                                            # large defects will be stored here
     defectsDirection        = []                                                            # direction from 'cave' furthest point normal to contour.
     defectsLength           = []
@@ -1747,29 +1748,30 @@ def mergeSplitDetect(contours,contourIDs, direction, position, gc = 0, id = 0, d
         if np.count_nonzero(sideIDs == 0) == 0:                                                        # there are only contours that live on either side. no inbetween
             sideOneContourIDs = [ID for ID in contourIDs if sideID[ID] == -1]
             sideTwoContourIDs = [ID for ID in contourIDs if sideID[ID] ==  1]
-            blank2 = np.zeros((h0,w0),np.uint8)
-            blank3 = np.zeros((h0,w0),np.uint8)
-            hull1 = cv2.convexHull(np.vstack(contours[sideOneContourIDs]))
-            hull2 = cv2.convexHull(np.vstack(contours[sideTwoContourIDs]))
-            cv2.drawContours( blank2,   [hull1-[x0,y0]], -1, 255, -1)
-            cv2.drawContours( blank3,   [hull2-[x0,y0]], -1, 255, -1)
-            #area2 = int(np.sum(blank2/255))
-            #area3 = int(np.sum(blank3/255))
-            inter = cv2.bitwise_and(blank2, blank3)
+            if len(sideOneContourIDs)>0 and len(sideTwoContourIDs)>0:
+                blank2 = np.zeros((h0,w0),np.uint8)
+                blank3 = np.zeros((h0,w0),np.uint8)
+                hull1 = cv2.convexHull(np.vstack(contours[sideOneContourIDs]))
+                hull2 = cv2.convexHull(np.vstack(contours[sideTwoContourIDs]))
+                cv2.drawContours( blank2,   [hull1-[x0,y0]], -1, 255, -1)
+                cv2.drawContours( blank3,   [hull2-[x0,y0]], -1, 255, -1)
+                #area2 = int(np.sum(blank2/255))
+                #area3 = int(np.sum(blank3/255))
+                inter = cv2.bitwise_and(blank2, blank3)
             
-            interArea = int(np.sum(inter/255))
-            print(f'interArea: {interArea}')
-            if interArea == 0:
-                dist = closes_point_contours(hull1,hull2)[1]
-                if dist > 5:
-                    isThereASplit = True
-            if debug == 1:
-                deb = np.zeros((h0,w0,3),np.uint8)
-                [cv2.drawContours( deb,   [contours[ID]-[x0,y0]], -1, [120,120,120], -1) for ID in contourIDs]
-                cv2.drawContours( deb,   [hull1-[x0,y0]], -1, [255,0,0], 2)
-                cv2.drawContours( deb,   [hull2-[x0,y0]], -1, [0,0,255], 2)
-                cv2.imshow(f'{gc,id}', deb)
-                cv2.imshow(f'inter {gc,id}', inter)
+                interArea = int(np.sum(inter/255))
+                print(f'interArea: {interArea}')
+                if interArea == 0:
+                    dist = closes_point_contours(hull1,hull2)[1]
+                    if dist > 5:
+                        isThereASplit = True
+                if debug == 1:
+                    deb = np.zeros((h0,w0,3),np.uint8)
+                    [cv2.drawContours( deb,   [contours[ID]-[x0,y0]], -1, [120,120,120], -1) for ID in contourIDs]
+                    cv2.drawContours( deb,   [hull1-[x0,y0]], -1, [255,0,0], 2)
+                    cv2.drawContours( deb,   [hull2-[x0,y0]], -1, [0,0,255], 2)
+                    cv2.imshow(f'{gc,id}', deb)
+                    cv2.imshow(f'inter {gc,id}', inter)
         
             
             #[cv2.drawContours( blank2,   [contours[ID]-[x0,y0]], -1, [120,120,120], -1) for ID in contourIDs]

@@ -1,0 +1,6 @@
+{
+  "TestFramework": "Pytest",
+  "SuppressEnvironmentCreationPrompt": true,
+  "Interpreter": "Global|VisualStudio|env for image processing",
+  "SuppressPackageInstallationPrompt": true
+}

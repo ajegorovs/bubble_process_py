@@ -333,7 +333,7 @@ for folderName in mainOutputSubFolders:                                         
 # //=========== BUILD OUTPUT FOLDERS =============
 
 
-thresh0             = 1
+thresh0             = 3
 thresh1             = 15
 
 
@@ -354,8 +354,8 @@ assistFramesG       = []    #845,810,1234 2070,2187,1396
 assistFrames        = [a - dataStart for a in assistFramesG]
 doIntermediateData              = 1                                         # dump backups ?
 intermediateDataStepInterval    = 500                                       # dumps latest data field even N steps
-readIntermediateData            = 0                                         # load backups ?
-startIntermediateDataAtG        = 24305                             # frame stack index ( in X_Data). START FROM NEXT FRAME
+readIntermediateData            = 1                                         # load backups ?
+startIntermediateDataAtG        = 844                             # frame stack index ( in X_Data). START FROM NEXT FRAME
 startIntermediateDataAt         = startIntermediateDataAtG - dataStart      # to global, which is pseudo global ofc. global to dataStart
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
@@ -393,7 +393,7 @@ debugVecPredict = 0
 # ========================================================================================================
 # ============== Import image files and process them, store in archive or import archive =================
 # ========================================================================================================
-exportArchive   = 1
+exportArchive   = 0
 
 rotateImageBy   = cv2.ROTATE_180 # -1= no rotation, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_180 
 startFrom       = 1   #0 or 1 for sub exp                               # offset from ordered list of images- global offset?! yes archive adds images from list as range(startFrom, numImages)
@@ -588,7 +588,7 @@ l_RBub_masks_old, l_RBub_images_old, l_RBub_rect_parms_old, l_RBub_centroids_old
 l_DBub_masks_old, l_DBub_images_old, l_DBub_rect_parms_old, l_DBub_centroids_old, l_DBub_areas_hull_old, l_DBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
 l_FBub_masks_old, l_FBub_images_old, l_FBub_rect_parms_old, l_FBub_centroids_old, l_FBub_areas_hull_old, l_FBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
 l_MBub_masks_old, l_MBub_images_old, l_MBub_rect_parms_old, l_MBub_centroids_old, l_MBub_areas_hull_old, l_MBub_old_new_IDs_old = {}, {}, {}, {}, {}, {}
-frozenGlobal = {}; l_MBub_info_old, g_MBub_info, g_areas_IDs, g_splits, l_splits_old = {}, {}, {}, {}, {};frozenBuffer_old, frozenBufferSize,frozenBufferMaxDT = {}, 5, 50
+frozenGlobal = {}; l_MBub_info_old, g_MBub_info, g_merges, g_areas_IDs, g_splits, l_splits_old = {}, {}, {}, {}, {}, {};frozenBuffer_old, frozenBufferSize,frozenBufferMaxDT = {}, 5, 50
 allFrozenIDs, activeFrozen = {}, {}
 g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_FBub_glob_IDs = {},{},{},{}
 g_contours, g_contours_hull,  frozenBubs, frozenBubsTimes,  l_bubble_type_old = {}, {}, {}, {}, {}
@@ -605,7 +605,7 @@ def mainer(index):
     global l_MBub_masks_old, l_MBub_images_old, l_MBub_rect_parms_old, l_MBub_centroids_old, l_MBub_areas_hull_old, l_MBub_old_new_IDs_old
     global g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_FBub_glob_IDs
     global g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,l_bubble_type_old,g_child_contours
-    global g_predict_displacement, g_predict_area_hull, frozenIDs,  l_MBub_info_old, g_MBub_info
+    global g_predict_displacement, g_predict_area_hull, frozenIDs,  l_MBub_info_old, g_MBub_info, g_merges
     global l_masks_old, l_images_old, l_rect_parms_old, l_ellipse_parms_old, l_centroids_old, l_old_new_IDs_old, l_areas_hull_old, l_contours_hull_old
     global fakeBox, drawAfter, steepAngle, assistManually, assistFrames, dataStart, frozenBuffer_old, frozenBufferSize, allFrozenIDs, activeFrozen
     global debugVecPredict, contoursFilter_RectParams_dropIDs_old, contoursFilter_RectParams, contoursFilter_RectParams_dropIDs, frozenBufferMaxDT
@@ -1581,6 +1581,8 @@ def mainer(index):
                     jointNeighborsWoFrozen_bound_rect   = {ID: cv2.boundingRect(hull) for ID, hull in jointNeighborsWoFrozen_hulls.items()}                         
                     jointNeighborsWoFrozen_c_a          = {ID: getCentroidPosContours(bodyCntrs = [hull]) for ID, hull in jointNeighborsWoFrozen_hulls.items()}
                     print(f'Reclustering... {[a for a in jointNeighborsWoFrozen.values()]}')
+                    if globalCounter not in g_splits: g_splits[globalCounter] = {}
+                    g_splits[globalCounter][oldID] = [True,None,[tempSol,otherSet],None]
             if len(elseOldNewDoubleCriterium)>0:
                 #print(dropDoubleCritCopies(elseOldNewDoubleCriterium))
                 elseOldNewDoubleCriterium = dropDoubleCritCopies(elseOldNewDoubleCriterium)         # i dont think its relevant anymore
@@ -2425,7 +2427,11 @@ def mainer(index):
                         l_MBub_info[tempID]              = [old,np.sum(areas).astype(int),prevCentroid] + list(newParams) # [(645, 557), 8.6]
                     g_Centroids[selectID][globalCounter-1]  = prevCentroid                                          # move pre-merge centroid to common center of mass. should be easer to calculate dist predictor.
                     l_predict_displacement[selectID]        = [tuple(map(int,predictCentroid)), int(dist2)]         # predictCentroid not changed idk why. but dist is
+                    
+                    if globalCounter not in g_merges: g_merges[globalCounter] = {}                                  # drop global storage in form {timestep:{newGlobID1:[oldPremerge1,oldPremerge2],newGlobID2:[],..}
+                    g_merges[globalCounter][selectID] = []
                     for ID in [elem for elem in old if elem != selectID]:                                           # looks like its for a case with 2+ buble merge    
+                        g_merges[globalCounter][selectID].append(ID)
                         g_bubble_type[ID][globalCounter-1]  = typePreMerge
                         g_Centroids[ID][globalCounter]      = dataSets[4][tempID]                                 # dropped IDs inherit merged bubble centroid, so visuall they merge.
                     
@@ -2456,6 +2462,7 @@ def mainer(index):
                     temp.append(newParams[4])
                     app = np.array((-1, selectID), dtype=[('integer', '<i4'), ('string', '<U60')])
                     MBOldNewDist    = np.append(MBOldNewDist,app)
+                    # not doing g_merge here since newID is not yet known, do it in local-global storage flush
                     #MBOldNewDist    = np.append(MBOldNewDist,[[-1,selectID]],axis=0)         # multiple oldIDs, but we dont need them. we just need 
                                                                                              # to know this is new global ID. tag it impossible ID= -1
                     l_MBub_info[selectID] = temp
@@ -2569,7 +2576,10 @@ def mainer(index):
                 if all(np.where(displ>=5,1,0)):                  # check if each step objects get further apart
                     steadyDispl = True
                 else: steadyDispl = False
-                if (numIDSplits == nLast or gID == oldUnresID) and steadyDispl == True:               # it was in split whole time! OR past split went missing due to crit failure!
+                if all(np.where(distHist>=15,1,0)):
+                    bigDispl = True
+                else: bigDispl = False
+                if (numIDSplits == nLast or gID == oldUnresID) and (steadyDispl or bigDispl):           # it was in split whole time! OR past split went missing due to crit failure!
                     if ID in unresolvedNewDB: unresolvedNewDB.remove(ID)                    # drop cluster from unesolved. recluster it next
                     # ====== drop split ID as unresolved ======
                     jointNeighbors.pop(ID,None)  # i think i need to remove it straight away
@@ -2917,9 +2927,10 @@ def mainer(index):
                 gID                 = startID
                 g_bubble_type[gID]  = {}
                 g_MBub_info[gID]    = {}
-            
             else: gID = old
-
+            if len(l_MBub_info[new][0]) > 0 :                                                               # after first discovery merged old are empty. no need to store.
+                if globalCounter not in g_merges: g_merges[globalCounter] = {}                                  # drop global storage in form {timestep:{newGlobID1:[oldPremerge1,oldPremerge2],newGlobID2:[],..}
+                g_merges[globalCounter][gID] = l_MBub_info[new][0]
             l_bubble_type[gID]                  = typeMerge
             
             g_bubble_type[gID][globalCounter]   = typeMerge
@@ -3320,7 +3331,7 @@ def mainer(index):
                 globalCounter, g_contours, g_contours_hull, g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_areas_hull, g_dropIDs , allFrozenIDs,
                 g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,g_child_contours, frozenBuffer_old,STBubs,
                 g_predict_displacement, g_predict_area_hull,  g_MBub_info, frozenGlobal,  g_bublle_type_by_gc_by_type, g_areas_IDs, g_splits, activeFrozen,
-                ], handle) 
+                g_merges], handle) 
  
 
     globalCounter += 1
@@ -3334,7 +3345,7 @@ if os.path.exists(os.path.join(intermediateDataFolder,'data'+postfix+'.pickle'))
                 backupStart, g_contours, g_contours_hull, g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_areas_hull, g_dropIDs , allFrozenIDs,
                 g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,g_child_contours, frozenBuffer_old, STBubs,
                 g_predict_displacement, g_predict_area_hull,  g_MBub_info, frozenGlobal,  g_bublle_type_by_gc_by_type, g_areas_IDs, g_splits, activeFrozen,
-                ] = pickle.load(handle)
+                g_merges] = pickle.load(handle)
     a = 1
     globalCounter  = min(startIntermediateDataAt,backupStart)
     if startIntermediateDataAt<backupStart:
@@ -3353,8 +3364,8 @@ if os.path.exists(os.path.join(intermediateDataFolder,'data'+postfix+'.pickle'))
                                                                                                g_Masks,g_Images,g_old_new_IDs,g_bubble_type,
                                                                                                g_predict_displacement,g_predict_area_hull,g_MBub_info,g_contours_hull])
 
-        [g_contours,g_dropIDs,g_bublle_type_by_gc_by_type,g_splits, allFrozenIDs,STBubs,
-         g_areas_IDs,g_FBub_rect_parms,g_FBub_centroids,g_FBub_areas_hull]     = reduceFields2([g_contours,g_dropIDs,g_bublle_type_by_gc_by_type,g_splits, allFrozenIDs,STBubs,
+        [g_contours,g_dropIDs,g_bublle_type_by_gc_by_type,g_splits, allFrozenIDs, STBubs, g_merges,
+         g_areas_IDs,g_FBub_rect_parms,g_FBub_centroids,g_FBub_areas_hull]     = reduceFields2([g_contours,g_dropIDs,g_bublle_type_by_gc_by_type,g_splits, allFrozenIDs,STBubs, g_merges,
                                                                                                 g_areas_IDs,g_FBub_rect_parms,g_FBub_centroids,g_FBub_areas_hull])
      
         

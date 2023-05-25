@@ -6,7 +6,7 @@ Created on Wed Apr 13 13:30:19 2022
 """
 #print("\014") #clear spyder console, if you use it
 from ast import For
-import cv2
+import cv2, csv
 # from cv2.ximgproc import anisotropicDiffusion
 # from cv2.ximgproc import getDisparityVis
 # from skimage.segmentation import (morphological_chan_vese,
@@ -291,12 +291,13 @@ toList = lambda x: [x] if type(x) != list else x
 
 # =========== BUILD OUTPUT FOLDERS =============//
 inputOutsideRoot            = 1                                                  # bmp images inside root, then input folder hierarchy will
-mainInputImageFolder        = r'.\inputFolder'                                   # be created with final inputImageFolder, else custom.
+mainInputImageFolder        = r'.\inputFolder'                                   # be created with final inputImageFolder, else custom. NOT USED?!?
 inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\100 sccm' #
-# 'F:\UL Data\Bubbles - Optical Imaging\Actual\Field OFF\Series 7\400 sccm'
+# 'F:\UL Data\Bubbles - Optical Imaging\Actual\Field OFF\Series 7\100 sccm'
 #F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 265 mT\Series 3\350 sccm
 # F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 265 mT\Series 4\300 sccm
 #'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 265 mT\Series 3\350 sccm'
+#'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\350 sccm'
 mainOutputFolder            = r'.\imageMainFolder_output'                        # these are main themed folders, sub-projects go inside.
 mainIntermediateDataFolder  = r'.\intermediateData'                              # these are main themed folders, sub-projects go inside.
 mainManualMasksFolder       = r'.\manualMask'                                    # these are main themed folders, sub-projects go inside.
@@ -305,8 +306,9 @@ for directory in [mainOutputFolder, mainIntermediateDataFolder, mainManualMasksF
         if not os.path.exists(directory):
              os.mkdir(directory) 
 
-#mainOutputSubFolders= ['ringDetect']                                             # specific sub-project folder heirarchy
-mainOutputSubFolders= ['HFS 200 mT Series 4','sccm100-meanFix', "00001-05000"]                        # "00001-02500" "02500-05000"  "05000-07500" "07500-10000" "00001-05000" "05000-10000"
+#mainOutputSubFolders = ['ringDetect']                                             # specific sub-project folder heirarchy
+#mainOutputSubFolders = ['VFS 125 mT Series 5','sccm250-meanFix', "10000-15000"]                        # "00001-02500" "02500-05000"  "05000-07500" "07500-10000" "00001-05000" "05000-10000" "10000-15000"
+mainOutputSubFolders =  ['HFS 200 mT Series 4','sccm100-meanFix', "00001-05000"]
 # crop mask name is    mainOutputSubFolders[:2]   as project=> subproject and not subcase                                                                          
 
 imageFolder             = mainOutputFolder                                       # defaults output to main folder
@@ -347,7 +349,7 @@ big = 1
 # dataStart = 71+52 ###520
 # dataNum = 7
 dataStart           = 0 #736 #300 #  53+3+5
-dataNum             = 5005 #130 # 7+5   
+dataNum             = 5005#5005 #130 # 7+5   
 
 assistManually      = 1
 assistFramesG       = []    #845,810,1234 2070,2187,1396
@@ -355,7 +357,7 @@ assistFrames        = [a - dataStart for a in assistFramesG]
 doIntermediateData              = 1                                         # dump backups ?
 intermediateDataStepInterval    = 500                                       # dumps latest data field even N steps
 readIntermediateData            = 1                                         # load backups ?
-startIntermediateDataAtG        = 844                             # frame stack index ( in X_Data). START FROM NEXT FRAME
+startIntermediateDataAtG        = 60700                             # frame stack index ( in X_Data). START FROM NEXT FRAME
 startIntermediateDataAt         = startIntermediateDataAtG - dataStart      # to global, which is pseudo global ofc. global to dataStart
 # ------------------- this manual if mode  is not 0, 1  or 2
 workBigArray        = 0
@@ -378,7 +380,10 @@ drawFileName        = 1
 markFirstMaskManually = 1
 markFirstExport     = 0 # see exportFirstFrame() lower after dataArchive import
 
+exportImages        = 1
+exportImagesMHTX    = 0
 drawAfter           = 0
+
 
 globalCounter = 0
 
@@ -394,13 +399,13 @@ debugVecPredict = 0
 # ============== Import image files and process them, store in archive or import archive =================
 # ========================================================================================================
 exportArchive   = 0
-
+if len(assistFramesG) > 0: exportArchive   = 0
 rotateImageBy   = cv2.ROTATE_180 # -1= no rotation, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_180 
 startFrom       = 1   #0 or 1 for sub exp                               # offset from ordered list of images- global offset?! yes archive adds images from list as range(startFrom, numImages)
 numImages       = 5005 # DONT! intervalStart is what you are after!!!!! # take this many, but it will be updated: min(dataNum,len(imageLinks)-startFrom), if there are less available
 postfix         = "-00001-05000"
 
-intervalStart   = 0                          # in ordered list of images start from number intervalStart
+intervalStart   = 0                         # in ordered list of images start from number intervalStart
 intervalStop    = intervalStart + numImages  # and end at number intervalStop
 useMeanWindow   = 1                          # averaging intervals will overlap half widths, read more below
 N               = 500                        # averaging window width
@@ -408,7 +413,8 @@ N               = 500                        # averaging window width
 archivePath     = os.path.join(dataArchiveFolder, "-".join(mainOutputSubFolders)+postfix+".pickle")
 meanImagePath   = os.path.join(dataArchiveFolder, "-".join(["mean"]+mainOutputSubFolders)+".pickle")
 meanImagePathArr= os.path.join(dataArchiveFolder, "-".join(["meanArr"]+mainOutputSubFolders)+".pickle")
-
+csv_path        = os.path.join(dataArchiveFolder, "-".join(["csv"]+mainOutputSubFolders)+".csv")          # for MHT-X, [frame,localID,centroid,area]
+    
 if exportArchive == 1:
     # ===================================================================================================
     # =========================== Get list of paths to image files in working folder ====================
@@ -552,6 +558,20 @@ def whichMaskInterval(t,order):                                                 
 
 #cv2.imshow('1000',np.uint8(masksArr[whichMaskInterval(1000,intervalIndecies)]))
 #cv2.imshow('2000',np.uint8(masksArr[whichMaskInterval(2000,intervalIndecies)]))
+
+
+# ====================================================================================================
+# ======= blank full size (Cropped) images for MHT-X algorithm =======================================
+# ====================================================================================================
+#  get frames which are not already exported, export them on drawing start
+csvImgDirectory = os.path.join(dataArchiveFolder,"-".join(["csv_img"]+mainOutputSubFolders))
+if not os.path.exists(csvImgDirectory): os.mkdir(csvImgDirectory)
+csvImageLinks               = glob.glob(csvImgDirectory + "**/*.png", recursive=True)
+extractIntergerFromFileName = lambda x: int(re.findall('\d+', os.path.basename(x))[0])
+csvImageLinksNumbers        = [extractIntergerFromFileName(x) for x in csvImageLinks]
+allRelevantFrames           = np.arange(numImages)
+exportCSVimgsIDs            = [x for x in allRelevantFrames if x not in csvImageLinksNumbers]
+# ====================================================================================================
 a = 1
 
 def extractManualMask2(index = dataStart, debug  = 0): # either draw red masks over or using Paint, set bg color to red and freehand select and delete areas.
@@ -573,6 +593,9 @@ def extractManualMask2(index = dataStart, debug  = 0): # either draw red masks o
     return {ID:contour for ID,contour in enumerate(contours)},{ID:param for ID,param in enumerate(params)}
 
 a = 1
+
+
+
 #dataArchive, meanImage, imageLinks = initImport(mode,workBigArray,recalcMean,readSingleFromArray,pickleNewDataLoad,pickleNewDataSave,pickleSingleCaseSave)
 
 
@@ -1582,7 +1605,7 @@ def mainer(index):
                     jointNeighborsWoFrozen_c_a          = {ID: getCentroidPosContours(bodyCntrs = [hull]) for ID, hull in jointNeighborsWoFrozen_hulls.items()}
                     print(f'Reclustering... {[a for a in jointNeighborsWoFrozen.values()]}')
                     if globalCounter not in g_splits: g_splits[globalCounter] = {}
-                    g_splits[globalCounter][oldID] = [True,None,[tempSol,otherSet],None]
+                    g_splits[globalCounter][oldID] = [True,None,[tempSol,otherSet],0]
             if len(elseOldNewDoubleCriterium)>0:
                 #print(dropDoubleCritCopies(elseOldNewDoubleCriterium))
                 elseOldNewDoubleCriterium = dropDoubleCritCopies(elseOldNewDoubleCriterium)         # i dont think its relevant anymore
@@ -1894,7 +1917,7 @@ def mainer(index):
             if crit1 or crit2:# inlet cluster  maybe fully resolved by old-newDB, which happens if its poking outside inlet box.
                 a = 1                                                                                   # so inletIDsNew = resolved subcluster.
                 idsInside   = [ID for ID, cType in inletIDsTypeNew.items() if cType == 2]               # ids fully inside inlet rectangle. might include parts of unresolved neighbor clusters
-                idsPartial  = [ID for ID, cType in inletIDsTypeNew.items() if cType == 1 if ID not in sum(list(oldNewIdsResolved.values()),[])]               # ids that are partially inside inlet rectangle. again, might be part of unresolved clusters.
+                idsPartial  = [ID for ID, cType in inletIDsTypeNew.items() if cType == 1 if ID not in sum(list(oldNewIdsResolved.values()),[]) + declusterNewFRLocals]               # ids that are partially inside inlet rectangle. again, might be part of unresolved clusters.
                 overlappintPartialOldIDs    = [ID for ID,cType in inletIDsType.items() if cType == 1]   # there are partially overlaying old IDs
                 partiallyOverlappingOldInletIDs = [a for a in overlappintPartialOldIDs if a in unresolvedOldRB + unresolvedOldDB] # which of these are missing
 
@@ -3157,10 +3180,24 @@ def mainer(index):
             l_Areas_old[key]        = cv2.contourArea(l_contours[key])
             l_centroids_old_all[key]    = getCentroidPosContours(bodyCntrs = [l_contours[key]])[0]
 
-
-    if drawAfter == 0:
+    if exportImagesMHTX == 1  or (drawAfter == 0 and exportImages == 1):
         activeIDs = l_old_new_IDs_old
         blank  = convertGray2RGB(orig)
+        if exportImagesMHTX == 1:
+            if globalCounter in exportCSVimgsIDs:
+                cv2.imwrite(os.path.join(csvImgDirectory,str(dataStart+globalCounter).zfill(4)+".png") ,blank)
+
+    if drawAfter == 0 and exportImages == 1:
+        activeIDs = l_old_new_IDs_old
+        blank  = convertGray2RGB(orig)
+
+        # ============================
+        # ==  for MHT-X blank image ==
+        # ============================
+        if globalCounter in exportCSVimgsIDs:
+            cv2.imwrite(os.path.join(csvImgDirectory,str(dataStart+globalCounter).zfill(4)+".png") ,blank)
+        # ============================
+
         if len(fakeBox) > 0:
             x,y,w,h = fakeBox[-1]
             cv2.rectangle(blank, (x,y), (x+w,y+h),[120,15,55],1)
@@ -3332,7 +3369,14 @@ def mainer(index):
                 g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,g_child_contours, frozenBuffer_old,STBubs,
                 g_predict_displacement, g_predict_area_hull,  g_MBub_info, frozenGlobal,  g_bublle_type_by_gc_by_type, g_areas_IDs, g_splits, activeFrozen,
                 g_merges], handle) 
- 
+    # ===========================================================================
+    # ===================== for MHT-X append lines into csv file ================
+    # ===========================================================================
+    with open(csv_path, 'a', newline='') as file:
+        writer = csv.writer(file)
+        for key in list(l_masks_old.keys()):
+            row = [globalCounter, min(l_old_new_IDs_old[key]), l_centroids_old[key], l_areas_hull_old[key]]
+            writer.writerow(row)
 
     globalCounter += 1
 
@@ -3458,9 +3502,25 @@ if os.path.exists(os.path.join(intermediateDataFolder,'data'+postfix+'.pickle'))
     globalCounter += 1
     dataStartOffseted = dataStart + globalCounter
     cntr = globalCounter
+    # =====================================================================================================
+    # ======== for MHT-X generate pre current csv file from histry. append to it during iterations ========
+    # =====================================================================================================
+    with open(csv_path, 'w', newline='') as file:
+        writer = csv.writer(file)
+        for time in g_bublle_type_by_gc_by_type:
+            for ID in sum(list(g_bublle_type_by_gc_by_type[time].values()),[]):
+                
+                row = [time, min(g_old_new_IDs[ID][time]), g_Centroids[ID][time], g_areas_hull[ID][time]]
+                writer.writerow(row)
+    # =====================================================================================================
 else:
     dataStartOffseted = dataStart
     cntr = 0
+    # =====================================================================================================
+    # = for MHT-X generate blank csv file in case you start from iter 0. append to it during iterations ===
+    # =====================================================================================================
+    with open(csv_path, 'w', newline='') as file:
+        writer = csv.writer(file)
 
 breakLoopInsert     = False
 
@@ -3480,10 +3540,10 @@ if mode == 1:
 if mode == 2:
     mainer(0)
  
-if drawAfter == 1:
+if drawAfter == 1 and exportImages == 1:
     for globalCounter in range(globalCounter):
         #==============================================================================================
-        #======================== DRAWING STUFF START ================================================
+        #======================== DRAWING STUFF START =================================================
         #==============================================================================================
     
         activeIDs = [ID for ID, timeDict in g_bubble_type.items() if globalCounter in timeDict]#;print(f'globalCounter: {globalCounter} activeIDs: {activeIDs}')
@@ -3646,7 +3706,8 @@ if drawAfter == 1:
                 [cv2.circle(blank, tuple(p), 1, cyclicColor(i), -1) for [p] in pts]
             
         cv2.putText(blank, str(globalCounter), (25,25), font, 0.9, (255,220,195),2, cv2.LINE_AA)
-        cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\"+str(dataStart+globalCounter).zfill(4)+".png" ,blank)
+        cv2.imwrite(os.path.join(imageFolder,str(dataStart+globalCounter).zfill(4)+".png") ,resizeToMaxHW(blank,width = 800))
+        #cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\"+str(dataStart+globalCounter).zfill(4)+".png" ,blank)
         #cv2.imwrite(".\\imageMainFolder_output\\ringDetect\\orig_"+str(dataStart+globalCounter).zfill(4)+".png" ,ori)
         # cv2.imshow(f'{globalCounter}', resizeToMaxHW(blank))
     

@@ -13,5 +13,6 @@
 /X_data - Copy.pickle
 /inputFolder
 /archives
-
 /test
+/.vs
+/__pycache__

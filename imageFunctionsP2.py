@@ -1561,7 +1561,7 @@ def mergeCrit(contourIDs, contours, previousInfo, pCentr = None, alphaParam = 0.
         for i,[defPointPred, defDirOld, defDistOld] in enumerate(baseDefects2):
             defOldNewDist   = [np.linalg.norm(np.array(defCurrent) - np.array(defPointPred)) for defCurrent in defectsFarpoints2p]
             defOldNewAng    = [int(min(
-                                np.pi-np.arccos(np.dot(defDirOld,defDir)), np.arccos(np.dot(defDirOld,defDir))
+                                np.pi-np.arccos(min(1,np.dot(defDirOld,defDir))), np.arccos(min(1,np.dot(defDirOld,defDir)))
                                         )*180/np.pi) for defDir in defectsDirection2]
             tt = np.array([defOldNewDist,defOldNewAng],int).T                                                       # [[dist_old_1,ang_old_1],[dist_old_2,ang_old_2]]
             tt2 = np.argmin(tt, axis=0)                                                                             # [whereMin([dist_old_1,dist_old_2]),whereMin([ang_old_1,ang_old_2])]  

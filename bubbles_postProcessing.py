@@ -4,7 +4,7 @@
 # get thinnest domain slice that holds cover_area *100% of the data.
 
 uniformStep = 1;
-import numpy as np, os, glob, pickle, cv2, itertools, networkx as nx, re
+import numpy as np, os, glob, pickle, cv2, itertools, networkx as nx, re, copy
 from scipy import stats as sc_stat
 from matplotlib import pyplot as plt
 from tqdm import tqdm
@@ -158,13 +158,16 @@ mainDataArchiveFolder       = r'.\archives'
 mainTestFolder              = r'.\test'
 
 mainOutputSubFolders= ['Field OFF Series 7','sccm250-meanFix', "00001-05000"]    # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-#mainOutputSubFolders= ['HFS 200 mT Series 4','sccm150-meanFix', "00001-05000"]  # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-                                                                                 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-maxStepsForTest = 3000                                                           # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-                                                                                 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-overWriteStart  = 0                   # -1 to start from existing max           # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-overWriteEnd    = maxStepsForTest#200                                            # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+#mainOutputSubFolders= ['HFS 200 mT Series 4','sccm200-meanFix', "00001-05000"]   # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+#mainOutputSubFolders =  ['HFS 265 mT Series 4','sccm150-meanFix', "00001-05000"]                                                                                 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+maxStepsForTest = -1                                                          
+                                                                              
+overWriteStart  = 0                   # -1 to start from existing max         
+overWriteEnd    = maxStepsForTest#200 # = maxStepsForTest = -1 means max   
 
+saveArchive = 1
+postfix     = "_1"
+loadArchive = 0
 
 dataTestFolder          = mainTestFolder
 dataArchiveFolder       = os.path.join(mainDataArchiveFolder, *mainOutputSubFolders)
@@ -172,15 +175,26 @@ csvImgDirectory         = os.path.join(dataArchiveFolder,"-".join(["csv_img"]+ma
 intermediateDataFolder  = os.path.join(mainIntermediateDataFolder, *mainOutputSubFolders)
 archivePathOrig         = os.path.join(intermediateDataFolder, 'data-'+mainOutputSubFolders[-1]+'.pickle')
 archivePathNoImg        = os.path.join(intermediateDataFolder, 'data-'+mainOutputSubFolders[-1]+'-noImg.pickle')
+
 for folderName in mainOutputSubFolders:                                          # or creates heararchy of folders "subfolder/subsub/.."
     dataTestFolder  = os.path.join(dataTestFolder,  folderName)
     if not os.path.exists(dataTestFolder): os.mkdir(dataTestFolder)
 
-createNoImgArchive = 1             # create and use archive w/o images and masks. x6 times smaller size
-#if os.path.exists(archivePathNoImg):    archiveDir = archivePathNoImg
-#else:                                   archiveDir = archivePathOrig
-if createNoImgArchive == 1 and not os.path.isfile(archivePathNoImg):
+if saveArchive == 1:
+    mainOutputSubFolders2 = [mainOutputSubFolders[0]] + [mainOutputSubFolders[1]+postfix] + mainOutputSubFolders[2:]
+    dataTestFolder          = mainTestFolder
+    for folderName in mainOutputSubFolders2:                                          
+        dataTestFolder  = os.path.join(dataTestFolder,  folderName)
+        if not os.path.exists(dataTestFolder): os.mkdir(dataTestFolder)
+temp =[mainTestFolder] + [mainOutputSubFolders[0]] + [mainOutputSubFolders[1]+postfix] + ['data-'+mainOutputSubFolders[-1]+postfix+'.pickle']
+dataArchiveSavePath = os.path.join(*temp)
 
+
+createNoImgArchive = 1             # create and use archive w/o images and masks. x6 times smaller size
+
+
+if createNoImgArchive == 1 and not os.path.isfile(archivePathNoImg):
+    print('reduced size archive does not exist, creating it...')
     with open(archivePathOrig, 'rb') as handle:
                     [
                     backupStart, g_contours, g_contours_hull, g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_areas_hull, g_dropIDs , allFrozenIDs,
@@ -197,16 +211,27 @@ if createNoImgArchive == 1 and not os.path.isfile(archivePathNoImg):
                     g_merges]
             , handle) 
     importPath = archivePathNoImg
-elif createNoImgArchive == 1 and  os.path.isfile(archivePathNoImg):
+    print('reduced size archive does not exist, creating it ... done!')
+elif createNoImgArchive == 1 and  os.path.isfile(archivePathNoImg) and not loadArchive:
     importPath = archivePathNoImg
+    print('reduced size archive does exists, no custom loading is active. selecting reduced size archive ...')
+elif loadArchive:
+    importPath = dataArchiveSavePath
+    print('reduced size archive does exists, but custom archive loading is active. selecting customarchive ...')
 else:
     importPath = archivePathOrig
+    print('selecting full size archive...')
+
 with open(importPath, 'rb') as handle:
     [
     backupStart, g_contours, g_contours_hull, g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_areas_hull, g_dropIDs , allFrozenIDs,
     g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,g_child_contours, frozenBuffer_old, STBubs,
     g_predict_displacement, g_predict_area_hull,  g_MBub_info, frozenGlobal,  g_bublle_type_by_gc_by_type, g_areas_IDs, g_splits, activeFrozen,
     g_merges] = pickle.load(handle)
+
+if maxStepsForTest == -1:
+    if overWriteEnd == maxStepsForTest: overWriteEnd = backupStart
+    maxStepsForTest = backupStart
 
 imageLinks = glob.glob(csvImgDirectory + "**/*.png", recursive=True) 
 img = np.uint8(cv2.imread(imageLinks[0],0))
@@ -258,17 +283,16 @@ mergingGlobals = {time:sum(list(stats.values()),[]) for time,stats in g_merges.i
 mergingGlobalsSmallBig0 = {time: [[ID]+ subIDs for ID,subIDs in stats.items() if g_bubble_type[ID][time] != typeMerge] for time,stats in g_merges.items() if time <= maxStepsForTest}
 mergingGlobalsSmallBig = {time:sum(IDs,[]) for time,IDs in mergingGlobalsSmallBig0.items() if len(IDs)>0}
 # reformat into into oldID1:[oldID1,oldID2] instead of oldID1:[oldID2]
+g_mergesCopy = copy.deepcopy(g_merges)
 for time,subIDs in mergingGlobalsSmallBig.items():
-    dics = g_merges[time].copy()
+    dics = g_mergesCopy[time]
     for ID in subIDs:
         if ID in dics:
             new = sum([[ID],dics[ID]],[]) # flatten
             g_merges[time].pop(ID,None)
-            g_merges[time][ID] = new
-   
-for t in g_merges:
-    for i in g_merges[t]:
-        g_merges[t][i] = sorted(g_merges[t][i])
+            g_merges[time][ID] = sorted(new)
+    g_merges[time] = dict(sorted(g_merges[time].items()))
+
 
 # ==== these globals split at these times e.g 53: [999, 1000, 1051]
 g0 = sorted(list(set(sum(list(agag.values()),[]))))                                 # isolate globals
@@ -322,6 +346,160 @@ splitMergeCulpritsCompanions = splitMergeCulpritsCompanions2
 # ============================================ MAIN ID SPLITS == ITS IN g_splits ======================================================
 # =====================================================================================================================================
 
+# -----------------------------------------------------------------------------------------------------------
+# --------------------------check anamolies of split and merge on same frame---------------------------------
+
+dump = {}                             # gather split merge IDs for each frame
+for t, IDS in detectedSplits.items():
+    if t not in dump: dump[t] = []
+    dump[t] += IDS
+for t, IDS in mergingGlobals.items():
+    if t not in dump: dump[t] = []
+    dump[t] += IDS
+
+problematicSplitMergeIDs = {}
+for t, IDS in dump.items():
+    u, c = np.unique(IDS, return_counts=True)
+    whereDups = np.argwhere(c>1).reshape(-1)
+    if whereDups.shape[0] >0 :
+        if t not in problematicSplitMergeIDs: problematicSplitMergeIDs[t] = []
+        for i in whereDups:
+            problematicSplitMergeIDs[t] += [u[i]]
+
+print(f'-same frame split-merge detected t:[IDs] :{problematicSplitMergeIDs}\n') if len(problematicSplitMergeIDs)>0 else 0
+
+for t,IDS in problematicSplitMergeIDs.items():  # on frame 999 ID 53 splits into 3(53) and 8(56),               | 999:53 s 53,56
+    for ID in IDS:                              # on next frame 1000 ID 53 merges from previous 53(3) and 56(8) |1000:53 m 53,56
+        prevFrameMerge = False                  # but on frame 1000 53 splits again into 6(53) and 3(57)        |1000:53 s 53,57
+        prevFrameSplit = False                  #     on frame 1001 53 merges  53(6) and 57(3).                 |1001:53 m 53,57 
+        if t-1  in g_splits and ID in g_splits[t-1] and g_splits[t-1][ID]   is not None: prevFrameSplit = True        # so remove 1000 s&m, and connect 56 with 57, so 
+        if t    in g_merges and ID in g_merges[t]   and g_merges[t][ID]     is not None: prevFrameMerge = True        #| 999:53 s 53,56
+        if prevFrameMerge and prevFrameSplit:                                                                         #|1001:53 m 53,56 
+            splitLocalIDs   = g_splits[t-1][ID][2].copy()                                                                     # local IDs prev frame split      e.g [[3], [8]]
+            mergeGlovalIDs  = g_merges[t][ID].copy()                                                                          # glob IDs of prev frame merged   e.g [53, 56]
+            oldNewIDs       = {i:g_old_new_IDs[i][t-1] for i in mergeGlovalIDs}                                       # relation glob: subiDs           e.g {53: [8], 56: [3]}
+            sameIDsPass     = {gID: 1 if lIDs in splitLocalIDs else 0 for gID, lIDs in oldNewIDs.items()}             # check if they match             e.g {53: 1, 56: 1}
+            if all(list(sameIDsPass.values())):
+                thisFrameSplit = False
+                thisFrameMerge = False
+                mergeTime      = t+1
+                if t            in g_splits and ID in g_splits[t]           and g_splits[t][ID]         is not None: thisFrameSplit = True   # 
+                if mergeTime    in g_merges and ID in g_merges[mergeTime]   and g_merges[mergeTime][ID] is not None: thisFrameMerge = True
+
+                if thisFrameMerge == False:           # merge might happen later, but hope that split ID persists during
+                    thisFrameMergeTimeStep0 = [time for time,IDs in mergingGlobals.items() if ID in IDs and time > t + 1] #find merges beyond t+1
+                    if len(thisFrameMergeTimeStep0)>0:
+                        testMergeTime  = min(thisFrameMergeTimeStep0)                                                 # take earliest next merge
+                        testMergeIDs0 = g_merges[testMergeTime][ID].copy()                                                   # check which global IDs are merging
+                        testMergeIDs0.remove(ID)                                                       # drop main ID
+                        if len(testMergeIDs0) == 1:                                                                    # test if only one merge companion
+                            testMergeID = testMergeIDs0[0]
+                            g_areas_hull[testMergeID]
+                            testTimes = np.arange(t,testMergeTime,1)
+                            if all([1 if i in g_areas_hull[testMergeID] else 0 for i in testTimes ]):
+                                mergeTime = testMergeTime
+                                thisFrameMerge = True
+                                a = 1
+                if thisFrameSplit and thisFrameMerge:
+                    splitLocalIDs2   = g_splits[t][ID][2].copy()                                                              # [[3], [6]]
+                    mergeGlovalIDs2  = g_merges[mergeTime][ID].copy()                                                              # [53, 57]
+                    oldNewIDs2       = {i:g_old_new_IDs[i][t] for i in mergeGlovalIDs2}                               # {53: [6], 57: [3]}
+                    sameIDsPass2     = {gID: 1 if lIDs in splitLocalIDs2 else 0 for gID, lIDs in oldNewIDs2.items()}  # {53: 1, 57: 1}
+                    if all(list(sameIDsPass2.values())):
+                        firstSplitID    = [x for x in mergeGlovalIDs    if x != ID][0]
+                        secondSplitID   = [x for x in mergeGlovalIDs2   if x != ID][0]
+                        leadingID       = firstSplitID
+                        leadingID2      = secondSplitID
+
+                        for time in g_old_new_IDs[leadingID2].keys():    
+
+                            g_old_new_IDs[          leadingID][time]   = g_old_new_IDs[            leadingID2][time]    # so fix only these cases, ignore other     
+                            g_Centroids[            leadingID][time]   = g_Centroids[              leadingID2][time]           
+                            g_areas_hull[           leadingID][time]   = g_areas_hull[             leadingID2][time]          
+                            g_bubble_type[          leadingID][time]   = g_bubble_type[            leadingID2][time]         
+                            g_Rect_parms[           leadingID][time]   = g_Rect_parms[             leadingID2][time]          
+                            g_Ellipse_parms[        leadingID][time]   = g_Ellipse_parms[          leadingID2][time]       
+                            g_predict_displacement[ leadingID][time]   = g_predict_displacement[   leadingID2][time]
+                            g_predict_area_hull[    leadingID][time]   = g_predict_area_hull[      leadingID2][time]
+                            g_contours_hull[        leadingID][time]   = g_contours_hull[          leadingID2][time]
+                
+                            sortDictEntry(g_old_new_IDs,            leadingID)
+                            sortDictEntry(g_Centroids,              leadingID)
+                            sortDictEntry(g_areas_hull,             leadingID)
+                            sortDictEntry(g_bubble_type,            leadingID)
+                            sortDictEntry(g_Rect_parms,             leadingID)
+                            sortDictEntry(g_Ellipse_parms,          leadingID)
+                            sortDictEntry(g_predict_displacement,   leadingID)
+                            sortDictEntry(g_predict_area_hull,      leadingID)
+                    
+                        if 1 == 1:
+                            g_old_new_IDs.pop(          leadingID2,    None)
+                            g_Centroids.pop(            leadingID2,    None)
+                            g_areas_hull.pop(           leadingID2,    None)
+                            g_bubble_type.pop(          leadingID2,    None)
+                            g_Rect_parms.pop(           leadingID2,    None)
+                            g_Ellipse_parms.pop(        leadingID2,    None)
+                            g_predict_displacement.pop( leadingID2,    None)
+                            g_predict_area_hull.pop(    leadingID2,    None)
+
+                            key = ID
+                            if t in g_merges:
+                                if key in g_merges[t]:
+                                    if len(g_merges[t]) == 1:  g_merges.pop(t,None)
+                                    else: g_merges[t].pop(key,None)
+                            
+                            
+                            if t in g_splits:
+                                if leadingID in g_splits[t]:                            # <<<<<<<<<<<<< not sure what it does. keep debug
+                                    if len(g_splits[t]) == 1:  g_splits.pop(t,None)     # <<<<<<<<<<<<< not sure what it does. keep debug
+                                    else: g_splits[t].pop(leadingID,None)
+
+                            g_merges[mergeTime][ID].remove(leadingID2)
+                            g_merges[mergeTime][ID].append(leadingID)
+                            g_merges[mergeTime][ID] = sorted(g_merges[mergeTime][ID])
+
+                            mergingGlobals[mergeTime].remove(leadingID2)
+                            mergingGlobals[mergeTime].append(leadingID)
+                            mergingGlobals[mergeTime] = sorted(mergingGlobals[mergeTime])
+
+                            detectedSplits[t].remove(ID)
+                            if len(detectedSplits[t]) == 0: detectedSplits.pop(t,None)
+
+                            for i in mergeGlovalIDs:
+                                mergingGlobals[t].remove(i)
+                            if len(mergingGlobals[t]) == 0: mergingGlobals.pop(t,None)
+
+                            #mergeTime = t
+                            #key = ID
+                            #if mergeTime in g_merges:
+                            #    if key in g_merges[mergeTime]:
+                            #        if len(g_merges[mergeTime]) == 1:  g_merges.pop(mergeTime,None)
+                            #        else: g_merges[mergeTime].pop(key,None)
+                            
+                            #latestTime = t
+
+                            #if latestTime in g_splits:
+                            #    if leadingID in g_splits[latestTime]:
+                            #        if len(g_splits[latestTime]) == 1:  g_splits.pop(latestTime,None)
+                            #        else: g_splits[latestTime].pop(leadingID,None)
+
+                            #g_merges[t+1][ID].remove(leadingID2)
+                            #g_merges[t+1][ID].append(leadingID)
+                            #g_merges[t+1][ID] = sorted(g_merges[t+1][ID])
+
+                            #mergingGlobals[t+1].remove(leadingID2)
+                            #mergingGlobals[t+1].append(leadingID)
+                            #mergingGlobals[t+1] = sorted(mergingGlobals[t+1])
+
+                            #detectedSplits[t].remove(ID)
+                            #if len(detectedSplits[t]) == 0: detectedSplits.pop(t,None)
+
+                            #for i in mergeGlovalIDs:
+                            #    mergingGlobals[t].remove(i)
+                            #if len(mergingGlobals[t]) == 0: mergingGlobals.pop(t,None)
+
+                            print(f'{str(t).rjust(5)}: removed same frame split of {ID} into {mergeGlovalIDs} on t= {t-1} and later back merge and split into {[firstSplitID,secondSplitID]}') 
+    
 allSplitGlobals     = sorted(list(map(int,set(sum(list(detectedSplits.values()),[])))))
 allMergedGlobals    = sorted(list(map(int,set(sum(list(mergingGlobals.values()),[])))))
 
@@ -353,6 +531,8 @@ for i, vals in splitMergeBuffer.items():
             if i not in splitMergeBuffer2: splitMergeBuffer2[i] = []
             splitMergeBuffer2[i].append(pair)
 
+
+
 indexedDSplitMergeBufferIDs     = {i:vals for i,vals in enumerate(splitMergeBuffer2.keys())}
 indexedDSplitMergeBufferTimes   = {i:vals for i,vals in enumerate(splitMergeBuffer2.values())}
 
@@ -361,7 +541,8 @@ stage1RemovedGIDs = []
 removedSplitMergeIDs = []
 inheritIDs = {}
 
-for i in tqdm(range(len(splitMergeBuffer2))):
+for i in range(len(splitMergeBuffer2)):
+    print('\n') if i ==0 else 0
     splitID = indexedDSplitMergeBufferIDs[i]
     for [splitTime,mergeTime] in indexedDSplitMergeBufferTimes[i]:
         swappedIDCase = False
@@ -409,7 +590,7 @@ for i in tqdm(range(len(splitMergeBuffer2))):
         passArea    = True if relArea < ( 5*predict_area_stats[2]/predict_area_stats[1] ) else False             # mean area + stdev
         #passArea    = True if meanMissingArea < (predict_area_stats[1] + 3*predict_area_stats[2]) else False             # mean area + stdev
         if passShortEvent and passPredC and passDisplC and passArea:
-            print('\n')
+            #print('\n')
     
             fixSplitMerge.append([leadingID,latestTime,key])
             lastErrors  = [a for t,[_,a,_,_] in g_predict_displacement[leadingID2].items() if latestTime  - 4 < t  <= latestTime - 1 ] + distPredictAndLost
@@ -418,7 +599,7 @@ for i in tqdm(range(len(splitMergeBuffer2))):
             g_predict_displacement[leadingID][latestTime] = [predict_centroid,distPredictAndLost,meanError,stdError]
 
             if swappedIDCase == True:                        # other bubble holds history, copy it to main bubble.
-                print(f'{latestTime}: swapped IDs case')
+                print(f'{str(latestTime).rjust(5)}: swapped IDs case')
                 startTIme   = times[leadingID2]
                 endTime     = times[leadingID]
                 inheritTimes = np.arange(startTIme,endTime,1)
@@ -514,8 +695,8 @@ for i in tqdm(range(len(splitMergeBuffer2))):
                 g_predict_displacement.pop( key,    None)
                 g_predict_area_hull.pop(    key,    None)
                 stage1RemovedGIDs.append(key)
-                print(f'{mergeTime}: removing false new merge ID: {key}, keep original: {leadingID}')
-            else: print(f'{mergeTime}: no new merge ID, keep old ID: {key}')
+                print(f'{str(mergeTime).rjust(5)}: removing false new merge ID: {key}, keep original: {leadingID}')
+            else: print(f'{str(mergeTime).rjust(5)}: no new merge ID, keep old ID: {key}')
         
             if mergeTime in g_merges:
                 if key in g_merges[mergeTime]:
@@ -528,7 +709,7 @@ for i in tqdm(range(len(splitMergeBuffer2))):
                     else: g_splits[latestTime].pop(leadingID,None)
 
             otherIDs = [ID for ID in culpritPair if ID != leadingID]                                    # kind of assume that there only one second split bubble ID
-            print(f'{mergeTime}: removing false secondary IDs: {otherIDs} (merged into {leadingID})')
+            print(f'{str(mergeTime).rjust(5)}: removing false secondary IDs: {otherIDs} (merged into {leadingID})')
             for a in otherIDs:
             
                 g_old_new_IDs.pop(          a,    None)
@@ -556,7 +737,8 @@ for i in tqdm(range(len(splitMergeBuffer2))):
                 g_merges[t][i].remove(key)
                 g_merges[t][i].append(leadingID)
                 g_merges[t][i] = sorted(g_merges[t][i])
-            #g_merges 
+
+            
 
             a = 1
 
@@ -918,12 +1100,13 @@ fRepresent = {min(a):sorted(a) for a in unique_cc}
 for ID,subIDs in fRepresent.items():
     subIDs = subIDs[1:]
     for subID in subIDs:
-        g_Centroids[ID]     = {**g_Centroids[ID],       **g_Centroids[subID]    }
-        g_old_new_IDs[ID]   = {**g_old_new_IDs[ID],     **g_old_new_IDs[subID]  }
-        g_areas_hull[ID]    = {**g_areas_hull[ID],      **g_areas_hull[subID]   }
-        g_bubble_type[ID]   = {**g_bubble_type[ID],     **g_bubble_type[subID]  }
+        g_old_new_IDs[  ID] =   {**g_old_new_IDs[ID],     **g_old_new_IDs[subID]}
+        g_Centroids[    ID] =     {**g_Centroids[ID],       **g_Centroids[subID]}
+        g_areas_hull[   ID] =    {**g_areas_hull[ID],      **g_areas_hull[subID]}
+        g_bubble_type[  ID] =   {**g_bubble_type[ID],     **g_bubble_type[subID]}
         g_contours_hull[ID] = {**g_contours_hull[ID],   **g_contours_hull[subID]}
-        g_Rect_parms[ID]    = {**g_Rect_parms[ID],      **g_Rect_parms[subID]   }
+        g_Rect_parms[   ID] =    {**g_Rect_parms[ID],      **g_Rect_parms[subID]}
+
         g_old_new_IDs.pop(  subID, None)
         g_Centroids.pop(    subID, None)
         g_areas_hull.pop(   subID, None)
@@ -939,15 +1122,15 @@ print(f'fixed multi ID frozens :\n{fRepresent}')
 # =========================================================================================================================================================
 # =====================================================Remove single case IDs ============================================================
 # =========================================================================================================================================================
-soloIDs = [ID for ID,vals in g_areas_hull.items() if len(vals) == 1]
-for ID in soloIDs:
-    g_old_new_IDs.pop(  ID, None)
-    g_Centroids.pop(    ID, None)
-    g_areas_hull.pop(   ID, None)
-    g_bubble_type.pop(  ID, None)
-    g_contours_hull.pop(ID, None)
-    g_Rect_parms.pop(   ID, None)
-print(f'Remove solo IDs :\n{soloIDs}')
+#soloIDs = [ID for ID,vals in g_areas_hull.items() if len(vals) == 1]
+#for ID in soloIDs:
+#    g_old_new_IDs.pop(  ID, None)
+#    g_Centroids.pop(    ID, None)
+#    g_areas_hull.pop(   ID, None)
+#    g_bubble_type.pop(  ID, None)
+#    g_contours_hull.pop(ID, None)
+#    g_Rect_parms.pop(   ID, None)
+#print(f'Remove solo IDs :\n{soloIDs}')
 # =========================================================================================================================================================
 # =========================================================================================================================================================
 # =========================================================================================================================================================
@@ -966,8 +1149,15 @@ print(f'Remove solo IDs :\n{soloIDs}')
 # =========================================================================================================================================================
 # =========================================================================================================================================================
 # =========================================================================================================================================================
-
-
+if saveArchive == 1:
+    with open(dataArchiveSavePath, 'wb') as handle:
+        pickle.dump(
+                    [
+                    backupStart, g_contours, g_contours_hull, g_FBub_rect_parms, g_FBub_centroids, g_FBub_areas_hull, g_areas_hull, g_dropIDs , allFrozenIDs,
+                    g_Centroids,g_Rect_parms,g_Ellipse_parms,g_Areas,g_Masks,g_Images,g_old_new_IDs,g_bubble_type,g_child_contours, frozenBuffer_old, STBubs,
+                    g_predict_displacement, g_predict_area_hull,  g_MBub_info, frozenGlobal,  g_bublle_type_by_gc_by_type, g_areas_IDs, g_splits, activeFrozen,
+                    g_merges]
+            , handle)
 
 
 a = 1

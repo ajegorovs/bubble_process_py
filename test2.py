@@ -25,15 +25,35 @@ import glob, csv, cv2, numpy as np, pickle, os
 #        locCntr +=1
 #    #if frame > 3: break
 #    a = 1
+lnk = r'C:\Users\mhd01\Desktop\mag\traj family\off'
+imageLinks = glob.glob(lnk + "**/*.png", recursive=True) 
+imgs = [np.uint8(cv2.imread(lnk,1)) for lnk in imageLinks]
+imgShapes =  np.array([a.shape[:-1] for a in imgs])
+maxX,maxY = [max(a) for a in imgShapes.T]
+new_image_height = maxX
+new_image_width = maxY
+channels = 3
+color = (255,255,255)
+for i in range(len(imgs)):
+    result = np.full((new_image_height,new_image_width, channels), color, dtype=np.uint8)
+    img = imgs[i]
+    old_image_height,old_image_width = imgShapes[i]
+    # compute center offset
+    x_center = (new_image_width - old_image_width) // 2
+    y_center = (new_image_height - old_image_height) // 2
 
-outPath = r'.\archives\HFS 200 mT Series 4\sccm100-meanFix\00001-05000\csv_img-HFS 200 mT Series 4-sccm100-meanFix-00001-05000'
-inPath  = r'.\archives\HFS 200 mT Series 4\sccm100-meanFix\00001-05000\HFS 200 mT Series 4-sccm100-meanFix-00001-05000-00001-05000.pickle'
+    # copy img image into center of result image
+    result[y_center:y_center+old_image_height, 
+           x_center:x_center+old_image_width] = img
+    cv2.imwrite(os.path.join(lnk,f"padded_{os.path.basename(imageLinks[i])}.png"), result)
+# view result
+#cv2.imshow("result", result)
+#cv2.waitKey(0)
+#cv2.destroyAllWindows()
 
-with open(inPath, 'rb') as handle:
-    data = pickle.load(handle)
+# save result
+#cv2.imwrite("lena_centered.jpg", result)
 
-for i in range(data.shape[0]):
-    cv2.imwrite(os.path.join(outPath,str(i).zfill(4)+".png") ,data[i])
 
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key

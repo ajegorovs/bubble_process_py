@@ -1211,9 +1211,9 @@ def overlappingRotatedRectangles(group1Params, group2Params, returnType = 0, typ
         allCombs = list(itertools.product(group1Params, group2Params))#;print(f'allCombs,{allCombs}')
     for (keyOld,keyNew) in allCombs:
         x1,y1,w1,h1 = group2Params[keyNew]#;print(allCombs)
-        rotatedRectangle_new = ((x1+w1/2, y1+h1/2), (w1, h1), 0)
+        rotatedRectangle_new = ((int(x1+w1/2), int(y1+h1/2)), (w1, h1), 0)
         x2,y2,w2,h2 = group1Params[keyOld]
-        rotatedRectangle_old = ((x2+w2/2, y2+h2/2), (w2, h2), 0)
+        rotatedRectangle_old = ((int(x2+w2/2), int(y2+h2/2)), (w2, h2), 0)
         interType, points  = cv2.rotatedRectangleIntersection(rotatedRectangle_new, rotatedRectangle_old)
         if interType > 0:
             if returnType == 1:

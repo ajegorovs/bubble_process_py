@@ -95,6 +95,9 @@ import numpy as np, pickle
 #plt.show()
 #a =1
 
+a = np.array([1,0])
+b = np.array([2,4])
+print(np.dot(a,b))
 
 
 

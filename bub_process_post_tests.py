@@ -562,28 +562,61 @@ with open(storeDir, 'rb') as handle:
 print(f"\n{timeHMS()}: Begin loading intermediate data...Done!, test sub-case")
 
 
+# ======================
+if 1 == -1:
+    segments2 = connected_components_unique
+    binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
+    imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(binarizedMaskArr.shape[0])]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    fontScale = 0.7; thickness = 4;
+    for n, case in tqdm(enumerate(segments2)):
+        case    = sorted(case, key=lambda x: x[0])
+        for k,subCase in enumerate(case):
+            time,*subIDs = subCase
+            for subID in subIDs:
+                cv2.drawContours(  imgs[time],   g0_contours[time], subID, cyclicColor(n), 2)
+            #x,y,w,h = cv2.boundingRect(np.vstack([g0_contours[time][ID] for ID in subIDs]))
+            x,y,w,h = g0_bigBoundingRect2[time][subCase]
+            #x,y,w,h = g0_bigBoundingRect[time][ID]
+            cv2.rectangle(imgs[time], (x,y), (x+w,y+h), cyclicColor(n), 1)
+            [cv2.putText(imgs[time], str(n), (x,y), font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]# connected clusters = same color
+        for k,subCase in enumerate(case):
+            time,*subIDs = subCase
+            for subID in subIDs:
+                startPos2 = g0_contours[time][subID][-30][0] 
+                [cv2.putText(imgs[time], str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
+        
+
+    for k,img in enumerate(imgs):
+        folder = r"./post_tests/testImgs/"
+        fileName = f"{str(k).zfill(4)}.png"
+        cv2.imwrite(os.path.join(folder,fileName) ,img)
+        #cv2.imshow('a',img)
+
 
 
 # analyze single strand
-doX = 84
+doX = 60#84
 test = connected_components_unique[doX]
 # find times where multiple elements are connected (split/merge)
-dups, cnts = np.unique([a[0] for a in test], return_counts = True)
-# relate times to 'local IDs', which are also y-positions or y-indexes
-dic = {a:np.arange(b) for a,b in zip(dups,cnts)}
-# give duplicates different y-offset 0,1,2,..
-dic2 = {t:{s:k for s,k in zip(c,[a for a in test if a[0] == t])} for t,c in dic.items()}
-node_positions = {}
-# offset scaled by S
-S = 20
-for t,c in dic.items():
-    # scale and later offset y-pos by mid-value
-    d = c*S
-    meanD = np.mean(d)
-    for c2,key in dic2[t].items():
-        # form dict in form key: position. time is x-pos. y is modified by order.
-        node_positions[key] = (t,c2*S-meanD)
-
+def getNodePos(test):
+    dups, cnts = np.unique([a[0] for a in test], return_counts = True)
+    # relate times to 'local IDs', which are also y-positions or y-indexes
+    dic = {a:np.arange(b) for a,b in zip(dups,cnts)}
+    # give duplicates different y-offset 0,1,2,..
+    dic2 = {t:{s:k for s,k in zip(c,[a for a in test if a[0] == t])} for t,c in dic.items()}
+    node_positions = {}
+    # offset scaled by S
+    S = 20
+    for t,c in dic.items():
+        # scale and later offset y-pos by mid-value
+        d = c*S
+        meanD = np.mean(d)
+        for c2,key in dic2[t].items():
+            # form dict in form key: position. time is x-pos. y is modified by order.
+            node_positions[key] = (t,c2*S-meanD)
+    return node_positions
+node_positions = getNodePos(test)
 allNodes = list(H.nodes())
 removeNodes = list(range(len(connected_components_unique)))
 [allNodes.remove(x) for x in test]
@@ -604,38 +637,68 @@ segments2, skipped = graph_extract_paths(H,f) # 23/06/23 info in "extract paths 
 
 # Draw extracted segments with bold lines and different color.
 segments2 = [a for _,a in segments2.items() if len(a) > 0]
+segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
 paths = {i:vals for i,vals in enumerate(segments2)}
 
 
+# less rough relations pass
+# drop idea of expanded bounding rectangle.
+# 1 contour cluster is the best case.
+
+activeNodes = list(H.nodes())
+activeTimes = np.unique([a[0] for a in activeNodes])
+
+# extract all contours active at each time step.
+lessRoughIDs = {t:[] for t in activeTimes}
+for time, *subIDs in activeNodes:
+    lessRoughIDs[time] += subIDs
+
+lessRoughIDs = {time: sorted(list(set(subIDs))) for time, subIDs in lessRoughIDs.items()}
+
+#lessRoughBRs = {}
+#for time, subIDs in lessRoughIDs.items():
+#    for ID in subIDs:
+#        lessRoughBRs[tuple([time, ID])] = cv2.boundingRect(g0_contours[time][ID])
+
+lessRoughBRs = {time: {tuple([time, ID]):cv2.boundingRect(g0_contours[time][ID]) for ID in subIDs} for time, subIDs in lessRoughIDs.items()}
+
+ # grab this and next frame cluster bounding boxes
+g0_pairConnections2  = []
+for t in tqdm(activeTimes[:-2]):
+    oldBRs = lessRoughBRs[t]
+    newBrs = lessRoughBRs[t+1]
+    # grab all cluster IDs on these frames
+    allKeys = list(oldBRs.keys()) + list(newBrs.keys())
+    # find overlaps between frames
+    combosSelf = overlappingRotatedRectangles(oldBRs,newBrs)                                       
+    for conn in combosSelf:
+        assert len(conn) == 2, "overlap connects more than 2 elems, not designed for"
+        pairCons = list(itertools.combinations(conn, 2))
+        pairCons2 = sorted(pairCons, key=lambda x: [a[0] for a in x])
+        [g0_pairConnections2.append(x) for x in pairCons2]
+    #cc_unique  = graphUniqueComponents(allKeys, combosSelf)                                       
+    #g0_clusterConnections[t] = cc_unique
 
 
+
+
+
+
+a = 1
+#bigBoundingRect     = [cv2.boundingRect(np.vstack([rect2contour(brectDict[k]) for k in comb])) for comb in cc_unique]
 
 font = cv2.FONT_HERSHEY_SIMPLEX
 fontScale = 0.7; thickness = 4;
-if 1 == 1:
-    imgInspectPath = os.path.join(imageFolder, "inspectPaths")
-    meanImage = convertGray2RGB(np.load(meanImagePath)['arr_0'].astype(np.uint8))
-    for n, keysList in paths.items():
-        for k,subCase in enumerate(keysList):
-            img = meanImage.copy()
-            time,*subIDs = subCase
-            for subID in subIDs:
-                cv2.drawContours(  img,   g0_contours[time], subID, cyclicColor(n), -1)
-                if subID in g0_contours_children[time]:
-                    [cv2.drawContours(  img,   g0_contours[time], ID, (0,0,0), -1) for ID in g0_contours_children[time][subID]]
-                
-                startPos2 = g0_contours[time][subID][-30][0] 
-                [cv2.putText(img, str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
-            fileName = f"{str(doX).zfill(3)}_{str(n).zfill(2)}_{str(time).zfill(3)}.png"
-            cv2.imwrite(os.path.join(imgInspectPath,fileName) ,img)
-if 1 == -1:
+
+
+def drawH(H, paths):
     colors = {i:np.array(cyclicColor(i))/255 for i in paths}
     colors = {i:np.array([R,G,B]) for i,[B,G,R] in colors.items()}
     colors_edges2 = {}
     width2 = {}
     # set colors to different chains. iteratively sets default color until finds match. slow but whatever
     for u, v in H.edges():
-        for i, path in enumerate(segments2):
+        for i, path in paths.items():
             if u in path and v in path:
 
                 colors_edges2[(u,v)] = colors[i]
@@ -655,24 +718,642 @@ if 1 == -1:
             font_color='black', edge_color=list(colors_edges2.values()), width = list(width2.values()))
     plt.show()
 
-#meanImage = np.load(meanImagePath)['arr_0'].astype(np.uint8)
-#pathX = paths[0]
-#sliceColor = int(255/len(pathX)) # want to average an images of bubble trajectory, but i can be done with single image
-#blank0 = meanImage.copy() * 0
-#for time,*subIDs in pathX:
-#    blank = meanImage.copy() * 0
-#    for subID in subIDs:
-#         cv2.drawContours(  blank,   g0_contours[time], subID, sliceColor , -1)
-#    blank0 += blank
-#blank0 = np.uint8(blank0)
-
-#for time,*subIDs in pathX:
-
-#    for subID in subIDs:
-#         cv2.drawContours(  blank0,   g0_contours[time], subID, 255 , 1)
+#drawH(H, paths)
 
 
+allIDs = sum([list(a.keys()) for a in lessRoughBRs.values()],[])
+allIDs = sorted(allIDs, key=lambda x: (x[0], x[1]))
+G = nx.Graph()
+G.add_nodes_from(allIDs)
+G.add_edges_from(g0_pairConnections2)
+node_positions = getNodePos(allIDs)
+
+f = lambda x : x[0]
+
+segments2, skipped = graph_extract_paths(G,f) # 23/06/23 info in "extract paths from graphs.py"
+
+# Draw extracted segments with bold lines and different color.
+segments2 = [a for _,a in segments2.items() if len(a) > 0]
+segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
+paths = {i:vals for i,vals in enumerate(segments2)}
+
+lr_allNodesSegm = sum(segments2,[])
+lr_missingNodes = [node for node in allIDs if node not in lr_allNodesSegm] # !! may be same as &skipped !!
+assert set(skipped)==set(lr_missingNodes), "set(skipped) is not same as set(lr_missingNodes)"
+
+# get start and end of good segments
+lr_start_end    = [[segm[0],segm[-1]] for segm in segments2]
+lr_all_start    = np.array([a[0][0] for a in lr_start_end])
+lr_all_end      = np.array([a[1][0] for a in lr_start_end])
+
+# get nodes that begin not as a part of a segment = node with no prior neigbors
+lr_nodes_other = []
+lr_nodes_solo = []
+for node in lr_missingNodes:
+    neighbors = list(G.neighbors(node))
+    oldNeigbors = [n for n in neighbors if n[0] < node[0]]
+    newNeigbors = [n for n in neighbors if n[0] > node[0]]
+    if len(oldNeigbors) == 0 and len(newNeigbors) == 0: lr_nodes_solo.append(node)
+    elif len(oldNeigbors) == 0:                         lr_nodes_other.append(node)
+
+# find which segements are separated by small number of time steps
+#  might not be connected, but can check later
+lr_maxDT = 3
+
+# test non-segments
+lr_DTPass_other = {}
+for k,node in enumerate(lr_nodes_other):
+    timeDiffs = lr_all_start - node[0]
+    goodDTs = np.where((1 <= timeDiffs) & (timeDiffs <= lr_maxDT))[0]
+    if len(goodDTs) > 0:
+        lr_DTPass_other[k] = goodDTs
+
+
+# test segments. search for endpoint-to-startpoint DT
+
+lr_DTPass_segm = {}
+for k,endTime in enumerate(lr_all_end):
+    timeDiffs = lr_all_start - endTime
+    goodDTs = np.where((1 <= timeDiffs) & (timeDiffs <= lr_maxDT))[0]
+    if len(goodDTs) > 0:
+        lr_DTPass_segm[k] = goodDTs
+
+# check connection between "time-localized" segments
+# isolate all nodes on graph that are active in unresolved time between segment existance
+# find all paths from one segment end to other start
+lr_paths_segm   = {}
+for startID,endIDs in lr_DTPass_segm.items():
+    startNode = lr_start_end[startID][1]
+    startTime = startNode[0]
+    for endID in endIDs:
+        endNode = lr_start_end[endID][0]
+        endTime = lr_all_end[endID]
+        activeNodes = [node for node in allIDs if startTime <= node[0] <= endTime]
+        subgraph = G.subgraph(activeNodes)
+        try:
+            shortest_path = list(nx.all_shortest_paths(subgraph, startNode, endNode))
+        except nx.NetworkXNoPath:
+            shortest_path = []
+        
+        if len(shortest_path)>0: lr_paths_segm[tuple([startID,endID])] = shortest_path
+
+lr_paths_other  = {}
+for startID,endIDs in lr_DTPass_other.items():
+    startNode = lr_nodes_other[startID]
+    startTime = startNode[0]
+    for endID in endIDs:
+        endNode = lr_start_end[endID][0]
+        endTime = lr_all_end[endID]
+        activeNodes = [node for node in allIDs if startTime <= node[0] <= endTime]
+        subgraph = G.subgraph(activeNodes)
+        try:
+            shortest_path = list(nx.all_shortest_paths(subgraph, startNode, endNode))
+        except nx.NetworkXNoPath:
+            shortest_path = []
+        
+        if len(shortest_path)>0: lr_paths_other[tuple([str(startID),str(endID)])] = shortest_path
+a = 1
+
+# since nodes and edges represent spacial overlap of cluster elements at each time paths between two nodes
+# should (?) contain all elements for permutations for bubble reconstruction from partial reflections
+
+# !!!!!!!!!!!!!!====================<<<<<<<<<<<<<<<
+# best case scenario of a path is overlap between single contour bubbles.
+# in that case solution is shortest trajectory :)
+# might want to check for area befor and after, in case of merge. overall, i have to do permutations.
+# elements that begin from nothing are problematic. in case split-merge, i should include them into paths, but in reverse.
+# same with split-merge that happend 2+ steps. means bubble splits into two segments and is reconstructed.
+# but also might split into one segment, and other starts from nothing. so merge them in reverse path.
+
+# 1) check if multiple segments are merged into 1. might be merge, might be split-merge fake or not. area will help.
+# take endpoints of all paths
+lr_paths_endpoints = {**{key:a[0][-1] for key,a in lr_paths_segm.items()},
+                      **{key:a[0][-1] for key,a in lr_paths_other.items()}}
+
+# find common endpoints. inverse dictionary = endpoint:connections
+rev_multidict = {}
+for key, value in lr_paths_endpoints.items():
+    rev_multidict.setdefault(value, set()).add(key)
+# if endpoint is associated with multiple connections, extract these connections
+lr_multi_conn = [list(a) for a in rev_multidict.values() if len(a)>1]
+lr_multi_conn_all = sum(lr_multi_conn,[])
+# decide which merge branch is main. expore every merge path
+# path length is not correct metric, since it may be continuation via merge
+lr_multi_conn_win = []
+for t_merges_options in lr_multi_conn:
+    # grab time at which segments merge
+    t_merge_time = segments2[int(t_merges_options[0][1])][0][0]
+    # initialize times for paths which will be compared for 'path length/age' and if set time is legit or intermediate
+    t_earliest_time     = {t_ID:0 for t_ID in t_merges_options}
+    t_terminated_time   = {t_ID:0 for t_ID in t_merges_options}
+    for t_path in t_merges_options:
+        # t_path is ID in segments2, take its starting node.
+        # lr_paths_other has no history (no prior neighbors)
+        if type(t_path[0]) == str:
+            t_earliest_time[t_path] = t_merge_time - 1
+            t_terminated_time[t_path] = 1
+            continue
+        t_nodes_path    = segments2[t_path[0]]                       
+
+        t_node_first    = t_nodes_path[0]
+        t_node_last     = t_nodes_path[-1]
+        t_prev_neighbors = [node for node in list(G.neighbors(t_node_first)) if node[0] < t_node_first[0]]
+        if len(t_prev_neighbors) == 0:
+            t_earliest_time[t_path] = t_node_first[0]
+            t_terminated_time[t_path] = 1
+    # check if we can drop terminated paths. if path is terminated and time is bigger than any unterminated, drop it.
+    for t_path in t_merges_options:
+        t_other_times = [t for tID,t in t_earliest_time.items() if tID != t_path]
+        if t_terminated_time[t_path] == 1 and t_earliest_time[t_path] > min(t_other_times):
+            t_earliest_time.pop(t_path,None)
+            t_terminated_time.pop(t_path,None)
+
+    t_IDs_left = list(t_earliest_time.keys())
+    if len(t_IDs_left) == 1: lr_multi_conn_win.append(t_IDs_left[0])
+    else: assert 1 == -1, "split-merge. need to develop dominant branch further"
+
+
+for t_conn, t_paths_nodes in lr_paths_segm.items():
+    # if multi merge
+    if t_conn in lr_multi_conn_all and t_conn in lr_multi_conn_win:
+        # extract other (pseudo) merging segments. other paths only.
+        t_other_path_conn = [a for a in lr_multi_conn if t_conn in a]
+        t_other_path_conn = [[a for a in b if a != t_conn] for b in t_other_path_conn]
+        #[t_other_path_conn[k].remove(t_conn) for k in range(len(t_other_path_conn))]
+        t_other_path_conn = sum(t_other_path_conn,[])
+        # preprend prev history of segment before intermediate segment
+        t_other_path_pre = {ID:[] for ID in t_other_path_conn}
+        for ID in t_other_path_conn:
+            if type(ID[0]) != str:
+                t_other_path_pre[ID] += segments2[ID[0]][:-1]
+        # some mumbo-jumbo with string keys to differentiate lr_paths_other from lr_paths_segm
+        t_other_paths_nodes = []
+        for ID in t_other_path_conn:
+            if type(ID[0]) == str:
+                for t_path in lr_paths_other[ID]:
+                    t_other_paths_nodes.append(t_other_path_pre[ID]+t_path)  
+            else:
+                for t_path in lr_paths_segm[ID]:
+                    t_other_paths_nodes.append(t_other_path_pre[ID]+t_path)
+        a = 1            
+        #t_other_paths_nodes = [t_other_path_pre[ID] + lr_paths_other[ID] 
+        #                       if type(ID[0]) == str 
+        #                       else lr_paths_segm[ID] for ID in t_other_path_conn]
+        #t_other_paths_nodes = sum(t_other_paths_nodes,[])
+        #t_join_paths = t_paths_nodes + t_other_paths_nodes
+        # there is no prev history for lr_paths_other, lr_paths_segm has at least 2 nodes
+    elif t_conn in lr_multi_conn_all and t_conn not in lr_multi_conn_win:
+        continue
+    else:
+        t_other_paths_nodes = []
+    # app- and pre- pend path segments to intermediate area. 
+    # case where split-merge is folled by disconnected split-merge (on of elements is not connected via overlay)
+    # is problematic. 
+    # >>>>>>>>>>>>>>>>!!!!!!!!!!!!!!!!!!!!!!!!!<<<<<<<<<<<<<<
+    # i should split this code into two. one stablishes intermediate part
+    # and other can relate intermediate parts together, if needed.
+    t_og_path_pre       = segments2[t_conn[0]][-4:-1]
+
+    t_og_path_post      = segments2[t_conn[1]][:3]
+    t_og_paths_nodes    = [t_og_path_pre + path + t_og_path_post for path in t_paths_nodes]
+    t_join_paths = t_og_paths_nodes + t_other_paths_nodes 
+    # collect all viable contour IDs from intermediate time
+    t_all_nodes = sum(t_join_paths,[])
+    t_all_times = list(sorted(np.unique([a[0] for a in t_all_nodes])))
+    t_times_cIDs = {t:[] for t in t_all_times}
+    for t,cID in t_all_nodes:
+        t_times_cIDs[t].append(cID)
+    for t in t_times_cIDs:
+        t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
+
+    # test intermediate contour combinations
+    # 
+    a = 1
+
+#drawH(G, paths)
+
+# analyze fake split-merge caused by partial reflections. during period of time bubble is represented by reflections on its opposite side
+# which might appear as a split. 
+
+# if bubble is well behavade (good segment), it will be solo contour, then split and merge in 1 or more steps.
+
+# find end points of rough good segments
+
+
+# ======================
+if 1 == -1:
+    binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
+    imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(binarizedMaskArr.shape[0])]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    fontScale = 0.7; thickness = 4;
+    for n, case in tqdm(enumerate(segments2)):
+        case    = sorted(case, key=lambda x: x[0])
+        for k,subCase in enumerate(case):
+            time,*subIDs = subCase
+            for subID in subIDs:
+                cv2.drawContours(  imgs[time],   g0_contours[time], subID, cyclicColor(n), 2)
+            #x,y,w,h = cv2.boundingRect(np.vstack([g0_contours[time][ID] for ID in subIDs]))
+            x,y,w,h = lessRoughBRs[time][subCase]
+            #x,y,w,h = g0_bigBoundingRect[time][ID]
+            cv2.rectangle(imgs[time], (x,y), (x+w,y+h), cyclicColor(n), 1)
+            [cv2.putText(imgs[time], str(n), (x,y), font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]# connected clusters = same color
+        for k,subCase in enumerate(case):
+            time,*subIDs = subCase
+            for subID in subIDs:
+                startPos2 = g0_contours[time][subID][-30][0] 
+                [cv2.putText(imgs[time], str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
+        
+    #cv2.imshow('a',imgs[time])
+    for k,img in enumerate(imgs):
+        if k in activeTimes:
+            folder = r"./post_tests/testImgs2/"
+            fileName = f"{str(k).zfill(4)}.png"
+            cv2.imwrite(os.path.join(folder,fileName) ,img)
+            #cv2.imshow('a',img)
+
+a = 1
 #cv2.imshow('a', blank0)
+def centroid_area(contour):
+    m = cv2.moments(contour)
+    area = int(m['m00'])
+    cx0, cy0 = m['m10'], m['m01']
+    centroid = np.array([cx0,cy0])/area
+    return  centroid, area
+
+from scipy import interpolate
+
+def exterpTest(trajectory,startTime,interpolatinIntevalLength, debug = 0 ,axes = 0, title = 'title', aspect = 'equal'):
+    usefulPoints = startTime
+    # interval gets capped at interpolatinIntevalLength if there are more points
+    interval    = min(interpolatinIntevalLength,usefulPoints)
+    # maybe max not needed, since interval is capped
+    startPoint  = max(0,startTime-interval) 
+    endPoint    = min(startTime,startPoint + interval) # not sure about interval or interpolatinIntevalLength
+#
+    x,y = trajectory[startPoint:endPoint].T
+    t0 = np.arange(startPoint,endPoint,1)
+    # interpolate and exterpolate to t2 this window
+    spline, _ = interpolate.splprep([x, y], u=t0, s=10000,k=1)
+    t2 = np.arange(startPoint,endPoint+1,1)
+    IEpolation = np.array(interpolate.splev(t2, spline,ext=0))
+    if debug == 1:
+        if axes == 0:
+            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+            axes.plot(trajectory[:,0],trajectory[:,1], '-o')
+        axes.plot(*IEpolation, linestyle='dotted', c='orange')
+        axes.plot(*IEpolation[:,-1], '--o', c='orange')
+        axes.plot([IEpolation[0,-1],trajectory[endPoint,0]],[IEpolation[1,-1],trajectory[endPoint,1]], '-',c='black')
+        axes.set_aspect(aspect)
+        axes.set_title(title)
+        if 1 == -1:
+            # determin unit vector in interpolation direction
+            startEnd = np.array([IEpolation[:,0],IEpolation[:,-1]])
+            IEdirection = np.diff(startEnd, axis = 0)[0]
+            IEdirection = IEdirection/np.linalg.norm(IEdirection)
+            # measure latest displacement projection to unit vector
+            displ = np.diff(trajectory[endPoint-1:endPoint+1],axis = 0)[0]
+            proj = np.dot(displ,IEdirection)
+            start1 = trajectory[endPoint - 1]
+            end1 = start1 + proj*IEdirection
+            arr = np.array([start1,end1])
+            axes.plot(*arr.T, '--', c='red')
+            #plt.show()
+
+    return IEpolation, endPoint
+
+#fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+# === lets check if segments are single bubbles = centroid and areas are consitent ===
+
+pathsDeltas = {k:{} for k in paths}   
+areaDeltas = {k:{} for k in paths}  
+interpolatinIntevalLength = 3 # from 2 to this
+pathCentroids = {k:[] for k in paths}     
+overEstimateConnections = []
+for k,pathX in paths.items():
+    #pathX = paths[0]
+    timesReal   = [time             for time,*subIDs in pathX]
+    contourIDs  = {time:subIDs      for time,*subIDs in pathX}
+    numContours = {time:len(subIDs) for time,*subIDs in pathX}
+    soloBubble = True if all([1 if i == 1 else 0 for i in numContours.values()]) else False
+    if soloBubble:
+        pathXHulls  = [cv2.convexHull(np.vstack([g0_contours[time][subID] for subID in subIDs])) for time,*subIDs in pathX]
+    
+        pathXHCentroidsAreas = [centroid_area(contour) for contour in pathXHulls]
+        trajectory = np.array([a[0] for a in pathXHCentroidsAreas])
+        pathCentroids[k] = trajectory
+
+        areas = np.array([a[1] for a in pathXHCentroidsAreas])
+        # rescale areas to be somewhat homogeneous with time step = 1, otherwise (x,y) = (t,area) ~ (1,10000) are too squished
+        # because i interpolate it as curve in time-area space, with time parameter which is redundand.
+        meanArea = np.mean(areas)
+        areasIntep = np.array([[i,a/meanArea] for i,a in enumerate(areas)])
+        
+        numPointsInTraj = len(trajectory)
+        #[cv2.circle(meanImage, tuple(centroid), 3, [255,255,0], -1) for centroid in pathXHCentroids]
+        #meanImage   = convertGray2RGB(np.load(meanImagePath)['arr_0'].astype(np.uint8)*0)
+        # start analyzing trajectory. need 2 points to make linear extrapolation
+        # get extrapolation line, take real value. compare
+    
+        times  = np.arange(2,numPointsInTraj - 1)
+        assert len(times)>0, "traj exterp, have not intended this yet"
+
+        debug = 0; axes,axes2 = (0,0)
+        
+        if debug == 1:
+            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+            axes.plot(trajectory[:,0],trajectory[:,1], '-o')
+
+            fig2, axes2 = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+            axes2.plot(areasIntep[:,0],areasIntep[:,1], '-o')
+
+        for t in times:
+            
+            IEpolation, endPoint    = exterpTest(trajectory, t, interpolatinIntevalLength, debug = debug, axes= axes, title = str(k))
+            IEpolation2, endPoint2  = exterpTest(areasIntep, t, interpolatinIntevalLength, debug = debug, axes= axes2, title = str(k), aspect = 'auto')
+            timeReal = timesReal[endPoint + 1]
+            pathsDeltas[k][timeReal] = np.linalg.norm(IEpolation[:,-1] - trajectory[endPoint])
+            areaDeltas[k][timeReal] = np.abs(int((IEpolation2[:,-1][1] - areasIntep[endPoint2][1])*meanArea))
+            #plt.show()
+            #axes.plot(*IEpolation, linestyle='dotted', c='orange')
+            #axes.plot(*IEpolation[:,-1], '--o', c='orange')
+            #axes.plot([IEpolation[0,-1],trajectory[endPoint,0]],[IEpolation[1,-1],trajectory[endPoint,1]], '-',c='black')
+            
+        a = 1
+        plt.show() if debug == 1 else 0
+    else:
+        # there are times for segment when rough cluster holds two or more nearby bubbles
+        # but they are close enough not to split, may be merge, since otherwise it would not be a part of segment.
+
+        # extract time where there are more than one contour
+        # common case of two bubbles at best can be described by two contours. at worst as multiple.
+        
+        sequences = []
+        current_sequence = []
+    
+        for time,num in numContours.items():
+            if num > 1:
+                current_sequence.append(time)
+            else:
+                if current_sequence:
+                    sequences.append(current_sequence)
+                    current_sequence = []
+
+        # subset those time where there are only two contours.
+        # cases of two contours are easy, since you dont have to reconstruct anything
+        sequencesPair = []
+        for n,seq in enumerate(sequences):
+            sequencesPair.append([])
+            for time in seq:
+                if numContours[time] == 2:
+                    sequencesPair[n].append(time)
+        
+        # this test has continuous sequence, without holes. test different when assert below fails.
+        assert [len(a) for a in sequences] == [len(a) for a in sequencesPair], 'examine case of dropped contour pairs'
+
+        # make connection between pairs based on area similarity
+        for times in sequencesPair:
+            hulls           = {time:{} for time in times}
+            centroidsAreas  = {time:{} for time in times}
+            for time in times:
+                subIDs               = contourIDs[time]
+                hulls[time]          = {subID:cv2.convexHull(g0_contours[time][subID]) for subID in subIDs}
+                centroidsAreas[time] = {subID:centroid_area(contour) for subID,contour in hulls[time].items()}
+
+            connections = []
+            startNodes = []
+            endNodes = []
+            for n,[time,centAreasDict] in enumerate(centroidsAreas.items()):
+                temp = []
+                if time < times[-1]:
+                    for ID,[centroid, area] in centAreasDict.items():
+                        nextTime = times[n+1]
+                        areasNext = {ID:centAreas[1] for ID, centAreas in centroidsAreas[nextTime].items()}
+                        areaDiffs = {ID:np.abs(area-areaX) for ID, areaX in areasNext.items()}
+                        minKey = min(areaDiffs, key=areaDiffs.get)
+
+                        connections.append([tuple([time,ID]),tuple([nextTime,minKey])])
+
+                        if time == times[0]:
+                            startNodes.append(tuple([time,ID]))
+                        elif time == times[-2]:
+                            endNodes.append(tuple([nextTime,minKey]))
+            
+
+
+            a  =1
+            #allIDs = list(sum(connections,[]))
+            #G = nx.Graph()
+            #G.add_edges_from(connections)
+            #connected_components_all = [list(nx.node_connected_component(G, key)) for key in allIDs]
+            #connected_components_all = [sorted(sub, key=lambda x: x[0]) for sub in connected_components_all]
+            #connected_components_unique = []
+            #[connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
+
+            # get connections to first sub-sequence from prev node and same for last node
+            nodesSubSeq = [tuple([t] + contourIDs[t]) for t in times]
+            nodeFirst = nodesSubSeq[0]
+            neighBackward   = {tuple([time] + subIDs): subIDs for time,*subIDs in list(H.neighbors(nodeFirst))  if time < nodeFirst[0]}
+            
+            nodeLast = nodesSubSeq[-1]
+            neighForward   = {tuple([time] + subIDs): subIDs for time,*subIDs in list(H.neighbors(nodeLast))  if time > nodeLast[0]}
+
+            # remove old unrefined nodes, add new subcluster connections
+
+            H.remove_nodes_from(nodesSubSeq)
+            
+            H.add_edges_from(connections)
+
+            # add new connections that start and terminate subsequence
+            newConnections = []
+            for prevNode in neighBackward:
+                for node in startNodes:
+                    newConnections.append([prevNode,node])
+
+            for nextNode in neighForward:
+                for node in endNodes:
+                    newConnections.append([node,nextNode])
+
+            overEstimateConnections += newConnections
+
+            H.add_edges_from(newConnections)
+
+
+            
+            #fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+            #for n, nodes in enumerate(connected_components_unique):
+            #    centroids = np.array([centroidsAreas[time][ID][0] for time,ID in nodes])
+            #    axes.plot(*centroids.T, '-o')
+            
+            1
+        #test = list(H.nodes())
+        #node_positions = getNodePos(test)
+        #fig, ax = plt.subplots()
+        #nx.set_node_attributes(H, node_positions, 'pos')
+
+        #pos = nx.get_node_attributes(H, 'pos')
+        #nx.draw(H, pos, with_labels=True, node_size=50, node_color='lightblue',font_size=6,
+        #font_color='black')
+        #plt.show()
+
+
+        #firstTime = timesReal[0]
+        # segment starts as 2 bubbles
+        #if numContours[firstTime] == 2:
+        #    neighBackward   = {tuple([time] + subIDs): subIDs for time,*subIDs in list(H.neighbors(pathX[0]))  if time < pathX[0][0]}
+        #    if len(neighBackward) == 2:
+        #        1
+#axes.legend(prop={'size': 6})
+#axes.set_aspect('equal')
+#plt.show()
+
+segments2, skipped = graph_extract_paths(H,f) # 23/06/23 info in "extract paths from graphs.py"
+
+# Draw extracted segments with bold lines and different color.
+segments2 = [a for _,a in segments2.items() if len(a) > 0]
+segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
+paths = {i:vals for i,vals in enumerate(segments2)}
+node_positions = getNodePos(list(H.nodes()))
+#drawH(H, paths)
+
+pathCentroidsAreas           = {ID:{} for ID in paths}
+pathCentroids           = {ID:{} for ID in paths}
+for ID,nodeList in paths.items():
+    hulls =  [cv2.convexHull(np.vstack([g0_contours[time][subID] for subID in subIDs])) for time,*subIDs in nodeList]
+    pathCentroidsAreas[ID] = [centroid_area(contour) for contour in hulls]
+    pathCentroids[ID] = [a[0] for a in pathCentroidsAreas[ID]]
+
+
+pathsDeltas = {k:{} for k in paths}   
+areaDeltas = {k:{} for k in paths}
+
+for k,pathX in paths.items():
+    timesReal   = [time             for time,*subIDs in pathX]
+    pathXHulls  = [cv2.convexHull(np.vstack([g0_contours[time][subID] for subID in subIDs])) for time,*subIDs in pathX]
+    
+    pathXHCentroidsAreas = [centroid_area(contour) for contour in pathXHulls]
+    trajectory = np.array([a[0] for a in pathXHCentroidsAreas])
+    pathCentroids[k] = trajectory
+
+    areas = np.array([a[1] for a in pathXHCentroidsAreas])
+    # rescale areas to be somewhat homogeneous with time step = 1, otherwise (x,y) = (t,area) ~ (1,10000) are too squished
+    # because i interpolate it as curve in time-area space, with time parameter which is redundand.
+    meanArea = np.mean(areas)
+    areasIntep = np.array([[i,a/meanArea] for i,a in enumerate(areas)])
+        
+    numPointsInTraj = len(trajectory)
+    #[cv2.circle(meanImage, tuple(centroid), 3, [255,255,0], -1) for centroid in pathXHCentroids]
+    #meanImage   = convertGray2RGB(np.load(meanImagePath)['arr_0'].astype(np.uint8)*0)
+    # start analyzing trajectory. need 2 points to make linear extrapolation
+    # get extrapolation line, take real value. compare
+    
+    times  = np.arange(2,numPointsInTraj - 1)
+    assert len(times)>0, "traj exterp, have not intended this yet"
+
+    debug = 0; axes,axes2 = (0,0)
+        
+    if debug == 1:
+        fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+        axes.plot(trajectory[:,0],trajectory[:,1], '-o')
+
+        fig2, axes2 = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+        axes2.plot(areasIntep[:,0],areasIntep[:,1], '-o')
+
+    for t in times:
+            
+        IEpolation, endPoint    = exterpTest(trajectory, t, interpolatinIntevalLength, debug = debug, axes= axes, title = str(k))
+        IEpolation2, endPoint2  = exterpTest(areasIntep, t, interpolatinIntevalLength, debug = debug, axes= axes2, title = str(k), aspect = 'auto')
+        timeReal = timesReal[endPoint + 1]
+        pathsDeltas[k][timeReal] = np.linalg.norm(IEpolation[:,-1] - trajectory[endPoint])
+        areaDeltas[k][timeReal] = np.abs(int((IEpolation2[:,-1][1] - areasIntep[endPoint2][1])*meanArea))
+        #plt.show()
+        #axes.plot(*IEpolation, linestyle='dotted', c='orange')
+        #axes.plot(*IEpolation[:,-1], '--o', c='orange')
+        #axes.plot([IEpolation[0,-1],trajectory[endPoint,0]],[IEpolation[1,-1],trajectory[endPoint,1]], '-',c='black')
+            
+    a = 1
+    plt.show() if debug == 1 else 0
+# check segment end points and which cluster they are connected to
+skippedTimes = {vals[0]:[] for vals in skipped}
+for time,*subIDs in skipped:
+    skippedTimes[time].append(subIDs) 
+
+resolvedConnections = []
+subSegmentStartNodes = [a[0] for a in paths.values()]
+for k,pathX in paths.items():
+    terminate = False
+    while terminate == False:
+        firstNode, lastNode = pathX[0], pathX[-1]
+
+        # find connections-neighbors from first and last segment node
+        neighForward    = {tuple([time] + subIDs): subIDs for time,*subIDs in list(H.neighbors(lastNode))   if time > lastNode[0]}
+        # 
+        #neighForward = {ID:vals for ID,vals in neighForward.items() if ID not in subSegmentStartNodes}
+        #neighBackward   = {tuple([time] + subIDs): subIDs for time,*subIDs in list(H.neighbors(firstNode))  if time < firstNode[0]}
+        if len(neighForward)>0:
+            time = lastNode[0] 
+            timeNext = time + 1
+        
+            # find neigbor centroids
+            pathXHulls  = {k:cv2.convexHull(np.vstack([g0_contours[timeNext][subID] for subID in subIDs])) for k,subIDs in neighForward.items()}
+            pathXHCentroids = {k:centroid_area(contour)[0] for k,contour in pathXHulls.items()}
+            trajectory      = pathCentroids[k]
+            testChoice      = {}
+            # test each case, if it fits extrapolation- real distance via history of segment
+            for key, centroid in pathXHCentroids.items():
+                trajectoryTest = np.vstack((trajectory,centroid))#np.concatenate((trajectory,[centroid]))
+                IEpolation, endPoint = exterpTest(trajectoryTest,len(trajectoryTest) - 1,interpolatinIntevalLength, 0)
+                dist = np.linalg.norm(IEpolation[:,-1] - trajectoryTest[endPoint])
+                testChoice[key] = dist
+        
+            # check which extrap-real dist is smallest, get history
+            minKey = min(testChoice, key=testChoice.get)
+            lastDeltas = [d for t,d in pathsDeltas[k].items() if time - 4 < t <= time]
+            mean = np.mean(lastDeltas)
+            std = np.std(lastDeltas)
+            # test distance via history
+            if testChoice[minKey] < mean + 2*std:
+                removeNodeConnections = [node for node in neighForward if node != minKey]
+                remEdges = []
+                remEdges += [tuple([lastNode,node]) for node in removeNodeConnections]
+                H.remove_edges_from(remEdges)
+                resolvedConn = [lastNode,minKey]
+
+                for conn in [resolvedConn] + remEdges:
+                    if conn in overEstimateConnections: overEstimateConnections.remove(conn) # no skipped inside, may do nothing
+                resolvedConnections.append(resolvedConn)
+                paths[k].append(minKey)
+                pathX.append(minKey)
+                pathCentroids[k] = np.vstack((pathCentroids[k],pathXHCentroids[minKey]))
+                pathsDeltas[k][timeNext] = testChoice[minKey]
+
+                # removed edges that ar pointing to solution, other tan real one.
+                solBackNeighb = [ID for ID in list(H.neighbors(minKey)) if ID[0] < timeNext]
+                removeNodeConnections2 = [node for node in solBackNeighb if node != lastNode]
+                remEdges = []
+                remEdges += [tuple([node,minKey]) for node in removeNodeConnections2]
+                H.remove_edges_from(remEdges)
+
+                if minKey in subSegmentStartNodes:
+                    terminate = True
+                #drawH(H, paths)
+            else:
+                terminate = True
+        elif len(neighForward) == 0: # segment terminates
+            terminate = True
+        
+                # ==== !!!!!!!!!!!!!!!
+                # might want to iterate though skipped nodes and connect to next segment!
+        a = 1
+    #if timeNext in skippedTimes:
+    #    testCluster = skippedTimes[timeNext]
+        
+
+
+#for time,*subIDs in [pathX[X]]:
+#        [cv2.drawContours(  meanImage,   g0_contours[time], subID, 255 , 1) for subID in subIDs]
+#cv2.drawContours(  meanImage,   pathXHulls, X, 128 , 1)
+#cv2.imshow('a', meanImage)
+#drawH(H, paths)
 a = 1
 
 
@@ -701,34 +1382,62 @@ a = 1
 #    #gatherByTime2[t].append((t,ID2S(g0_clusters[t][clusterID])))
     #gatherByTime[t].append((t,*clusterID))
 
+f = lambda x : x[0]
+
+segments2, skipped = graph_extract_paths(H,f) # 23/06/23 info in "extract paths from graphs.py"
+
+# Draw extracted segments with bold lines and different color.
+segments2 = [a for _,a in segments2.items() if len(a) > 0]
+segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
+paths = {i:vals for i,vals in enumerate(segments2)}
 
 
+#drawH(H, paths)
 
+if 1 == 1:
+    imgInspectPath = os.path.join(imageFolder, "inspectPaths")
+    meanImage = convertGray2RGB(np.load(meanImagePath)['arr_0'].astype(np.uint8))
+    for n, keysList in paths.items():
+        for k,subCase in enumerate(keysList):
+            img = meanImage.copy()
+            time,*subIDs = subCase
+            for subID in subIDs:
+                cv2.drawContours(  img,   g0_contours[time], subID, cyclicColor(n), -1)
+                if subID in g0_contours_children[time]:
+                    [cv2.drawContours(  img,   g0_contours[time], ID, (0,0,0), -1) for ID in g0_contours_children[time][subID]]
+                
+                startPos2 = g0_contours[time][subID][-30][0] 
+                [cv2.putText(img, str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
+            fileName = f"{str(doX).zfill(3)}_{str(n).zfill(2)}_{str(time).zfill(3)}.png"
+            cv2.imwrite(os.path.join(imgInspectPath,fileName) ,img)
 
-imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(cutoff)]
-font = cv2.FONT_HERSHEY_SIMPLEX
-fontScale = 0.7; thickness = 4;
-for n, case in tqdm(enumerate(connected_components_unique)):
-    case    = sorted(case, key=lambda x: x[0])
-    for k,subCase in enumerate(case):
-        time,*subIDs = subCase
-        for subID in subIDs:
-            cv2.drawContours(  imgs[time],   g0_contours[time], subID, cyclicColor(n), 2)
-        x,y,w,h = g0_bigBoundingRect2[time][subCase]
-        #x,y,w,h = g0_bigBoundingRect[time][ID]
-        cv2.rectangle(imgs[time], (x,y), (x+w,y+h), cyclicColor(n), 1)
-        [cv2.putText(imgs[time], str(n), (x,y), font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]# connected clusters = same color
-    for k,subCase in enumerate(case):
-        time,*subIDs = subCase
-        for subID in subIDs:
-            startPos2 = g0_contours[time][subID][-30][0] 
-            [cv2.putText(imgs[time], str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
+if 1 == -1:
+    binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
+    imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(binarizedMaskArr.shape[0])]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    fontScale = 0.7; thickness = 4;
+    for n, case in tqdm(enumerate(segments2)):
+        case    = sorted(case, key=lambda x: x[0])
+        for k,subCase in enumerate(case):
+            time,*subIDs = subCase
+            for subID in subIDs:
+                cv2.drawContours(  imgs[time],   g0_contours[time], subID, cyclicColor(n), 2)
+            x,y,w,h = cv2.boundingRect(np.vstack([g0_contours[time][ID] for ID in subIDs]))
+            #x,y,w,h = g0_bigBoundingRect2[time][subCase]
+            #x,y,w,h = g0_bigBoundingRect[time][ID]
+            cv2.rectangle(imgs[time], (x,y), (x+w,y+h), cyclicColor(n), 1)
+            [cv2.putText(imgs[time], str(n), (x,y), font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]# connected clusters = same color
+        for k,subCase in enumerate(case):
+            time,*subIDs = subCase
+            for subID in subIDs:
+                startPos2 = g0_contours[time][subID][-30][0] 
+                [cv2.putText(imgs[time], str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
         
 
-for k,img in enumerate(imgs):
-    folder = r"./post_tests/testImgs/"
-    fileName = f"{str(k).zfill(4)}.png"
-    cv2.imwrite(os.path.join(folder,fileName) ,img)
+    for k,img in enumerate(imgs):
+        folder = r"./post_tests/testImgs/"
+        fileName = f"{str(k).zfill(4)}.png"
+        cv2.imwrite(os.path.join(folder,fileName) ,img)
 
 
 a = 1

@@ -640,7 +640,11 @@ segments2 = [a for _,a in segments2.items() if len(a) > 0]
 segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
 paths = {i:vals for i,vals in enumerate(segments2)}
 
-
+# ===============================================================================================
+# ===============================================================================================
+# =============== Refine expanded BR overlap subsections with solo contours =====================
+# ===============================================================================================
+# ===============================================================================================
 # less rough relations pass
 # drop idea of expanded bounding rectangle.
 # 1 contour cluster is the best case.
@@ -713,13 +717,18 @@ def drawH(H, paths):
 
     pos = nx.get_node_attributes(H, 'pos')
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=( 10,5))
     nx.draw(H, pos, with_labels=True, node_size=50, node_color='lightblue',font_size=6,
             font_color='black', edge_color=list(colors_edges2.values()), width = list(width2.values()))
     plt.show()
 
 #drawH(H, paths)
 
+# ===============================================================================================
+# ===============================================================================================
+# =========== Extract solo-to-solo bubble trajectories from less rough graphs ===================
+# ===============================================================================================
+# ===============================================================================================
 
 allIDs = sum([list(a.keys()) for a in lessRoughBRs.values()],[])
 allIDs = sorted(allIDs, key=lambda x: (x[0], x[1]))
@@ -740,6 +749,12 @@ paths = {i:vals for i,vals in enumerate(segments2)}
 lr_allNodesSegm = sum(segments2,[])
 lr_missingNodes = [node for node in allIDs if node not in lr_allNodesSegm] # !! may be same as &skipped !!
 assert set(skipped)==set(lr_missingNodes), "set(skipped) is not same as set(lr_missingNodes)"
+
+# ===============================================================================================
+# ===============================================================================================
+# === find POSSIBLE interval start-end connectedness: start-end exist within set time interval ==
+# ===============================================================================================
+# ===============================================================================================
 
 # get start and end of good segments
 lr_start_end    = [[segm[0],segm[-1]] for segm in segments2]
@@ -778,6 +793,11 @@ for k,endTime in enumerate(lr_all_end):
     if len(goodDTs) > 0:
         lr_DTPass_segm[k] = goodDTs
 
+# ===============================================================================================
+# ===============================================================================================
+# === find ACTUAL interval start-end connectedness: get all connected paths if there are any ==
+# ===============================================================================================
+# ===============================================================================================
 # check connection between "time-localized" segments
 # isolate all nodes on graph that are active in unresolved time between segment existance
 # find all paths from one segment end to other start
@@ -813,6 +833,12 @@ for startID,endIDs in lr_DTPass_other.items():
         
         if len(shortest_path)>0: lr_paths_other[tuple([str(startID),str(endID)])] = shortest_path
 a = 1
+
+# ===============================================================================================
+# ===============================================================================================
+# === find split-merge (possibly fake) events; detect split-merges that look like real merges ===
+# ===============================================================================================
+# ===============================================================================================
 
 # since nodes and edges represent spacial overlap of cluster elements at each time paths between two nodes
 # should (?) contain all elements for permutations for bubble reconstruction from partial reflections
@@ -872,29 +898,49 @@ for t_merges_options in lr_multi_conn:
     if len(t_IDs_left) == 1: lr_multi_conn_win.append(t_IDs_left[0])
     else: assert 1 == -1, "split-merge. need to develop dominant branch further"
 
-
+# ===============================================================================================
+# ===============================================================================================
+# == find INTeRmediate interval paths, short PREv and POST history. deal with merge hist after ==
+# ===============================================================================================
+# ===============================================================================================
+lr_multi_conn_pre   = {conn:{} for conn in lr_paths_segm.keys()}
+lr_multi_conn_intr  = {conn:{} for conn in lr_paths_segm.keys()} 
+lr_multi_conn_post  = {conn:{} for conn in lr_paths_segm.keys()} 
 for t_conn, t_paths_nodes in lr_paths_segm.items():
+    tID_from = t_conn[0]
+    tID_to  = t_conn[1]
     # if multi merge
-    if t_conn in lr_multi_conn_all and t_conn in lr_multi_conn_win:
+    t_is_part_of_merge = True if t_conn in lr_multi_conn_all else False
+    t_is_part_of_merge_and_main = True if t_is_part_of_merge and t_conn in lr_multi_conn_win else False
+    t_is_followed_by_merge = True if tID_to in [a[0] for a in lr_multi_conn_all] else False
+    t_other_paths_nodes = []
+    t_other_path_conn   = []
+    if t_is_part_of_merge_and_main:
         # extract other (pseudo) merging segments. other paths only.
         t_other_path_conn = [a for a in lr_multi_conn if t_conn in a]
         t_other_path_conn = [[a for a in b if a != t_conn] for b in t_other_path_conn]
         #[t_other_path_conn[k].remove(t_conn) for k in range(len(t_other_path_conn))]
         t_other_path_conn = sum(t_other_path_conn,[])
         # preprend prev history of segment before intermediate segment
-        t_other_path_pre = {ID:[] for ID in t_other_path_conn}
-        for ID in t_other_path_conn:
-            if type(ID[0]) != str:
-                t_other_path_pre[ID] += segments2[ID[0]][:-1]
+        #t_other_path_pre = {ID:[] for ID in t_other_path_conn}
+        #for ID in t_other_path_conn:
+        #    if type(ID[0]) != str:
+        #        t_other_path_pre[ID] += segments2[ID[0]][:-1]
         # some mumbo-jumbo with string keys to differentiate lr_paths_other from lr_paths_segm
         t_other_paths_nodes = []
         for ID in t_other_path_conn:
             if type(ID[0]) == str:
                 for t_path in lr_paths_other[ID]:
-                    t_other_paths_nodes.append(t_other_path_pre[ID]+t_path)  
+                    t_other_paths_nodes.append(t_path)  
             else:
                 for t_path in lr_paths_segm[ID]:
-                    t_other_paths_nodes.append(t_other_path_pre[ID]+t_path)
+                    t_other_paths_nodes.append(t_path)
+            #if type(ID[0]) == str:
+            #    for t_path in lr_paths_other[ID]:
+            #        t_other_paths_nodes.append(t_other_path_pre[ID]+t_path)  
+            #else:
+            #    for t_path in lr_paths_segm[ID]:
+            #        t_other_paths_nodes.append(t_other_path_pre[ID]+t_path)
         a = 1            
         #t_other_paths_nodes = [t_other_path_pre[ID] + lr_paths_other[ID] 
         #                       if type(ID[0]) == str 
@@ -902,7 +948,7 @@ for t_conn, t_paths_nodes in lr_paths_segm.items():
         #t_other_paths_nodes = sum(t_other_paths_nodes,[])
         #t_join_paths = t_paths_nodes + t_other_paths_nodes
         # there is no prev history for lr_paths_other, lr_paths_segm has at least 2 nodes
-    elif t_conn in lr_multi_conn_all and t_conn not in lr_multi_conn_win:
+    elif t_is_part_of_merge:
         continue
     else:
         t_other_paths_nodes = []
@@ -912,23 +958,93 @@ for t_conn, t_paths_nodes in lr_paths_segm.items():
     # >>>>>>>>>>>>>>>>!!!!!!!!!!!!!!!!!!!!!!!!!<<<<<<<<<<<<<<
     # i should split this code into two. one stablishes intermediate part
     # and other can relate intermediate parts together, if needed.
-    t_og_path_pre       = segments2[t_conn[0]][-4:-1]
 
-    t_og_path_post      = segments2[t_conn[1]][:3]
-    t_og_paths_nodes    = [t_og_path_pre + path + t_og_path_post for path in t_paths_nodes]
-    t_join_paths = t_og_paths_nodes + t_other_paths_nodes 
+    # ====================
+    # store history prior to intermediate segment. solo bubble = 1 contour = last N steps
+    # pseudo merge = multiple branches => include branches and take N steps prior
+    a = 1
+    t_og_max_t =  segments2[tID_from][-1][0]
+    if not t_is_part_of_merge:
+        lr_multi_conn_pre[t_conn][tID_from] = segments2[tID_from][-4:-1]
+    else:
+        # find minimal time from othat branches
+        t_other_min_t = min([a[0] for a in sum(t_other_paths_nodes,[])])
+        # extract OG history only 3 steps prior to first branch (timewise) <<< 3 or so! idk, have to test
+        lr_multi_conn_pre[t_conn][tID_from] = [a for a in segments2[tID_from] if t_og_max_t> a[0] > t_other_min_t - 4]
+        t_other_IDs = [a[0] for a in t_other_path_conn]
+        for tID in t_other_IDs:
+            if type(tID) != str:
+                lr_multi_conn_pre[t_conn][tID] = segments2[tID]
+    # store history post intermediate segment.     solo bubble = 1 contour = next N steps
+    # if followed by merge, ideally take solo N steps before merge. but this info not avalable yet. do it after
+    if not t_is_followed_by_merge:
+        lr_multi_conn_post[t_conn][tID_to]  = segments2[tID_to][1:4]
+
+    t_join_paths            = t_paths_nodes + t_other_paths_nodes
+    # store all paths in intermediate interval
+    lr_multi_conn_intr[t_conn]   = t_paths_nodes + t_other_paths_nodes 
     # collect all viable contour IDs from intermediate time
-    t_all_nodes = sum(t_join_paths,[])
-    t_all_times = list(sorted(np.unique([a[0] for a in t_all_nodes])))
-    t_times_cIDs = {t:[] for t in t_all_times}
-    for t,cID in t_all_nodes:
+    #t_all_nodes = sum(t_join_paths,[])
+    #t_all_times = list(sorted(np.unique([a[0] for a in t_all_nodes])))
+    #t_times_cIDs = {t:[] for t in t_all_times}
+    #for t,cID in t_all_nodes:
+    #    t_times_cIDs[t].append(cID)
+    #for t in t_times_cIDs:
+    #    t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
+    #lr_multi_conn_choices[t_conn] = t_times_cIDs
+    # test intermediate contour combinations
+    # 
+#lr_multi_conn_all and t_conn in lr_multi_conn_win
+
+# ===============================================================================================
+# ===============================================================================================
+# ========================== deal with POST history if its a merge ==============================
+# ===============================================================================================
+# ===============================================================================================
+# isolate easy cases where split-merge has history on both sides
+t_all_merging = [a[0] for a in lr_multi_conn_win]
+for t_conn, t_paths_choices in lr_multi_conn_post.items():
+    t_end_ID = t_conn[1]
+    if len(t_paths_choices) == 0 and t_end_ID in t_all_merging:
+        t_next_merge_all = [a for a in lr_multi_conn_win if a[0] == t_end_ID]
+        assert len(t_next_merge_all)<2, "post history-> multi merge. something i did not account for"
+        t_conn_next_merge    = t_next_merge_all[0]
+        t_og_min_t      = segments2[t_end_ID][0][0]
+        # pick min branches time: take all branches except main, extract first node, and extract from it time. pick min
+        t_other_min_t   = min([a[0][0] for ID,a in lr_multi_conn_pre[t_conn_next_merge].items() if ID != t_end_ID])
+
+        # end history at: if there is time before merge take 3 (or so) steps before it.
+        # it its earlier, squeeze interval. if merge is straight after, post history will be zero.
+        t_max_time =  min(t_og_min_t + 4, t_other_min_t )
+        lr_multi_conn_post[t_conn][t_end_ID] = [a for a in segments2[t_end_ID] if t_og_min_t < a[0] < t_max_time]
+
+# ===============================================================================================
+# ===============================================================================================
+# ============== form combinations of elements from PRE-INTR-Post connectedness data ============
+# ===============================================================================================
+# ===============================================================================================
+lr_multi_conn_choices = {conn:{} for conn in lr_paths_segm.keys()}
+
+for t_conn, t_paths_choices in lr_multi_conn_intr.items():
+    t_hist_pre  = lr_multi_conn_pre[t_conn]
+    t_hist_post = lr_multi_conn_post[t_conn]
+    t_nodes_all = sum(t_hist_pre.values(),[]) + sum(t_hist_post.values(),[]) +sum(t_paths_choices,[])
+    t_nodes_all = sorted(set(t_nodes_all))
+    t_times_all = [a[0] for a in t_nodes_all]
+    t_times_cIDs = {t:[] for t in t_times_all}
+    for t,cID in t_nodes_all:
         t_times_cIDs[t].append(cID)
     for t in t_times_cIDs:
         t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
+    lr_multi_conn_choices[t_conn] = t_times_cIDs
+a = 1
 
-    # test intermediate contour combinations
-    # 
-    a = 1
+
+# >>>>>>>>> !!!!!!!! <<<<<<< most works. EXCEPT split into isolated node. segment merge into non-isolated nodes
+
+
+#TODO: do a reconstruction via area (maybe trajectory) of BRs using lr_multi_conn_choices
+
 
 #drawH(G, paths)
 

@@ -724,6 +724,12 @@ def drawH(H, paths):
 
 #drawH(H, paths)
 
+def extractNeighborsNext(graph, node, time_from_node_function):
+    neighbors = list(graph.neighbors(node))
+    return [n for n in neighbors if time_from_node_function(n) > time_from_node_function(node)]
+def extractNeighborsPrevious(graph, node, time_from_node_function):
+    neighbors = list(graph.neighbors(node))
+    return [n for n in neighbors if time_from_node_function(n) < time_from_node_function(node)]
 # ===============================================================================================
 # ===============================================================================================
 # =========== Extract solo-to-solo bubble trajectories from less rough graphs ===================
@@ -773,7 +779,7 @@ for node in lr_missingNodes:
 
 # find which segements are separated by small number of time steps
 #  might not be connected, but can check later
-lr_maxDT = 3
+lr_maxDT = 20
 
 # test non-segments
 lr_DTPass_other = {}
@@ -832,8 +838,152 @@ for startID,endIDs in lr_DTPass_other.items():
             shortest_path = []
         
         if len(shortest_path)>0: lr_paths_other[tuple([str(startID),str(endID)])] = shortest_path
+
+lr_paths_segm2 = {a:[b[0][0],b[0][-1]] for a,b in lr_paths_segm.items()}
 a = 1
 
+# remember which segment indicies are active at each time step
+lr_time_active_segments = {t:[] for t in lessRoughBRs}
+for k,t_segment in enumerate(segments2):
+    t_times = [a[0] for a in t_segment]
+    for t in t_times:
+        lr_time_active_segments[t].append(k)
+
+# extract trusted segments.
+# high length might indicate high trust
+lr_trusted_segment_length = 7
+lr_trusted_segments_by_length = []
+lr_segments_lengths = {}
+
+for k,t_segment in enumerate(segments2):
+
+    lr_segments_lengths[k]  = len(t_segment)
+
+    if len(t_segment) >= lr_trusted_segment_length:
+        lr_trusted_segments_by_length.append(k)
+
+# small paths between segments might mean that longer, thus thrusted, segment is present
+
+# store interval lentghs
+lr_intervals_lengths = {}
+
+for t_conn, intervals in lr_paths_segm.items():
+
+    lr_intervals_lengths[t_conn] = len(intervals[0])
+
+# extract possible good intervals
+
+lr_trusted_max_interval_length_prio = 5
+lr_trusted_max_interval_length      = 3
+
+lr_trusted_interval_test_prio   = []
+lr_trusted_interval_test        = []
+for t_conn, t_interval_length in lr_intervals_lengths.items():
+
+    if t_interval_length > lr_trusted_max_interval_length_prio: continue
+
+    t_from,t_to = t_conn
+
+    t_good_from = t_from in lr_trusted_segments_by_length
+    t_good_to   = t_to in lr_trusted_segments_by_length
+
+    if (t_good_from and t_good_to):
+        lr_trusted_interval_test_prio.append(t_conn)
+    elif t_interval_length <= lr_trusted_max_interval_length:
+        lr_trusted_interval_test.append(t_conn)
+  
+
+# check interconnectedness of segments
+G2 = nx.Graph()
+
+# Iterate over the dictionary and add edges with weights
+for (node1, node2), weight in lr_intervals_lengths.items():
+    G2.add_edge(node1, node2, weight=weight)
+
+#pos = nx.spring_layout(G2)
+#edge_widths = [data['weight'] for _, _, data in G2.edges(data=True)]
+#nx.draw(G2, pos, with_labels=True, width=edge_widths)
+
+#plt.show()
+
+for node in G2.nodes():
+    # Get the neighboring nodes
+    t_neighbors = list(G2.neighbors(node))
+    t_time_start    = segments2[node][0][0]
+    t_time_end      = segments2[node][-1][0]
+    t_neighbors_prev = []
+    t_neighbors_next = []
+    for t_neighbor in t_neighbors:
+        t_time_neighbor_start    = segments2[t_neighbor][0][0]
+        t_time_neighbor_end      = segments2[t_neighbor][-1][0]
+        if t_time_start < t_time_neighbor_start and t_time_end < t_time_neighbor_start:
+            t_neighbors_next.append(t_neighbor)
+        elif t_time_start > t_time_neighbor_end and t_time_end > t_time_neighbor_end:
+            t_neighbors_prev.append(t_neighbor)
+    # check if neighbors are not lost, or path generation is incorrect, like looping back in time
+    assert len(t_neighbors) == len(t_neighbors_prev) + len(t_neighbors_next), "missing neighbors, time position assumption is wrong"
+    
+    t_neighbors_weights_prev = {}
+    t_neighbors_weights_next = {}
+    
+    for t_neighbor in t_neighbors_prev:
+        t_neighbors_weights_prev[t_neighbor] = -1*G2[node][t_neighbor]['weight']
+    for t_neighbor in t_neighbors_next:
+        t_neighbors_weights_next[t_neighbor] = G2[node][t_neighbor]['weight']
+    
+    t_neigbor_sol = {}
+    if len(t_neighbors_weights_prev)>0:
+        t_val_min = max(t_neighbors_weights_prev.values())
+        t_sol = [key for key, value in t_neighbors_weights_prev.items() if value == t_val_min]
+        for t_node in t_sol: t_neigbor_sol[t_node] = t_neighbors_weights_prev[t_node]
+    
+    if len(t_neighbors_weights_next)>0:
+        t_val_min = min(t_neighbors_weights_next.values())
+        t_sol = [key for key, value in t_neighbors_weights_next.items() if value == t_val_min]
+        for t_node in t_sol: t_neigbor_sol[t_node] = t_neighbors_weights_next[t_node]
+    #t_neighbors_prev = extractNeighborsPrevious(G2, node,    lambda x: x[0])
+    #t_neighbors_next = extractNeighborsNext(    G2, node,    lambda x: x[0])
+    # Iterate through the neighboring nodes
+    a = 1
+
+# check if extracted intervals are "clean", dont contain merge
+# clean means there are nodes attached to all available paths
+# => check neighbors of all nodes in path and see if they are their own neigbors
+# this test is too strict, but allows to isolate pseudo split-merges 
+t_sols = []
+for t_conn in lr_trusted_interval_test_prio:
+    a = lr_paths_segm2[t_conn]
+    t_from,t_to = t_conn
+    t_node_from_last   = segments2[t_from][-1]
+    t_node_to_first    = segments2[t_to][0]
+    t_neighbors_from_next       = extractNeighborsNext(     G, t_node_from_last,    lambda x: x[0])
+    t_neighbors_to_previous     = extractNeighborsPrevious( G, t_node_to_first,     lambda x: x[0])
+
+    t_all_path_nodes = sorted(set(sum(lr_paths_segm[t_conn],[])),key=lambda x: x[0])
+    
+    t_all_path_nodes = t_all_path_nodes
+    t_all_path_neigbors = []
+    for t_node in t_all_path_nodes[1:-1]:
+        t_all_path_neigbors.append(list(G.neighbors(t_node)))
+
+    t_all_path_neigbors.append(t_neighbors_from_next)
+    t_all_path_neigbors.append(t_neighbors_to_previous)
+
+    t_all_path_neigbors = sorted(set(sum(t_all_path_neigbors,[])),key=lambda x: x[0])
+    #t_all_path_neigbors = [t_node for t_node in t_all_path_neigbors if t_node not in [t_node_from_last,t_node_to_first]]
+    if t_all_path_neigbors != t_all_path_nodes: continue
+    t_sols.append(t_conn)
+
+    #t_nodes_all = sum(t_hist_pre.values(),[]) + sum(t_hist_post.values(),[]) +sum(t_paths_choices,[])
+    #t_nodes_all = sorted(set(t_nodes_all))
+    #t_times_all = [a[0] for a in t_nodes_all]
+    #t_times_cIDs = {t:[] for t in t_times_all}
+    #for t,cID in t_nodes_all:
+    #    t_times_cIDs[t].append(cID)
+    #for t in t_times_cIDs:
+    #    t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
+a = 1
+#drawH(G, paths)
 # ===============================================================================================
 # ===============================================================================================
 # === find split-merge (possibly fake) events; detect split-merges that look like real merges ===
@@ -1017,7 +1167,7 @@ for t_conn, t_paths_choices in lr_multi_conn_post.items():
         # it its earlier, squeeze interval. if merge is straight after, post history will be zero.
         t_max_time =  min(t_og_min_t + 4, t_other_min_t )
         lr_multi_conn_post[t_conn][t_end_ID] = [a for a in segments2[t_end_ID] if t_og_min_t < a[0] < t_max_time]
-
+#drawH(G, paths)
 # ===============================================================================================
 # ===============================================================================================
 # ============== form combinations of elements from PRE-INTR-Post connectedness data ============
@@ -1037,9 +1187,79 @@ for t_conn, t_paths_choices in lr_multi_conn_intr.items():
     for t in t_times_cIDs:
         t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
     lr_multi_conn_choices[t_conn] = t_times_cIDs
-a = 1
+
+for tID,test in lr_multi_conn_choices.items():
+    if len(test)==0: continue
+    #test    = {325: [2], 326: [1], 327: [3], 328: [2], 329: [1, 3], 330: [2], 331: [1], 332: [1], 333: [1]}
+    yoo     = {t:[] for t in test}
+    for t,subIDs in test.items():
+        s = sum([list(itertools.combinations(subIDs, r)) for r in range(1,len(subIDs)+1)],[])
+        yoo[t] += s
+        a = 1
+    yoo2 = {t:[] for t in test}
+    for t,permList in yoo.items(): 
+        for perm in permList:
+            hull = cv2.convexHull(np.vstack([g0_contours[t][c] for c in perm]))
+            yoo2[t].append(cv2.contourArea(hull))
+            #yoo2[t].append(cv2.boundingRect(np.vstack([g0_contours[t][c] for c in perm])) )
+
+    #rectAreas = {t:[] for t in test}
+    #maxArea = 0
+    #minArea = 9999999999
+    #for t,rectList in yoo2.items(): 
+    #    for x,y,w,h in rectList:
+    #        area = w*h
+    #        rectAreas[t].append(area)
+    #        maxArea = max(maxArea,area)
+    #        minArea = min(minArea,area)
+    rectAreas = yoo2
+    minTime,maxTime = min(rectAreas), max(rectAreas)
+
+    soloTimes = [a for a,b in rectAreas.items() if len(b) == 1]
+    missingTimes = [a for a,b in rectAreas.items() if len(b) > 1]
+    from scipy.interpolate import splev, splrep
+    x = soloTimes
+    y0 = np.array([b[0] for a,b in  rectAreas.items() if a in soloTimes])
+    minArea,maxArea = min(y0), max(y0)
+    K = maxTime - minTime
+    y = (y0 - minArea) * (K / (maxArea - minArea))
+    spl = splrep(soloTimes, y, k = 1, s = 0.7)
+
+    x2 = np.linspace(min(rectAreas), max(rectAreas), 30)
+    y2 = splev(x2, spl)
+    y2 = y2/(K / (maxArea - minArea)) + minArea
+    y = y/(K / (maxArea - minArea)) + minArea
+    fig = plt.figure()
+    for t in missingTimes:
+        for rA in rectAreas[t]:
+            plt.scatter([t],[rA], c='b')
+    plt.plot(x, y, 'o', x2, y2)
+    fig.suptitle(lr_multi_conn_intr[tID][0])
+    #plt.show()
+
+# >>>>>>>>>>>>> !!!!!!!!!!!!!!!!!!!! <<<<<<<<<<<<< CONCLUSIONS
+# long trends can be trusted: e.g long solo- split-merge - long solo
+# transition to short segments may be misleading e.g split into two parts perist - area is halfed at split
+# fast split-merge kind of reduces trust, which is related to segment length. but it should not.
+# ^ may be longterm trends should be analyzed first. idk what to do about real merges then.
+
+    a = 1
 
 
+
+# usefulPoints = startTime
+## interval gets capped at interpolatinIntevalLength if there are more points
+#interval    = min(interpolatinIntevalLength,usefulPoints)
+## maybe max not needed, since interval is capped
+#startPoint  = max(0,startTime-interval) 
+#endPoint    = min(startTime,startPoint + interval) # not sure about interval or interpolatinIntevalLength
+##
+#x,y = trajectory[startPoint:endPoint].T
+#t0 = np.arange(startPoint,endPoint,1)
+## interpolate and exterpolate to t2 this window
+#spline, _ = interpolate.splprep([x, y], u=t0, s=10000,k=1)
+#t2 = np.arange(startPoint,endPoint+1,1)
+#IEpolation = np.array(interpolate.splev(t2, spline,ext=0))
 # >>>>>>>>> !!!!!!!! <<<<<<< most works. EXCEPT split into isolated node. segment merge into non-isolated nodes
 
 

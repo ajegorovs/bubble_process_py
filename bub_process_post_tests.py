@@ -4,6 +4,7 @@ import cv2, os, glob, datetime, re, pickle#, multiprocessing
 # import glob
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+# import from custom sub-folders are defined bit lower
 #from imageFunctionsP2 import (overlappingRotatedRectangles,graphUniqueComponents)
 # functions below
 if 1 == 1:
@@ -168,6 +169,8 @@ sys.path.append( os.path.join(mainOutputFolder,'modules'))
 #from post_tests.modules.cropGUI import cropGUI
 from cropGUI import cropGUI
 from graphs_brects import (overlappingRotatedRectangles, graphUniqueComponents)
+from graph_visualisation_01 import (draw_graph_with_height)
+
 
 mainOutputSubFolders =  ['HFS 200 mT Series 4','sccm100-meanFix', "00001-05000"]
 for folderName in mainOutputSubFolders:     
@@ -599,6 +602,27 @@ if 1 == -1:
 doX = 60#84
 test = connected_components_unique[doX]
 # find times where multiple elements are connected (split/merge)
+def getNodePos2(dic0, S = 20):
+    dups, cnts = np.unique([a for a in dic0.values()], return_counts = True)
+    # relate times to 'local IDs', which are also y-positions or y-indexes
+    dic = {a:np.arange(b) for a,b in zip(dups,cnts)} # each time -> arange(numDups)
+    # give duplicates different y-offset 0,1,2,..
+    dic2 = {t:{s:k for s,k in zip(c,[tID for tID, t_time in dic0.items() if t_time == t])} for t,c in dic.items()}
+    node_positions = {}
+    # offset scaled by S
+    #S = 20
+    for t,c in dic.items():
+        # scale and later offset y-pos by mid-value
+        d = c*S
+        meanD = np.mean(d)
+        for c2,key in dic2[t].items():
+            if len(dic2[t]) == 1:
+                dy = np.random.randint(low=-3, high=3)
+            else: dy = 0
+            # form dict in form key: position. time is x-pos. y is modified by order.
+            node_positions[key] = (t,c2*S-meanD + dy)
+
+    return node_positions
 def getNodePos(test):
     dups, cnts = np.unique([a[0] for a in test], return_counts = True)
     # relate times to 'local IDs', which are also y-positions or y-indexes
@@ -695,7 +719,7 @@ font = cv2.FONT_HERSHEY_SIMPLEX
 fontScale = 0.7; thickness = 4;
 
 
-def drawH(H, paths):
+def drawH(H, paths, node_positions):
     colors = {i:np.array(cyclicColor(i))/255 for i in paths}
     colors = {i:np.array([R,G,B]) for i,[B,G,R] in colors.items()}
     colors_edges2 = {}
@@ -722,7 +746,7 @@ def drawH(H, paths):
             font_color='black', edge_color=list(colors_edges2.values()), width = list(width2.values()))
     plt.show()
 
-#drawH(H, paths)
+#drawH(H, paths, node_positions)
 
 def extractNeighborsNext(graph, node, time_from_node_function):
     neighbors = list(graph.neighbors(node))
@@ -905,9 +929,12 @@ for (node1, node2), weight in lr_intervals_lengths.items():
 #nx.draw(G2, pos, with_labels=True, width=edge_widths)
 
 #plt.show()
-
-for node in G2.nodes():
+t_nodes = sorted(list(G2.nodes()))
+t_neighbor_sol_all_prev = {tID:{} for tID in t_nodes}
+t_neighbor_sol_all_next = {tID:{} for tID in t_nodes}
+for node in t_nodes:
     # Get the neighboring nodes
+    # segments2[node]; segments2[t_neighbor]
     t_neighbors = list(G2.neighbors(node))
     t_time_start    = segments2[node][0][0]
     t_time_end      = segments2[node][-1][0]
@@ -926,25 +953,95 @@ for node in G2.nodes():
     t_neighbors_weights_prev = {}
     t_neighbors_weights_next = {}
     
-    for t_neighbor in t_neighbors_prev:
+    for t_neighbor in t_neighbors_prev: # back weights are negative
         t_neighbors_weights_prev[t_neighbor] = -1*G2[node][t_neighbor]['weight']
     for t_neighbor in t_neighbors_next:
         t_neighbors_weights_next[t_neighbor] = G2[node][t_neighbor]['weight']
+    t_neighbors_time_prev = {tID:segments2[tID][-1][0]  for tID in t_neighbors_weights_prev}
+    t_neighbors_time_next = {tID:segments2[tID][0][0]   for tID in t_neighbors_weights_next}
+    #t_neighbor_sol = {}
     
-    t_neigbor_sol = {}
     if len(t_neighbors_weights_prev)>0:
+        # neg weights, so max, get time of nearset branch t0. get all connections within [t0 - 2, t0] in case of split
         t_val_min = max(t_neighbors_weights_prev.values())
-        t_sol = [key for key, value in t_neighbors_weights_prev.items() if value == t_val_min]
-        for t_node in t_sol: t_neigbor_sol[t_node] = t_neighbors_weights_prev[t_node]
-    
+        t_key_min_main = max(t_neighbors_weights_prev, key = t_neighbors_weights_prev.get)
+        t_key_main_ref_time = t_neighbors_time_prev[t_key_min_main]
+        t_sol = [key for key,t in t_neighbors_time_prev.items() if t_key_main_ref_time - 2 <= t <=  t_key_main_ref_time]
+        #t_sol = [key for key, value in t_neighbors_weights_prev.items() if t_val_min - 1 <= value <=  t_val_min]
+        for t_node in t_sol:t_neighbor_sol_all_prev[node][t_node] = t_neighbors_weights_prev[t_node]
+        
     if len(t_neighbors_weights_next)>0:
         t_val_min = min(t_neighbors_weights_next.values())
-        t_sol = [key for key, value in t_neighbors_weights_next.items() if value == t_val_min]
-        for t_node in t_sol: t_neigbor_sol[t_node] = t_neighbors_weights_next[t_node]
+        t_key_min_main = min(t_neighbors_weights_next, key = t_neighbors_weights_next.get)
+        t_key_main_ref_time = t_neighbors_time_next[t_key_min_main]
+        t_sol = [key for key,t in t_neighbors_time_next.items() if t_key_main_ref_time <= t <=  t_key_main_ref_time + 2]
+        #t_sol = [key for key, value in t_neighbors_weights_next.items() if t_val_min +1 >= value >= t_val_min]
+        for t_node in t_sol: t_neighbor_sol_all_next[node][t_node] = t_neighbors_weights_next[t_node]
     #t_neighbors_prev = extractNeighborsPrevious(G2, node,    lambda x: x[0])
     #t_neighbors_next = extractNeighborsNext(    G2, node,    lambda x: x[0])
     # Iterate through the neighboring nodes
     a = 1
+
+# prepare plot for segment interconnectedness
+G2.remove_edges_from(list(G2.edges()))
+for node, t_conn in t_neighbor_sol_all_prev.items():
+    for node2, weight in t_conn.items():
+        G2.add_edge(node, node2, weight=1/np.abs(weight))
+for node, t_conn in t_neighbor_sol_all_next.items():
+    for node2, weight in t_conn.items():
+        G2.add_edge(node, node2, weight=1/weight)
+    
+node_positions2 = {}
+t_segments_times = {}
+labels = {}
+for t,segment in enumerate(segments2):
+    t_times = [a[0] for a in segment]
+    t_segments_times[t] = int(np.mean(t_times))
+    labels[t] = f'{t}_{segment[0]}'
+node_positions2 = getNodePos2(t_segments_times, S = 1)
+
+
+for g in G2.nodes():
+  G2.nodes()[g]["height"] = node_positions2[g][0]
+#draw_graph_with_height(G2,figsize=(5,5), labels=labels)
+
+
+#pos = nx.spring_layout(G2, pos = node_positions2, k = 1, iterations = 10)
+
+#nx.draw(G2, pos=node_positions2, labels=labels)
+#plt.show()
+
+# find segments that connect only to one neighbor segment both directions
+# from node "t_node" to node "t_neighbor"
+t_conn_one_to_one = []
+for t_node in G2.nodes():
+    t_node_neighbors = list(G2.neighbors(t_node))
+    t_node_time_end      = segments2[t_node][-1][0]
+    t_node_neighbors_next = []
+    for t_neighbor in t_node_neighbors:
+        t_neighbor_time_start    = segments2[t_neighbor][0][0]
+        if t_node_time_end < t_neighbor_time_start:
+            t_node_neighbors_next.append(t_neighbor)
+    if len(t_node_neighbors_next) == 1:
+        t_neighbor              = t_node_neighbors_next[0]
+        t_neighbor_time_start   = segments2[t_neighbor][0][0]
+        t_neighbor_neighbors   = list(G2.neighbors(t_neighbor))
+        
+        t_neighbor_neighbors_back = []
+        for t_neighbor_neighbor in t_neighbor_neighbors:
+            t_neighbor_neighbor_time_end      = segments2[t_neighbor_neighbor][-1][0]
+            if t_neighbor_time_start > t_neighbor_neighbor_time_end:
+                t_neighbor_neighbors_back.append(t_neighbor)
+        if len(t_neighbor_neighbors_back) == 1:
+            t_conn_one_to_one.append(tuple([t_node,t_neighbor]))
+    
+        
+t_conn_one_to_one_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_one_to_one]
+a = 1
+# Draw the graph with constrained x-positions and automatic y-positions
+#nx.draw(G, pos, with_labels=True)
+
+##drawH(G, paths, node_positions)
 
 # check if extracted intervals are "clean", dont contain merge
 # clean means there are nodes attached to all available paths
@@ -983,7 +1080,7 @@ for t_conn in lr_trusted_interval_test_prio:
     #for t in t_times_cIDs:
     #    t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
 a = 1
-#drawH(G, paths)
+#drawH(G, paths, node_positions)
 # ===============================================================================================
 # ===============================================================================================
 # === find split-merge (possibly fake) events; detect split-merges that look like real merges ===
@@ -1167,7 +1264,7 @@ for t_conn, t_paths_choices in lr_multi_conn_post.items():
         # it its earlier, squeeze interval. if merge is straight after, post history will be zero.
         t_max_time =  min(t_og_min_t + 4, t_other_min_t )
         lr_multi_conn_post[t_conn][t_end_ID] = [a for a in segments2[t_end_ID] if t_og_min_t < a[0] < t_max_time]
-#drawH(G, paths)
+#drawH(G, paths, node_positions)
 # ===============================================================================================
 # ===============================================================================================
 # ============== form combinations of elements from PRE-INTR-Post connectedness data ============
@@ -1266,7 +1363,7 @@ for tID,test in lr_multi_conn_choices.items():
 #TODO: do a reconstruction via area (maybe trajectory) of BRs using lr_multi_conn_choices
 
 
-#drawH(G, paths)
+#drawH(G, paths, node_positions)
 
 # analyze fake split-merge caused by partial reflections. during period of time bubble is represented by reflections on its opposite side
 # which might appear as a split. 
@@ -1549,7 +1646,7 @@ segments2 = [a for _,a in segments2.items() if len(a) > 0]
 segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
 paths = {i:vals for i,vals in enumerate(segments2)}
 node_positions = getNodePos(list(H.nodes()))
-#drawH(H, paths)
+#drawH(H, paths, node_positions)
 
 pathCentroidsAreas           = {ID:{} for ID in paths}
 pathCentroids           = {ID:{} for ID in paths}
@@ -1671,7 +1768,7 @@ for k,pathX in paths.items():
 
                 if minKey in subSegmentStartNodes:
                     terminate = True
-                #drawH(H, paths)
+                #drawH(H, paths, node_positions)
             else:
                 terminate = True
         elif len(neighForward) == 0: # segment terminates
@@ -1689,7 +1786,7 @@ for k,pathX in paths.items():
 #        [cv2.drawContours(  meanImage,   g0_contours[time], subID, 255 , 1) for subID in subIDs]
 #cv2.drawContours(  meanImage,   pathXHulls, X, 128 , 1)
 #cv2.imshow('a', meanImage)
-#drawH(H, paths)
+#drawH(H, paths, node_positions)
 a = 1
 
 
@@ -1728,7 +1825,7 @@ segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
 paths = {i:vals for i,vals in enumerate(segments2)}
 
 
-#drawH(H, paths)
+#drawH(H, paths, node_positions)
 
 if 1 == 1:
     imgInspectPath = os.path.join(imageFolder, "inspectPaths")

@@ -875,9 +875,14 @@ for k,t_segment in enumerate(segments2):
 
 # extract trusted segments.
 # high length might indicate high trust
+
+lr_segments_lengths = {}
+for k,t_segment in enumerate(segments2):
+    lr_segments_lengths[k]  = len(t_segment)
+
+
 lr_trusted_segment_length = 7
 lr_trusted_segments_by_length = []
-lr_segments_lengths = {}
 
 for k,t_segment in enumerate(segments2):
 
@@ -1010,7 +1015,11 @@ for g in G2.nodes():
 
 #nx.draw(G2, pos=node_positions2, labels=labels)
 #plt.show()
-
+# ===============================================================================================
+# ===============================================================================================
+# === extract segment-segment connections that are connected only together (one-to-one) ===
+# ===============================================================================================
+# ===============================================================================================
 # find segments that connect only to one neighbor segment both directions
 # from node "t_node" to node "t_neighbor"
 t_conn_one_to_one = []
@@ -1037,6 +1046,102 @@ for t_node in G2.nodes():
     
         
 t_conn_one_to_one_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_one_to_one]
+
+# ===============================================================================================
+# === extract one-to-one segment connections of large segments <=> high trust ===
+# ===============================================================================================
+# lets extract segment-segment (one2one) connections that are both of large length
+# most likely a pseudo split-merge (p_split-merge). large length => most likely solo bubble
+lr_segment_len_large = 7
+lr_conn_one_to_one_large = []
+for t_from,t_to in t_conn_one_to_one:
+    t_segment_length_from   = lr_segments_lengths[t_from]
+    t_segment_length_to     = lr_segments_lengths[t_to]
+    if t_segment_length_from >= lr_segment_len_large and t_segment_length_to >= lr_segment_len_large:
+        lr_conn_one_to_one_large.append(tuple([t_from,t_to]))
+lr_conn_one_to_one_large_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in lr_conn_one_to_one_large]
+
+
+# ===============================================================================================
+# check if one2one (121) connection is isolated: 
+# ===============================================================================================
+# find all simple paths within time period between segments
+# check neighbors of path nodes
+# remove simple path nodes
+# check of some of the remaining nodes are "poking out"
+# ===============================================================================================
+# isolated connection is only connected to its own nodes
+
+lr_conn_one_to_one_other = [t_conn for t_conn in t_conn_one_to_one if t_conn not in lr_conn_one_to_one_large]
+lr_conn_one_to_one_other_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in lr_conn_one_to_one_other]
+
+t_conn_121_other_isolated_not = []
+t_conn_121_other_isolated = []
+for t_from,t_to in lr_conn_one_to_one_other:
+
+    t_from_node_last   = segments2[t_from][-1]
+    t_to_node_first      = segments2[t_to][0]
+
+    t_from_node_last_time   = t_from_node_last[0]
+    t_to_node_first_time    = t_to_node_first[0]
+    t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
+    t_from_to_paths_simple = list(nx.all_simple_paths(G, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps))
+
+    t_from_to_paths_nodes_all = sorted(set(sum(t_from_to_paths_simple,[])),key=lambda x: x[0])
+    t_from_to_paths_nodes_all_inter = [t_node for t_node in t_from_to_paths_nodes_all if t_node not in [t_from_node_last,t_to_node_first]]
+    t_all_path_neighbors = []
+    for t_node in t_from_to_paths_nodes_all_inter:
+        t_all_path_neighbors.append(list(G.neighbors(t_node)))
+    t_all_path_neighbors_node_all = sorted(set(sum(t_all_path_neighbors,[])),key=lambda x: x[0])
+    t_nides_not_in_main_path = [t_node for t_node in t_all_path_neighbors_node_all if t_node not in t_from_to_paths_nodes_all]
+    if len(t_nides_not_in_main_path):   t_conn_121_other_isolated_not.append(tuple([t_from,t_to]))
+    else:                               t_conn_121_other_isolated.append(tuple([t_from,t_to]))
+
+t_conn_121_other_isolated_not_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_121_other_isolated_not]
+t_conn_121_other_isolated_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_121_other_isolated]
+
+#drawH(G, paths, node_positions)
+# ===============================================================================================
+# ===============================================================================================
+# ===============================================================================================
+# issue of split-merge into merge, which is really also split-merge
+#      /3b\   /5b--6b\
+# 1--2      4          7--8 
+#      \3a/    5a--6a/
+# [1,2]->X->[4,5b,6b] is correct 121 event. although its clear that (4,5a) edge is missing
+a = 1
+for t_from,t_to in t_conn_121_other_isolated:
+    t_from_large    = True if lr_segments_lengths[t_from]   >= lr_trusted_segment_length else False
+    t_to_large      = True if lr_segments_lengths[t_to]     >= lr_trusted_segment_length else False
+    t_from_pass = False
+    t_to_pass = False
+    # find neighbors of segment-segment
+    #
+    
+    if t_from_large == False:
+        t_from_node_first       = segments2[t_from][0]
+        t_from_neighbors_prev   = extractNeighborsPrevious( G, t_from_node_first,     lambda x: x[0])
+        if len(t_from_neighbors_prev) == 0:
+            t_from_pass = True
+    if t_to_large == False:
+    
+        t_to_node_last          = segments2[t_to][-1]
+        t_to_neighbors_next     = extractNeighborsNext(     G, t_to_node_last,    lambda x: x[0])
+        if len(t_to_neighbors_next) == 0:
+            t_to_neighbors_next = True
+        else:
+            1
+    a = 1
+
+
+lr_conn_one_to_one_prev_split = []
+lr_conn_one_to_one_next_merge = []
+
+
+
+# REDO LATER
+
+
 a = 1
 # Draw the graph with constrained x-positions and automatic y-positions
 #nx.draw(G, pos, with_labels=True)

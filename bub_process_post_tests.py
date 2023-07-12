@@ -158,6 +158,13 @@ if 1 == 1:
     
     
         return segments2, skipped
+
+    def centroid_area(contour):
+        m = cv2.moments(contour)
+        area = int(m['m00'])
+        cx0, cy0 = m['m10'], m['m01']
+        centroid = np.array([cx0,cy0])/area
+        return  centroid, area
 # =========== BUILD OUTPUT FOLDERS =============//
 inputOutsideRoot            = 1                                                  # bmp images inside root, then input folder hierarchy will
 mainInputImageFolder        = r'.\inputFolder'                                   # be created with final inputImageFolder, else custom. NOT USED?!?
@@ -995,7 +1002,29 @@ for node, t_conn in t_neighbor_sol_all_prev.items():
 for node, t_conn in t_neighbor_sol_all_next.items():
     for node2, weight in t_conn.items():
         G2.add_edge(node, node2, weight=1/weight)
-    
+
+lr_close_segments_simple_paths = {}
+lr_close_segments_simple_paths_inter = {}
+tIDs = [tID for tID,t_dic in t_neighbor_sol_all_next.items() if len(t_dic) >0]
+for t_from in tIDs:
+    for t_to in t_neighbor_sol_all_next[t_from]:
+        t_from_node_last   = segments2[t_from][-1]
+        t_to_node_first      = segments2[t_to][0]
+
+        t_from_node_last_time   = t_from_node_last[0]
+        t_to_node_first_time    = t_to_node_first[0]
+        t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
+        t_from_to_paths_simple  = list(nx.all_simple_paths(G, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps))
+
+        
+        t_from_to_paths_nodes_all       = sorted(set(sum(t_from_to_paths_simple,[])),key=lambda x: x[0])
+        t_from_to_paths_nodes_all_inter = [t_node for t_node in t_from_to_paths_nodes_all if t_node not in [t_from_node_last,t_to_node_first]]
+
+        lr_close_segments_simple_paths[         tuple([t_from,t_to])]  = t_from_to_paths_simple
+        lr_close_segments_simple_paths_inter[   tuple([t_from,t_to])]  = t_from_to_paths_nodes_all_inter
+        
+
+
 node_positions2 = {}
 t_segments_times = {}
 labels = {}
@@ -1048,7 +1077,7 @@ for t_node in G2.nodes():
 t_conn_one_to_one_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_one_to_one]
 
 # ===============================================================================================
-# === extract one-to-one segment connections of large segments <=> high trust ===
+# = 2X LARGE Segments: extract one-to-one segment connections of large segments <=> high trust ==
 # ===============================================================================================
 # lets extract segment-segment (one2one) connections that are both of large length
 # most likely a pseudo split-merge (p_split-merge). large length => most likely solo bubble
@@ -1063,7 +1092,7 @@ lr_conn_one_to_one_large_test = [(segments2[start][-1][0],segments2[end][0][0]) 
 
 
 # ===============================================================================================
-# check if one2one (121) connection is isolated: 
+# ======== SHORT SEGMENTS BUT ISOLATED: check if one2one (121) connection is isolated: ==========
 # ===============================================================================================
 # find all simple paths within time period between segments
 # check neighbors of path nodes
@@ -1085,15 +1114,16 @@ for t_from,t_to in lr_conn_one_to_one_other:
     t_from_node_last_time   = t_from_node_last[0]
     t_to_node_first_time    = t_to_node_first[0]
     t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
-    t_from_to_paths_simple = list(nx.all_simple_paths(G, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps))
-
-    t_from_to_paths_nodes_all = sorted(set(sum(t_from_to_paths_simple,[])),key=lambda x: x[0])
-    t_from_to_paths_nodes_all_inter = [t_node for t_node in t_from_to_paths_nodes_all if t_node not in [t_from_node_last,t_to_node_first]]
+    #t_from_to_paths_simple = list(nx.all_simple_paths(G, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps))
+    #t_from_to_paths_simple = lr_close_segments_simple_paths[tuple([t_from,t_to])]
+    #t_from_to_paths_nodes_all = sorted(set(sum(t_from_to_paths_simple,[])),key=lambda x: x[0])
+    #t_from_to_paths_nodes_all_inter = [t_node for t_node in t_from_to_paths_nodes_all if t_node not in [t_from_node_last,t_to_node_first]]
+    t_from_to_paths_nodes_all_inter = lr_close_segments_simple_paths_inter[   tuple([t_from,t_to])]
     t_all_path_neighbors = []
     for t_node in t_from_to_paths_nodes_all_inter:
         t_all_path_neighbors.append(list(G.neighbors(t_node)))
     t_all_path_neighbors_node_all = sorted(set(sum(t_all_path_neighbors,[])),key=lambda x: x[0])
-    t_nides_not_in_main_path = [t_node for t_node in t_all_path_neighbors_node_all if t_node not in t_from_to_paths_nodes_all]
+    t_nides_not_in_main_path = [t_node for t_node in t_all_path_neighbors_node_all if t_node not in t_from_to_paths_nodes_all_inter + [t_from_node_last,t_to_node_first]]
     if len(t_nides_not_in_main_path):   t_conn_121_other_isolated_not.append(tuple([t_from,t_to]))
     else:                               t_conn_121_other_isolated.append(tuple([t_from,t_to]))
 
@@ -1102,7 +1132,7 @@ t_conn_121_other_isolated_test = [(segments2[start][-1][0],segments2[end][0][0])
 
 #drawH(G, paths, node_positions)
 # ===============================================================================================
-# ===============================================================================================
+# =============== CHECK IF SEGMENTS ARE NOT RELATED TO SPLIT MERGE PREV/POST ====================
 # ===============================================================================================
 # issue of split-merge into merge, which is really also split-merge
 #      /3b\   /5b--6b\
@@ -1110,37 +1140,250 @@ t_conn_121_other_isolated_test = [(segments2[start][-1][0],segments2[end][0][0])
 #      \3a/    5a--6a/
 # [1,2]->X->[4,5b,6b] is correct 121 event. although its clear that (4,5a) edge is missing
 a = 1
+t_conn_121_other_terminated = []
+t_conn_121_other_terminated_inspect = []
+t_conn_121_other_terminated_failed = []
 for t_from,t_to in t_conn_121_other_isolated:
     t_from_large    = True if lr_segments_lengths[t_from]   >= lr_trusted_segment_length else False
     t_to_large      = True if lr_segments_lengths[t_to]     >= lr_trusted_segment_length else False
-    t_from_pass = False
-    t_to_pass = False
+    t_from_pass     = False
+    t_to_pass       = False
+    t_from_inspect  = False
+    t_to_inspect    = False
     # find neighbors of segment-segment
-    #
-    
-    if t_from_large == False:
-        t_from_node_first       = segments2[t_from][0]
-        t_from_neighbors_prev   = extractNeighborsPrevious( G, t_from_node_first,     lambda x: x[0])
-        if len(t_from_neighbors_prev) == 0:
-            t_from_pass = True
     if t_to_large == False:
     
         t_to_node_last          = segments2[t_to][-1]
+        # check is node has connections forward or is terminated
         t_to_neighbors_next     = extractNeighborsNext(     G, t_to_node_last,    lambda x: x[0])
-        if len(t_to_neighbors_next) == 0:
-            t_to_neighbors_next = True
+        # 
+        t_to_conn_to = [t_conn for t_conn in lr_close_segments_simple_paths if t_conn[0] == t_to]
+        
+        if len(t_to_neighbors_next) == 0:   # terminated
+            t_to_pass = True
+        elif len(t_to_conn_to) == 1:        # not terminated but has connections to one segment
+            t_conn = t_to_conn_to[0]
+            tID = t_conn[1]                 # check if solo target segment is connected from multiple prev segments
+            t_to_conn_to_from = [t for t in lr_close_segments_simple_paths if t[1] == tID]
+            if len(t_to_conn_to_from) == 1: # solo connections, check for parasitic nodes one step prev to target
+                t_to_neighbors_next_node = segments2[tID][0]
+                t_to_neighbors_next_prev = extractNeighborsPrevious( G, t_to_neighbors_next_node,     lambda x: x[0])
+                # comment: checking only one prev step is not enough, since merge may be shared formultiple steps. but cant do anything now
+                t_to_not_in_main = [ t for t in t_to_neighbors_next_prev if t not in lr_close_segments_simple_paths_inter[t_conn] + [t_to_node_last, t_to_neighbors_next_node]]
+                if len(t_to_not_in_main) == 0:
+                    t_to_pass = True
+                else:
+                    t_to_inspect = True
+            else:
+                t_to_inspect = True
+        else:                               # it splits. should be ok as long as its the only parent
+            t_to_conn_to_from_all = []
+            for t_conn in t_to_conn_to:     # connections from t_to to next -> (t_to, next1), (t_to, next2), ...
+                tID = t_conn[1]             # next; find all connections to next
+                t_to_conn_to_from_all.append([t for t in lr_close_segments_simple_paths if t[1] == tID])
+            t_to_conn_to_from_all = sum(t_to_conn_to_from_all,[])
+            t_to_not_in_main = [t for t in t_to_conn_to_from_all if t not in t_to_conn_to]
+            if len(t_to_not_in_main) == 0:
+                t_to_pass = True
+            else:
+                t_to_inspect = True
+
+    else:
+        t_to_pass = True
+
+    if t_from_large == False: # not tested well due to lack of cases. just symmetric to top variant. i hope
+        t_from_node_first       = segments2[t_from][0]
+        t_from_neighbors_prev   = extractNeighborsPrevious( G, t_from_node_first,     lambda x: x[0])
+        t_from_conn_from = [t_conn for t_conn in lr_close_segments_simple_paths if t_conn[1] == t_from]
+        if len(t_from_neighbors_prev) == 0:
+            t_from_pass = True
+        elif len(t_from_conn_from) == 1:    # one connection from-> prev, does not mean prev-> has one conn, but may split
+            t_conn = t_from_conn_from[0]
+            tID = t_conn[0]                 # check forward connections prev-> forward. so step back and foward = from->to
+            t_from_conn_from_to = [t_conn for t_conn in lr_close_segments_simple_paths if t_conn[0] == tID]
+            if len(t_from_conn_from_to) == 1:
+                #assert 1 == -1, "untested territory"
+                t_from_neighbors_prev_node = segments2[tID][-1]
+                t_from_neighbors_prev_next = extractNeighborsNext( G, t_from_neighbors_prev_node,     lambda x: x[0])
+                # comment: checking only one prev step is not enough, since merge may be shared formultiple steps. but cant do anything now
+                t_from_not_in_main = [ t for t in t_from_neighbors_prev_next if t not in lr_close_segments_simple_paths_inter[t_conn] + [t_from_neighbors_prev_node, t_from_node_first]]
+                if len(t_from_not_in_main) == 0:
+                    t_from_pass = True
+                else:
+                    t_from_inspect = True
+            else:
+                t_from_inspect = True
         else:
-            1
+            assert 1 == -1, "unknown territory"
+    else:
+        t_from_pass = True
+
+    if t_from_pass and t_to_pass:
+        t_conn_121_other_terminated.append(tuple([t_from,t_to]))
+    elif ((t_from_pass and t_to_inspect) or  (t_from_inspect and t_to_pass)):
+        t_conn_121_other_terminated_inspect.append(tuple([t_from,t_to]))
+    else: 
+        t_conn_121_other_terminated_failed.append(tuple([t_from,t_to]))
     a = 1
 
 
 lr_conn_one_to_one_prev_split = []
 lr_conn_one_to_one_next_merge = []
 
+# maybe deal with t_conn_121_other_terminated_inspect here, or during analysis
 
 
-# REDO LATER
 
+# prep contour permuation combinations. hold only intermediate nodes
+lr_contour_combs = {tID:{} for tID in lr_conn_one_to_one_large}
+
+for t_conn in lr_conn_one_to_one_large:
+    t_traj = lr_close_segments_simple_paths[t_conn][0]
+    t_min = t_traj[0][0]
+    t_max = t_traj[-1][0]
+    #t_nodes = {t:[] for t in np.arange(t_min + 1, t_max, 1)}
+    t_nodes = {t:[] for t in np.arange(t_min, t_max + 1, 1)}
+    for t_traj in lr_close_segments_simple_paths[t_conn]:
+        #t_traj = t_traj[1:-1]
+        for t_time,*t_subIDs in t_traj:
+            t_nodes[t_time] += t_subIDs
+    for t_time in t_nodes:
+        t_nodes[t_time] = sorted(list(set(t_nodes[t_time])))
+    lr_contour_combs[t_conn] = t_nodes
+a = 1
+lr_contour_combs_perms = {t_conn:{t_time:[] for t_time in t_dict} for t_conn,t_dict in lr_contour_combs.items()}
+for t_conn, t_times_contours in lr_contour_combs.items():
+    for t_time,t_contours in t_times_contours.items():
+        t_perms = sum([list(itertools.combinations(t_contours, r)) for r in range(1,len(t_contours)+1)],[])
+        lr_contour_combs_perms[t_conn][t_time] = t_perms
+
+# pre-compute centroids and hull areas:
+# maybe mod later to do non-hull on ST bubbles, or do it in post.
+lr_permutation_areas_precomputed    = {t_conn:
+                                            {t_time:
+                                                    {t_perm:0 for t_perm in t_perms}
+                                             for t_time,t_perms in t_times_perms.items()}
+                                        for t_conn,t_times_perms in lr_contour_combs_perms.items()}
+
+lr_permutation_centroids_precomputed= {t_conn:
+                                            {t_time:
+                                                    {t_perm:[0,0] for t_perm in t_perms}
+                                             for t_time,t_perms in t_times_perms.items()}
+                                        for t_conn,t_times_perms in lr_contour_combs_perms.items()}
+
+for t_conn, t_times_perms in lr_contour_combs_perms.items():
+    for t_time,t_perms in t_times_perms.items():
+        for t_perm in t_perms:
+            t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_perm]))
+            t_centroid, t_area = centroid_area(t_hull)
+
+            lr_permutation_areas_precomputed[t_conn][t_time][t_perm] = t_area
+            lr_permutation_centroids_precomputed[t_conn][t_time][t_perm] = t_centroid
+a = 1
+lr_permutation_cases = {t_conn:[] for t_conn in lr_contour_combs}
+lr_permutation_times = {t_conn:[] for t_conn in lr_contour_combs}
+for t_conn, t_times_perms in lr_contour_combs_perms.items():
+    
+    t_values = list(t_times_perms.values())
+    t_times = list(t_times_perms.keys())
+
+    sequences = list(itertools.product(*t_values))
+
+    lr_permutation_cases[t_conn] = sequences
+    lr_permutation_times[t_conn] = t_times
+
+# lets look for a shortest path with least area and displacement deviations
+# prep containers
+
+t_all_traj      = {t_conn:[] for t_conn in lr_permutation_cases}
+t_all_areas     = {t_conn:[] for t_conn in lr_permutation_cases}
+t_sols_c        = {t_conn:[] for t_conn in lr_permutation_cases}
+t_sols_a        = {t_conn:[] for t_conn in lr_permutation_cases}
+
+for t_conn in lr_permutation_cases:
+    for t,t_perms in enumerate(lr_permutation_cases[t_conn]):
+        # dump sequences of areas and centroids for each possible trajectory
+        t_temp_c = []
+        t_temp_a = []       
+        for t_time,t_perm in zip(lr_permutation_times[t_conn],t_perms):
+            t_temp_c.append(lr_permutation_centroids_precomputed[t_conn][t_time][t_perm])
+            t_temp_a.append(lr_permutation_areas_precomputed[t_conn][t_time][t_perm])
+        t_all_traj[t_conn].append(np.array(t_temp_c).reshape(-1,2))
+        t_all_areas[t_conn].append(np.array(t_temp_a))
+
+    # check displacement norms, norm means and stdevs
+    t_c_diffs = [np.diff(t,axis = 0)        for t in t_all_traj[t_conn]]
+    t_c_norms = [np.linalg.norm(t, axis=1)  for t in t_c_diffs]
+    t_c_means = np.mean(t_c_norms, axis=1)
+    t_c_stdevs= np.std( t_c_norms, axis=1)
+
+    t_c_mean_min    = np.argmin(t_c_means)
+    t_c_stdevs_min  = np.argmin(t_c_stdevs)
+
+    # same with areas
+    t_areas = np.array(t_all_areas[t_conn])
+    t_a_diffs = np.diff(t_areas, axis=1)
+    t_a_d_abs = np.array([np.abs(t) for t in t_a_diffs])
+    t_a_d_a_sum = np.sum(t_a_d_abs, axis = 1)
+    t_a_means = np.mean(t_a_d_abs, axis=1)
+    t_a_stdevs= np.std( t_a_d_abs, axis=1)
+
+    t_a_mean_min    = np.argmin(t_a_means)
+    t_a_stdevs_min  = np.argmin(t_a_stdevs)
+
+    # save cases with least mean and stdev
+    t_sols_c[t_conn].append([t_c_mean_min,t_c_stdevs_min])
+    t_sols_a[t_conn].append([t_a_mean_min,t_a_stdevs_min])
+
+a = 1
+
+
+for t_conn, test in lr_contour_combs.items():
+    yoo     = {t:[] for t in test}
+    for t,subIDs in test.items():
+        s = sum([list(itertools.combinations(subIDs, r)) for r in range(1,len(subIDs)+1)],[])
+        yoo[t] += s
+        a = 1
+    yoo2 = {t:[] for t in test}
+    for t,permList in yoo.items(): 
+        for perm in permList:
+            hull = cv2.convexHull(np.vstack([g0_contours[t][c] for c in perm]))
+            yoo2[t].append(cv2.contourArea(hull))
+            #yoo2[t].append(cv2.boundingRect(np.vstack([g0_contours[t][c] for c in perm])) )
+
+    #rectAreas = {t:[] for t in test}
+    #maxArea = 0
+    #minArea = 9999999999
+    #for t,rectList in yoo2.items(): 
+    #    for x,y,w,h in rectList:
+    #        area = w*h
+    #        rectAreas[t].append(area)
+    #        maxArea = max(maxArea,area)
+    #        minArea = min(minArea,area)
+    rectAreas = yoo2
+    minTime,maxTime = min(rectAreas), max(rectAreas)
+
+    soloTimes = [a for a,b in rectAreas.items() if len(b) == 1]
+    missingTimes = [a for a,b in rectAreas.items() if len(b) > 1]
+    from scipy.interpolate import splev, splrep
+    x = soloTimes
+    y0 = np.array([b[0] for a,b in  rectAreas.items() if a in soloTimes])
+    minArea,maxArea = min(y0), max(y0)
+    K = maxTime - minTime
+    y = (y0 - minArea) * (K / (maxArea - minArea))
+    spl = splrep(soloTimes, y, k = 1, s = 0.7)
+
+    x2 = np.linspace(min(rectAreas), max(rectAreas), 30)
+    y2 = splev(x2, spl)
+    y2 = y2/(K / (maxArea - minArea)) + minArea
+    y = y/(K / (maxArea - minArea)) + minArea
+    fig = plt.figure()
+    for t in missingTimes:
+        for rA in rectAreas[t]:
+            plt.scatter([t],[rA], c='b')
+    plt.plot(x, y, 'o', x2, y2)
+    fig.suptitle(lr_multi_conn_intr[tID][0])
+    #plt.show()
 
 a = 1
 # Draw the graph with constrained x-positions and automatic y-positions

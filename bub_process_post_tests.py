@@ -787,6 +787,16 @@ lr_allNodesSegm = sum(segments2,[])
 lr_missingNodes = [node for node in allIDs if node not in lr_allNodesSegm] # !! may be same as &skipped !!
 assert set(skipped)==set(lr_missingNodes), "set(skipped) is not same as set(lr_missingNodes)"
 
+
+def segment_conn_end_start_points(connections):
+    if connections is not None:
+        if type(connections) == tuple:
+            start,end = connections
+            return (segments2[start][-1][0],segments2[end][0][0])
+        if type(connections) == list:
+            return [(segments2[start][-1][0],segments2[end][0][0]) for start,end in connections]
+        else:
+            return None
 # ===============================================================================================
 # ===============================================================================================
 # === find POSSIBLE interval start-end connectedness: start-end exist within set time interval ==
@@ -941,6 +951,12 @@ for (node1, node2), weight in lr_intervals_lengths.items():
 #nx.draw(G2, pos, with_labels=True, width=edge_widths)
 
 #plt.show()
+
+# ===============================================================================================
+# ===============================================================================================
+# === extract closest neighbors of segments ===
+# ===============================================================================================
+# ===============================================================================================
 t_nodes = sorted(list(G2.nodes()))
 t_neighbor_sol_all_prev = {tID:{} for tID in t_nodes}
 t_neighbor_sol_all_next = {tID:{} for tID in t_nodes}
@@ -994,6 +1010,11 @@ for node in t_nodes:
     # Iterate through the neighboring nodes
     a = 1
 
+# ===============================================================================================
+# ===============================================================================================
+# === wipe inter-segement edges from G2 graph and replot only nearest connections ===
+# ===============================================================================================
+# ===============================================================================================
 # prepare plot for segment interconnectedness
 G2.remove_edges_from(list(G2.edges()))
 for node, t_conn in t_neighbor_sol_all_prev.items():
@@ -1002,6 +1023,12 @@ for node, t_conn in t_neighbor_sol_all_prev.items():
 for node, t_conn in t_neighbor_sol_all_next.items():
     for node2, weight in t_conn.items():
         G2.add_edge(node, node2, weight=1/weight)
+
+# ===============================================================================================
+# ===============================================================================================
+# === calculate all paths between  nearest segments ===
+# ===============================================================================================
+# ===============================================================================================
 
 lr_close_segments_simple_paths = {}
 lr_close_segments_simple_paths_inter = {}
@@ -1044,6 +1071,83 @@ for g in G2.nodes():
 
 #nx.draw(G2, pos=node_positions2, labels=labels)
 #plt.show()
+
+# ===============================================================================================
+# === rudamentary split/merge analysis based on nearest neighbor connectedness symmetry ===
+# ===============================================================================================
+
+# by analyzing nearest neighbors you can see anti-symmetry in case of splits and merges.
+# if one branch of merge is closer to merge product, it will have strong connection both ways
+# further branches will only have unidirectional connection
+
+lr_connections_unidirectional   = []
+lr_connections_forward          = []
+lr_connections_backward         = []
+for t_from, t_forward_conns in t_neighbor_sol_all_next.items():
+    for t_to in t_forward_conns.keys():
+        lr_connections_forward.append(tuple(sorted([t_from,t_to])))
+for t_to, t_backward_conns in t_neighbor_sol_all_prev.items():
+    for t_from in t_backward_conns.keys():
+        lr_connections_backward.append(tuple(sorted([t_from,t_to])))
+
+lr_connections_unidirectional   = sorted(list(set(lr_connections_forward) & set(lr_connections_backward)), key = lambda x: x[0])
+lr_connections_directed         = [t_conn for t_conn in lr_connections_forward + lr_connections_backward if t_conn not in lr_connections_unidirectional]
+lr_connections_directed         = sorted(list(set(lr_connections_directed)), key = lambda x: x[0])
+
+# lr_connections_directed contain merges/splits, but also lr_connections_unidirectional contain part of splits/merges.
+# unidirectional means last/next segment is connected via unidirectional ege
+t_merge_split_culprit_edges = []
+for t_conn in lr_connections_directed:
+    if t_conn in lr_connections_forward:    t_from, t_to = t_conn  
+    else:                                   t_to, t_from = t_conn
+    # by knowing direction of direactional connection, i can tell that opposite direction connection is absent.
+    # there are other connection/s in that opposite (time-wise) directions which are other directional connectsions or unidir
+    t_time_to   = segments2[t_to    ][0][0]
+    t_time_from = segments2[t_from  ][0][0]
+    # if directed connection i time-forward, then unidir connections are from t_to node back in time
+    t_forward = True if t_time_to - t_time_from > 0 else False
+    if t_forward:
+        t_unidir_neighbors = list(t_neighbor_sol_all_prev[t_to].keys())
+    else:
+        t_unidir_neighbors = list(t_neighbor_sol_all_next[t_to].keys())
+    t_unidir_conns = [tuple(sorted([t_to,t])) for t in t_unidir_neighbors]
+    t_merge_split_culprit_edges += [t_conn]
+    t_merge_split_culprit_edges += t_unidir_conns
+    segment_conn_end_start_points(t_unidir_conns)
+    segment_conn_end_start_points(t_conn)
+    a = 1
+    #if t_to in t_neighbor_sol_all_prev[t_from]:
+t_merge_split_culprit_edges = sorted(t_merge_split_culprit_edges, key = lambda x: x[0])
+
+
+# simply extract nodes and their neigbors if there are multiple neighbors
+t_merge_split_culprit_edges2= []
+for t_from, t_forward_conns in t_neighbor_sol_all_next.items():
+    if len(t_forward_conns)>1:
+        for t_to in t_forward_conns.keys():
+            t_merge_split_culprit_edges2.append(tuple(sorted([t_from,t_to])))
+
+for t_to, t_backward_conns in t_neighbor_sol_all_prev.items():
+    if len(t_backward_conns)>1:
+        for t_from in t_backward_conns.keys():
+            t_merge_split_culprit_edges2.append(tuple(sorted([t_from,t_to])))
+
+t_merge_split_culprit_edges2 = sorted(t_merge_split_culprit_edges2, key = lambda x: x[0])
+segment_conn_end_start_points(t_merge_split_culprit_edges2)
+
+t_merge_split_culprit_edges_all = sorted(list(set(t_merge_split_culprit_edges + t_merge_split_culprit_edges2)), key = lambda x: x[0])
+
+T = nx.Graph()
+T.add_edges_from(t_merge_split_culprit_edges_all)
+connected_components_all = [list(nx.node_connected_component(T, key)) for key in T.nodes()]
+connected_components_all = [sorted(sub) for sub in connected_components_all]
+# extract connected families
+connected_components_unique = []
+[connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
+a = 1
+#drawH(G, paths, node_positions)
+#segment_conn_end_start_points(lr_connections_directed)
+#segment_conn_end_start_points(lr_connections_unidirectional)
 # ===============================================================================================
 # ===============================================================================================
 # === extract segment-segment connections that are connected only together (one-to-one) ===
@@ -1073,8 +1177,32 @@ for t_node in G2.nodes():
         if len(t_neighbor_neighbors_back) == 1:
             t_conn_one_to_one.append(tuple([t_node,t_neighbor]))
     
-        
+t_conn_one_to_one2 = []
+for t_node,t_forward_connections in t_neighbor_sol_all_next.items():
+    if len(t_forward_connections) ==  1:
+        t_forward_neighbor = list(t_forward_connections.keys())[0]
+        t_forward_neighbor_back_neighbors = t_neighbor_sol_all_prev[t_forward_neighbor]
+        if len(t_forward_neighbor_back_neighbors) == 1 and list(t_forward_neighbor_back_neighbors.keys())[0] == t_node:
+            t_conn_one_to_one2.append(tuple([t_node,t_forward_neighbor]))
+aa  = sorted(   segment_conn_end_start_points(t_conn_one_to_one),   key = lambda x: x[0])
+aa2 = sorted(   segment_conn_end_start_points(t_conn_one_to_one2),  key = lambda x: x[0])
 t_conn_one_to_one_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_one_to_one]
+
+
+# gather segment hulls and centroids
+t_all_121_segment_IDs = sorted(list(set(sum([list(a) for a in t_conn_one_to_one],[]))))
+t_segments_121_centroids    = {tID:{} for tID in t_all_121_segment_IDs}
+t_segments_121_areas        = {tID:{} for tID in t_all_121_segment_IDs}
+for tID in t_all_121_segment_IDs:
+    t_segment = segments2[tID]
+    for t_time,*t_subIDs in t_segment:
+        t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_subIDs]))
+        t_centroid, t_area = centroid_area(t_hull)
+        t_node = tuple([t_time] + t_subIDs)
+        t_segments_121_centroids[   tID][t_node]   = t_centroid
+        t_segments_121_areas[       tID][t_node]   = t_area
+
+            
 
 # ===============================================================================================
 # = 2X LARGE Segments: extract one-to-one segment connections of large segments <=> high trust ==
@@ -1235,9 +1363,9 @@ lr_conn_one_to_one_next_merge = []
 
 
 # prep contour permuation combinations. hold only intermediate nodes
-lr_contour_combs = {tID:{} for tID in lr_conn_one_to_one_large}
+lr_contour_combs = {tID:{} for tID in lr_conn_one_to_one_large + t_conn_121_other_terminated}
 
-for t_conn in lr_conn_one_to_one_large:
+for t_conn in lr_contour_combs:
     t_traj = lr_close_segments_simple_paths[t_conn][0]
     t_min = t_traj[0][0]
     t_max = t_traj[-1][0]
@@ -1332,10 +1460,113 @@ for t_conn in lr_permutation_cases:
     t_a_stdevs_min  = np.argmin(t_a_stdevs)
 
     # save cases with least mean and stdev
-    t_sols_c[t_conn].append([t_c_mean_min,t_c_stdevs_min])
-    t_sols_a[t_conn].append([t_a_mean_min,t_a_stdevs_min])
+    t_sols_c[t_conn] += [t_c_mean_min,t_c_stdevs_min]
+    t_sols_a[t_conn] += [t_a_mean_min,t_a_stdevs_min]
 
+#lets run though interpolation test
+
+
+from scipy import interpolate
+
+def interpolateMiddle(t_conn,t_sols_c,t_sols_a,t_segments_121_centroids,t_all_traj, lr_permutation_times, segments2, histLen = 5, s = 15, debug = 0):
+    t_from,t_to = t_conn
+    t_possible_sols = sorted(list(set(t_sols_c[t_conn] + t_sols_a[t_conn])))
+    t_trajectories = {tID:t_all_traj[t_conn][tID] for tID in t_possible_sols}
+    t_hist_prev     = segments2[t_from][-histLen:]
+    t_hist_next     = segments2[t_to][:histLen]
+    t_traj_prev     = np.array([t_segments_121_centroids[t_from][t_node] for t_node in t_hist_prev])
+    t_traj_next     = np.array([t_segments_121_centroids[  t_to][t_node] for t_node in t_hist_next])
+    t_times_prev    = [t_node[0] for t_node in t_hist_prev]
+    t_times_next    = [t_node[0] for t_node in t_hist_next]
+    t_traj_concat   = np.concatenate((t_traj_prev,t_traj_next))
+    t_times         = t_times_prev + t_times_next
+    x, y            = t_traj_concat.T
+    spline, _       = interpolate.splprep([x, y], u=t_times, s=s,k=1)
+
+    t2              = np.arange(t_times[0],t_times[-1],0.1)
+    IEpolation      = np.array(interpolate.splev(t2, spline,ext=0))
+    t_missing       = lr_permutation_times[t_conn][1:-1]
+    t_interp_missing= np.array(interpolate.splev(t_missing, spline,ext=0)).T   # notice transpose sempai :3
+
+    t_sol_diffs     = {}
+    for t_sol, t_traj in t_trajectories.items():
+        t_diffs = t_interp_missing- t_traj[1:-1]
+        t_sol_diffs[t_sol] = [np.linalg.norm(t_diff) for t_diff in t_diffs]
+        
+    if debug:
+        fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+        axes.plot(*t_traj_prev.T, '-o', c= 'black')
+        axes.plot(*t_traj_next.T, '-o', c= 'black')
+        
+        axes.plot(*IEpolation, linestyle='dotted', c='orange')
+    
+
+        for t_sol, t_traj in t_trajectories.items():
+            axes.plot(*t_traj.T, '-o', label = t_sol)
+        axes.set_title(t_conn)
+        axes.set_aspect('equal')
+        axes.legend(prop={'size': 6})
+        plt.show()
+    return t_sol_diffs
+
+# tested this second, first below cssssssssssssss
+sol = []
+for t_conn in t_sols_c:#[(18,19)]
+    aa = interpolateMiddle(t_conn,t_sols_c,t_sols_a,t_segments_121_centroids,t_all_traj,lr_permutation_times, segments2, debug = 0)
+    sol.append(aa)
 a = 1
+    
+
+for t_conn in t_sols_c:#[(18,19)]
+    t_from,t_to = t_conn
+    t_possible_sols = sorted(list(set(t_sols_c[t_conn] + t_sols_a[t_conn])))
+    t_trajectories = {tID:t_all_traj[t_conn][tID] for tID in t_possible_sols}
+    t_hist_prev     = segments2[t_from][-4:-1]
+    t_hist_next     = segments2[t_to][1:4]
+    t_traj_prev     = np.array([t_segments_121_centroids[t_from][t_node] for t_node in t_hist_prev])
+    t_traj_next     = np.array([t_segments_121_centroids[  t_to][t_node] for t_node in t_hist_next])
+    t_times_prev    = [t_node[0] for t_node in t_hist_prev]
+    t_times_next    = [t_node[0] for t_node in t_hist_next]
+    #t_mean_displ = {tID:np.diff(t_traj,axis = 0)       for tID, t_traj in t_trajectories.items()}
+    t_mean_displ = {tID:np.mean(np.diff(t_traj,axis = 0) ,axis = 0) for tID, t_traj in t_trajectories.items()}
+    for t_sol, t_traj in t_trajectories.items():
+        #t_diag = t_mean_displ[t_sol]
+        #t_diag_inv = 1/t_diag
+        #t_scale_inv = np.diag(t_diag)
+        #t_scale = np.diag(t_diag_inv)
+        #t_traj_scaled = np.dot(t_traj,t_scale)#t_scale @ t_traj.T #np.matmul(t_scale,)
+        #t = np.diff(t_traj_scaled,axis = 0)
+        #t_traj_2 = np.dot(t_traj_scaled,t_scale_inv)
+
+        #x,y = t_traj_scaled.T
+        x0,y0 = t_traj.T
+        t_concat = np.concatenate((t_traj_prev,t_traj,t_traj_next))
+        x,y = t_concat.T
+        t0 = lr_permutation_times[t_conn]
+        t_times = t_times_prev + list(t0) + t_times_next
+        spline, _ = interpolate.splprep([x, y], u=t_times, s=10,k=1)
+
+        #t2 = np.arange(t0[0],t0[-1],0.1)
+        t2 = np.arange(t_times[0],t_times[-1],0.1)
+        IEpolation = np.array(interpolate.splev(t2, spline,ext=0))
+    
+        fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+        
+        for t,t_perms in  enumerate(lr_permutation_cases[t_conn][t_sol]):
+            t_time  = t0[t]
+            t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t_subID] for t_subID in t_perms]))
+            axes.plot(*t_hull.reshape(-1,2).T, '-',  c='black', linewidth = 0.3)
+            for tID in t_perms:
+                axes.plot(*g0_contours[t_time][tID].reshape(-1,2).T, '-',  c=np.array(cyclicColor(t))/255, linewidth = 0.5)
+        axes.plot(*t_traj_prev.T, '-o',  c='black')
+        axes.plot(*t_traj_next.T, '-o',  c='black')
+        axes.plot(x0,y0, '-o')
+        
+        axes.plot(*IEpolation, linestyle='dotted', c='orange')
+        axes.set_title(t_conn)
+        axes.set_aspect('equal')
+        fig.show()
+    a = 1
 
 
 for t_conn, test in lr_contour_combs.items():

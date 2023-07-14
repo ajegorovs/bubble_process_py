@@ -765,7 +765,7 @@ def extractNeighborsPrevious(graph, node, time_from_node_function):
 # ===============================================================================================
 # =========== Extract solo-to-solo bubble trajectories from less rough graphs ===================
 # ===============================================================================================
-# ===============================================================================================
+# REMARK: it is very likely that solo-to-solo (later called 121) is pseudo split-merge, optical effect
 
 allIDs = sum([list(a.keys()) for a in lessRoughBRs.values()],[])
 allIDs = sorted(allIDs, key=lambda x: (x[0], x[1]))
@@ -788,13 +788,19 @@ lr_missingNodes = [node for node in allIDs if node not in lr_allNodesSegm] # !! 
 assert set(skipped)==set(lr_missingNodes), "set(skipped) is not same as set(lr_missingNodes)"
 
 
-def segment_conn_end_start_points(connections):
+def segment_conn_end_start_points(connections, nodes = 0):
     if connections is not None:
         if type(connections) == tuple:
             start,end = connections
-            return (segments2[start][-1][0],segments2[end][0][0])
+            if nodes == 1:
+                return (segments2[start][-1],segments2[end][0])
+            else:
+                return (segments2[start][-1][0],segments2[end][0][0])
         if type(connections) == list:
-            return [(segments2[start][-1][0],segments2[end][0][0]) for start,end in connections]
+            if nodes == 1:
+                return [(segments2[start][-1],segments2[end][0]) for start,end in connections]
+            else:
+                return [(segments2[start][-1][0],segments2[end][0][0]) for start,end in connections]
         else:
             return None
 # ===============================================================================================
@@ -802,6 +808,9 @@ def segment_conn_end_start_points(connections):
 # === find POSSIBLE interval start-end connectedness: start-end exist within set time interval ==
 # ===============================================================================================
 # ===============================================================================================
+# REMARK: it is expected that INTER segment space is limited, so no point searching paths from
+# REMARK: one segment to each other in graph. instead inspect certain intervals of set length 
+# REMARK: lr_maxDT. Caveat is that inter-space can include smaller segments.. its dealth with after
 
 # get start and end of good segments
 lr_start_end    = [[segm[0],segm[-1]] for segm in segments2]
@@ -844,7 +853,8 @@ for k,endTime in enumerate(lr_all_end):
 # ===============================================================================================
 # === find ACTUAL interval start-end connectedness: get all connected paths if there are any ==
 # ===============================================================================================
-# ===============================================================================================
+# REMARK: refine previously acquired potential segment connectedness by searching paths between
+
 # check connection between "time-localized" segments
 # isolate all nodes on graph that are active in unresolved time between segment existance
 # find all paths from one segment end to other start
@@ -946,6 +956,9 @@ G2 = nx.Graph()
 for (node1, node2), weight in lr_intervals_lengths.items():
     G2.add_edge(node1, node2, weight=weight)
 
+for g in G2.nodes():
+      G2.nodes()[g]["t_start"] = segments2[g][0][0]
+      G2.nodes()[g]["t_end"] = segments2[g][-1][0]
 #pos = nx.spring_layout(G2)
 #edge_widths = [data['weight'] for _, _, data in G2.edges(data=True)]
 #nx.draw(G2, pos, with_labels=True, width=edge_widths)
@@ -957,58 +970,61 @@ for (node1, node2), weight in lr_intervals_lengths.items():
 # === extract closest neighbors of segments ===
 # ===============================================================================================
 # ===============================================================================================
-t_nodes = sorted(list(G2.nodes()))
-t_neighbor_sol_all_prev = {tID:{} for tID in t_nodes}
-t_neighbor_sol_all_next = {tID:{} for tID in t_nodes}
-for node in t_nodes:
-    # Get the neighboring nodes
-    # segments2[node]; segments2[t_neighbor]
-    t_neighbors = list(G2.neighbors(node))
-    t_time_start    = segments2[node][0][0]
-    t_time_end      = segments2[node][-1][0]
-    t_neighbors_prev = []
-    t_neighbors_next = []
-    for t_neighbor in t_neighbors:
-        t_time_neighbor_start    = segments2[t_neighbor][0][0]
-        t_time_neighbor_end      = segments2[t_neighbor][-1][0]
-        if t_time_start < t_time_neighbor_start and t_time_end < t_time_neighbor_start:
-            t_neighbors_next.append(t_neighbor)
-        elif t_time_start > t_time_neighbor_end and t_time_end > t_time_neighbor_end:
-            t_neighbors_prev.append(t_neighbor)
-    # check if neighbors are not lost, or path generation is incorrect, like looping back in time
-    assert len(t_neighbors) == len(t_neighbors_prev) + len(t_neighbors_next), "missing neighbors, time position assumption is wrong"
+# REMARK: inspecting closest neighbors allows to elliminate cases with segments inbetween 
+# REMARK: connected segments via lr_maxDT. problem is that affects branches of splits/merges
+if 1 == 1:
+    t_nodes = sorted(list(G2.nodes()))
+    t_neighbor_sol_all_prev = {tID:{} for tID in t_nodes}
+    t_neighbor_sol_all_next = {tID:{} for tID in t_nodes}
+    for node in t_nodes:
+        # Get the neighboring nodes
+        # segments2[node]; segments2[t_neighbor]
+        t_neighbors = list(G2.neighbors(node))
+        t_time_start    = segments2[node][0][0]
+        t_time_end      = segments2[node][-1][0]
+        t_neighbors_prev = []
+        t_neighbors_next = []
+        for t_neighbor in t_neighbors:
+            t_time_neighbor_start    = segments2[t_neighbor][0][0]
+            t_time_neighbor_end      = segments2[t_neighbor][-1][0]
+            if t_time_start < t_time_neighbor_start and t_time_end < t_time_neighbor_start:
+                t_neighbors_next.append(t_neighbor)
+            elif t_time_start > t_time_neighbor_end and t_time_end > t_time_neighbor_end:
+                t_neighbors_prev.append(t_neighbor)
+        # check if neighbors are not lost, or path generation is incorrect, like looping back in time
+        assert len(t_neighbors) == len(t_neighbors_prev) + len(t_neighbors_next), "missing neighbors, time position assumption is wrong"
     
-    t_neighbors_weights_prev = {}
-    t_neighbors_weights_next = {}
+        t_neighbors_weights_prev = {}
+        t_neighbors_weights_next = {}
     
-    for t_neighbor in t_neighbors_prev: # back weights are negative
-        t_neighbors_weights_prev[t_neighbor] = -1*G2[node][t_neighbor]['weight']
-    for t_neighbor in t_neighbors_next:
-        t_neighbors_weights_next[t_neighbor] = G2[node][t_neighbor]['weight']
-    t_neighbors_time_prev = {tID:segments2[tID][-1][0]  for tID in t_neighbors_weights_prev}
-    t_neighbors_time_next = {tID:segments2[tID][0][0]   for tID in t_neighbors_weights_next}
-    #t_neighbor_sol = {}
+        for t_neighbor in t_neighbors_prev: # back weights are negative
+            t_neighbors_weights_prev[t_neighbor] = -1*G2[node][t_neighbor]['weight']
+        for t_neighbor in t_neighbors_next:
+            t_neighbors_weights_next[t_neighbor] = G2[node][t_neighbor]['weight']
+        t_neighbors_time_prev = {tID:segments2[tID][-1][0]  for tID in t_neighbors_weights_prev}
+        t_neighbors_time_next = {tID:segments2[tID][0][0]   for tID in t_neighbors_weights_next}
+        #t_neighbor_sol = {}
     
-    if len(t_neighbors_weights_prev)>0:
-        # neg weights, so max, get time of nearset branch t0. get all connections within [t0 - 2, t0] in case of split
-        t_val_min = max(t_neighbors_weights_prev.values())
-        t_key_min_main = max(t_neighbors_weights_prev, key = t_neighbors_weights_prev.get)
-        t_key_main_ref_time = t_neighbors_time_prev[t_key_min_main]
-        t_sol = [key for key,t in t_neighbors_time_prev.items() if t_key_main_ref_time - 2 <= t <=  t_key_main_ref_time]
-        #t_sol = [key for key, value in t_neighbors_weights_prev.items() if t_val_min - 1 <= value <=  t_val_min]
-        for t_node in t_sol:t_neighbor_sol_all_prev[node][t_node] = t_neighbors_weights_prev[t_node]
+        if len(t_neighbors_weights_prev)>0:
+            # neg weights, so max, get time of nearset branch t0. get all connections within [t0 - 2, t0] in case of split
+            t_val_min = max(t_neighbors_weights_prev.values())
+            t_key_min_main = max(t_neighbors_weights_prev, key = t_neighbors_weights_prev.get)
+            t_key_main_ref_time = t_neighbors_time_prev[t_key_min_main]
+            t_sol = [key for key,t in t_neighbors_time_prev.items() if t_key_main_ref_time - 2 <= t <=  t_key_main_ref_time]
+            #t_sol = [key for key, value in t_neighbors_weights_prev.items() if t_val_min - 1 <= value <=  t_val_min]
+            for t_node in t_sol:t_neighbor_sol_all_prev[node][t_node] = t_neighbors_weights_prev[t_node]
         
-    if len(t_neighbors_weights_next)>0:
-        t_val_min = min(t_neighbors_weights_next.values())
-        t_key_min_main = min(t_neighbors_weights_next, key = t_neighbors_weights_next.get)
-        t_key_main_ref_time = t_neighbors_time_next[t_key_min_main]
-        t_sol = [key for key,t in t_neighbors_time_next.items() if t_key_main_ref_time <= t <=  t_key_main_ref_time + 2]
-        #t_sol = [key for key, value in t_neighbors_weights_next.items() if t_val_min +1 >= value >= t_val_min]
-        for t_node in t_sol: t_neighbor_sol_all_next[node][t_node] = t_neighbors_weights_next[t_node]
-    #t_neighbors_prev = extractNeighborsPrevious(G2, node,    lambda x: x[0])
-    #t_neighbors_next = extractNeighborsNext(    G2, node,    lambda x: x[0])
-    # Iterate through the neighboring nodes
-    a = 1
+        if len(t_neighbors_weights_next)>0:
+            t_val_min = min(t_neighbors_weights_next.values())
+            t_key_min_main = min(t_neighbors_weights_next, key = t_neighbors_weights_next.get)
+            t_key_main_ref_time = t_neighbors_time_next[t_key_min_main]
+            t_sol = [key for key,t in t_neighbors_time_next.items() if t_key_main_ref_time <= t <=  t_key_main_ref_time + 2]
+            #t_sol = [key for key, value in t_neighbors_weights_next.items() if t_val_min +1 >= value >= t_val_min]
+            for t_node in t_sol: t_neighbor_sol_all_next[node][t_node] = t_neighbors_weights_next[t_node]
+        #t_neighbors_prev = extractNeighborsPrevious(G2, node,    lambda x: x[0])
+        #t_neighbors_next = extractNeighborsNext(    G2, node,    lambda x: x[0])
+        # Iterate through the neighboring nodes
+        a = 1
 
 # ===============================================================================================
 # ===============================================================================================
@@ -1029,168 +1045,276 @@ for node, t_conn in t_neighbor_sol_all_next.items():
 # === calculate all paths between  nearest segments ===
 # ===============================================================================================
 # ===============================================================================================
+if 1 == 1:
+    lr_close_segments_simple_paths = {}
+    lr_close_segments_simple_paths_inter = {}
+    tIDs = [tID for tID,t_dic in t_neighbor_sol_all_next.items() if len(t_dic) >0]
+    for t_from in tIDs:
+        for t_to in t_neighbor_sol_all_next[t_from]:
+            t_from_node_last   = segments2[t_from][-1]
+            t_to_node_first      = segments2[t_to][0]
 
-lr_close_segments_simple_paths = {}
-lr_close_segments_simple_paths_inter = {}
-tIDs = [tID for tID,t_dic in t_neighbor_sol_all_next.items() if len(t_dic) >0]
-for t_from in tIDs:
-    for t_to in t_neighbor_sol_all_next[t_from]:
-        t_from_node_last   = segments2[t_from][-1]
-        t_to_node_first      = segments2[t_to][0]
-
-        t_from_node_last_time   = t_from_node_last[0]
-        t_to_node_first_time    = t_to_node_first[0]
-        t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
-        t_from_to_paths_simple  = list(nx.all_simple_paths(G, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps))
+            t_from_node_last_time   = t_from_node_last[0]
+            t_to_node_first_time    = t_to_node_first[0]
+            t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
+            t_from_to_paths_simple  = list(nx.all_simple_paths(G, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps))
 
         
-        t_from_to_paths_nodes_all       = sorted(set(sum(t_from_to_paths_simple,[])),key=lambda x: x[0])
-        t_from_to_paths_nodes_all_inter = [t_node for t_node in t_from_to_paths_nodes_all if t_node not in [t_from_node_last,t_to_node_first]]
+            t_from_to_paths_nodes_all       = sorted(set(sum(t_from_to_paths_simple,[])),key=lambda x: x[0])
+            t_from_to_paths_nodes_all_inter = [t_node for t_node in t_from_to_paths_nodes_all if t_node not in [t_from_node_last,t_to_node_first]]
 
-        lr_close_segments_simple_paths[         tuple([t_from,t_to])]  = t_from_to_paths_simple
-        lr_close_segments_simple_paths_inter[   tuple([t_from,t_to])]  = t_from_to_paths_nodes_all_inter
+            lr_close_segments_simple_paths[         tuple([t_from,t_to])]  = t_from_to_paths_simple
+            lr_close_segments_simple_paths_inter[   tuple([t_from,t_to])]  = t_from_to_paths_nodes_all_inter
         
 
 
-node_positions2 = {}
-t_segments_times = {}
-labels = {}
-for t,segment in enumerate(segments2):
-    t_times = [a[0] for a in segment]
-    t_segments_times[t] = int(np.mean(t_times))
-    labels[t] = f'{t}_{segment[0]}'
-node_positions2 = getNodePos2(t_segments_times, S = 1)
+    node_positions2 = {}
+    t_segments_times = {}
+    labels = {}
+    for t,segment in enumerate(segments2):
+        t_times = [a[0] for a in segment]
+        t_segments_times[t] = int(np.mean(t_times))
+        labels[t] = f'{t}_{segment[0]}'
+    node_positions2 = getNodePos2(t_segments_times, S = 1)
 
 
-for g in G2.nodes():
-  G2.nodes()[g]["height"] = node_positions2[g][0]
-#draw_graph_with_height(G2,figsize=(5,5), labels=labels)
+    for g in G2.nodes():
+      G2.nodes()[g]["height"] = node_positions2[g][0]
+    #draw_graph_with_height(G2,figsize=(5,5), labels=labels)
 
 
-#pos = nx.spring_layout(G2, pos = node_positions2, k = 1, iterations = 10)
+    #pos = nx.spring_layout(G2, pos = node_positions2, k = 1, iterations = 10)
 
-#nx.draw(G2, pos=node_positions2, labels=labels)
-#plt.show()
+    #nx.draw(G2, pos=node_positions2, labels=labels)
+    #plt.show()
+    1
 
 # ===============================================================================================
-# === rudamentary split/merge analysis based on nearest neighbor connectedness symmetry ===
+# ====== rudamentary split/merge analysis based on nearest neighbor connectedness symmetry ======
 # ===============================================================================================
+# REMARK: nearest neighbors elliminates unidirectional connectedness between split/merge branches
 
 # by analyzing nearest neighbors you can see anti-symmetry in case of splits and merges.
 # if one branch of merge is closer to merge product, it will have strong connection both ways
 # further branches will only have unidirectional connection
-
-lr_connections_unidirectional   = []
-lr_connections_forward          = []
-lr_connections_backward         = []
-for t_from, t_forward_conns in t_neighbor_sol_all_next.items():
-    for t_to in t_forward_conns.keys():
-        lr_connections_forward.append(tuple(sorted([t_from,t_to])))
-for t_to, t_backward_conns in t_neighbor_sol_all_prev.items():
-    for t_from in t_backward_conns.keys():
-        lr_connections_backward.append(tuple(sorted([t_from,t_to])))
-
-lr_connections_unidirectional   = sorted(list(set(lr_connections_forward) & set(lr_connections_backward)), key = lambda x: x[0])
-lr_connections_directed         = [t_conn for t_conn in lr_connections_forward + lr_connections_backward if t_conn not in lr_connections_unidirectional]
-lr_connections_directed         = sorted(list(set(lr_connections_directed)), key = lambda x: x[0])
-
-# lr_connections_directed contain merges/splits, but also lr_connections_unidirectional contain part of splits/merges.
-# unidirectional means last/next segment is connected via unidirectional ege
-t_merge_split_culprit_edges = []
-for t_conn in lr_connections_directed:
-    if t_conn in lr_connections_forward:    t_from, t_to = t_conn  
-    else:                                   t_to, t_from = t_conn
-    # by knowing direction of direactional connection, i can tell that opposite direction connection is absent.
-    # there are other connection/s in that opposite (time-wise) directions which are other directional connectsions or unidir
-    t_time_to   = segments2[t_to    ][0][0]
-    t_time_from = segments2[t_from  ][0][0]
-    # if directed connection i time-forward, then unidir connections are from t_to node back in time
-    t_forward = True if t_time_to - t_time_from > 0 else False
-    if t_forward:
-        t_unidir_neighbors = list(t_neighbor_sol_all_prev[t_to].keys())
-    else:
-        t_unidir_neighbors = list(t_neighbor_sol_all_next[t_to].keys())
-    t_unidir_conns = [tuple(sorted([t_to,t])) for t in t_unidir_neighbors]
-    t_merge_split_culprit_edges += [t_conn]
-    t_merge_split_culprit_edges += t_unidir_conns
-    segment_conn_end_start_points(t_unidir_conns)
-    segment_conn_end_start_points(t_conn)
-    a = 1
-    #if t_to in t_neighbor_sol_all_prev[t_from]:
-t_merge_split_culprit_edges = sorted(t_merge_split_culprit_edges, key = lambda x: x[0])
-
-
-# simply extract nodes and their neigbors if there are multiple neighbors
-t_merge_split_culprit_edges2= []
-for t_from, t_forward_conns in t_neighbor_sol_all_next.items():
-    if len(t_forward_conns)>1:
+if 1==1:
+    lr_connections_unidirectional   = []
+    lr_connections_forward          = []
+    lr_connections_backward         = []
+    for t_from, t_forward_conns in t_neighbor_sol_all_next.items():
         for t_to in t_forward_conns.keys():
-            t_merge_split_culprit_edges2.append(tuple(sorted([t_from,t_to])))
-
-for t_to, t_backward_conns in t_neighbor_sol_all_prev.items():
-    if len(t_backward_conns)>1:
+            lr_connections_forward.append(tuple(sorted([t_from,t_to])))
+    for t_to, t_backward_conns in t_neighbor_sol_all_prev.items():
         for t_from in t_backward_conns.keys():
-            t_merge_split_culprit_edges2.append(tuple(sorted([t_from,t_to])))
+            lr_connections_backward.append(tuple(sorted([t_from,t_to])))
 
-t_merge_split_culprit_edges2 = sorted(t_merge_split_culprit_edges2, key = lambda x: x[0])
-segment_conn_end_start_points(t_merge_split_culprit_edges2)
+    lr_connections_unidirectional   = sorted(list(set(lr_connections_forward) & set(lr_connections_backward)), key = lambda x: x[0])
+    lr_connections_directed         = [t_conn for t_conn in lr_connections_forward + lr_connections_backward if t_conn not in lr_connections_unidirectional]
+    lr_connections_directed         = sorted(list(set(lr_connections_directed)), key = lambda x: x[0])
 
-t_merge_split_culprit_edges_all = sorted(list(set(t_merge_split_culprit_edges + t_merge_split_culprit_edges2)), key = lambda x: x[0])
+    # lr_connections_directed contain merges/splits, but also lr_connections_unidirectional contain part of splits/merges.
+    # unidirectional means last/next segment is connected via unidirectional ege
+    t_merge_split_culprit_edges = []
+    for t_conn in lr_connections_directed:
+        if t_conn in lr_connections_forward:    t_from, t_to = t_conn  
+        else:                                   t_to, t_from = t_conn
+        # by knowing direction of direactional connection, i can tell that opposite direction connection is absent.
+        # there are other connection/s in that opposite (time-wise) directions which are other directional connectsions or unidir
+        t_time_to   = segments2[t_to    ][0][0]
+        t_time_from = segments2[t_from  ][0][0]
+        # if directed connection i time-forward, then unidir connections are from t_to node back in time
+        t_forward = True if t_time_to - t_time_from > 0 else False
+        if t_forward:
+            t_unidir_neighbors = list(t_neighbor_sol_all_prev[t_to].keys())
+        else:
+            t_unidir_neighbors = list(t_neighbor_sol_all_next[t_to].keys())
+        t_unidir_conns = [tuple(sorted([t_to,t])) for t in t_unidir_neighbors]
+        t_merge_split_culprit_edges += [t_conn]
+        t_merge_split_culprit_edges += t_unidir_conns
+        segment_conn_end_start_points(t_unidir_conns)
+        segment_conn_end_start_points(t_conn)
+        a = 1
+        #if t_to in t_neighbor_sol_all_prev[t_from]:
+    t_merge_split_culprit_edges = sorted(t_merge_split_culprit_edges, key = lambda x: x[0])
 
-T = nx.Graph()
-T.add_edges_from(t_merge_split_culprit_edges_all)
-connected_components_all = [list(nx.node_connected_component(T, key)) for key in T.nodes()]
-connected_components_all = [sorted(sub) for sub in connected_components_all]
-# extract connected families
-connected_components_unique = []
-[connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
-a = 1
+
+    # simply extract nodes and their neigbors if there are multiple neighbors
+    t_merge_split_culprit_edges2= []
+    for t_from, t_forward_conns in t_neighbor_sol_all_next.items():
+        if len(t_forward_conns)>1:
+            for t_to in t_forward_conns.keys():
+                t_merge_split_culprit_edges2.append(tuple(sorted([t_from,t_to])))
+
+    for t_to, t_backward_conns in t_neighbor_sol_all_prev.items():
+        if len(t_backward_conns)>1:
+            for t_from in t_backward_conns.keys():
+                t_merge_split_culprit_edges2.append(tuple(sorted([t_from,t_to])))
+
+    t_merge_split_culprit_edges2 = sorted(t_merge_split_culprit_edges2, key = lambda x: x[0])
+    segment_conn_end_start_points(t_merge_split_culprit_edges2)
+
+    t_merge_split_culprit_edges_all = sorted(list(set(t_merge_split_culprit_edges + t_merge_split_culprit_edges2)), key = lambda x: x[0])
+    t_merge_split_culprit_node_combos = segment_conn_end_start_points(t_merge_split_culprit_edges_all, nodes = 1)
+
+    # find clusters of connected nodes of split/merge events. this way instead of sigment IDs, because one
+    # segment may be sandwitched between any of these events and two cluster will be clumped together
+
+    T = nx.Graph()
+    T.add_edges_from(t_merge_split_culprit_node_combos)
+    connected_components_all = [list(nx.node_connected_component(T, key)) for key in T.nodes()]
+    connected_components_all = [sorted(sub) for sub in connected_components_all]
+    # extract connected families
+    connected_components_unique = []
+    [connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
+
+    # relate connected node families ^ to segments
+    lr_merge_split_node_families = []
+    for t_node_cluster in connected_components_unique:
+        t_times_active = [t_node[0] for t_node in t_node_cluster]
+        t_active_segments = set(sum([lr_time_active_segments[t_time] for t_time in t_times_active],[]))
+        t_sol = []
+        for t_node in t_node_cluster:
+            for t_segment_ID in t_active_segments:
+                if t_node in segments2[t_segment_ID]:
+                    t_sol.append(t_segment_ID)
+                    break
+        lr_merge_split_node_families.append(sorted(t_sol))
+
+# ===============================================================================================
+# merge/split classification will be here
+# ===============================================================================================
+# REMARK: if a node has MULTIPLE neighbors from one of side (time-wise)
+# REMARK: then split or merge happened, depending which side it is
+# REMARK: if cluster has both split and merge of nodes, its classified separately
+# REMARK: edges of these 3 events are stored for further analysis
+
+if 1 == 1:
+    lr_conn_edges_splits = []
+    lr_conn_edges_merges = []
+    lr_conn_edges_splits_merges_mixed = []
+
+    for t_cluster in lr_merge_split_node_families:
+
+        t_neighbors_prev = {tID:[] for tID in t_cluster}
+        t_neighbors_next = {tID:[] for tID in t_cluster}
+
+        for tID in t_cluster:
+            t_neighbors_all = [t for t in list(G2.neighbors(tID)) if t in t_cluster]
+            t_node_start    = G2.nodes[tID]["t_start"]
+            t_node_end      = G2.nodes[tID]["t_end"]
+            for t_neighbor in t_neighbors_all:
+                t_neighbor_start    = G2.nodes[t_neighbor]["t_start"]
+                t_neighbor_end      = G2.nodes[t_neighbor]["t_end"]
+                if t_neighbor_start > t_node_end:
+                    t_neighbors_next[tID].append(t_neighbor)
+                elif t_neighbor_end < t_node_start:
+                    t_neighbors_prev[tID].append(t_neighbor)
+    
+        t_neighbors_prev_large = {tID:t_neighbors for tID,t_neighbors in t_neighbors_prev.items() if len(t_neighbors) > 1}
+        t_neighbors_next_large = {tID:t_neighbors for tID,t_neighbors in t_neighbors_next.items() if len(t_neighbors) > 1}
+    
+        t_edges_merge =  sum([[tuple(sorted([id1,id2])) for id2 in subIDs] for id1,subIDs in t_neighbors_prev_large.items()],[])
+        t_edges_split =  sum([[tuple(sorted([id1,id2])) for id2 in subIDs] for id1,subIDs in t_neighbors_next_large.items()],[])
+    
+        #bb = segment_conn_end_start_points(t_edges_merge, nodes = 1)
+        #bb2 = segment_conn_end_start_points(t_edges_split, nodes = 1)
+
+        if len(t_neighbors_next_large) == 0 and len(t_neighbors_prev_large) > 0:
+            lr_conn_edges_merges += t_edges_merge
+        elif len(t_neighbors_prev_large) == 0 and len(t_neighbors_next_large) > 0:
+            lr_conn_edges_splits += t_edges_split
+        else:
+            lr_conn_edges_splits_merges_mixed += (t_edges_merge + t_edges_split)
+        a = 1
+
+    #segment_conn_end_start_points(lr_conn_edges_splits, nodes = 1)
+    #segment_conn_end_start_points(lr_conn_edges_merges, nodes = 1)
+    a = 1
 #drawH(G, paths, node_positions)
 #segment_conn_end_start_points(lr_connections_directed)
 #segment_conn_end_start_points(lr_connections_unidirectional)
+
 # ===============================================================================================
 # ===============================================================================================
-# === extract segment-segment connections that are connected only together (one-to-one) ===
+# === extract segment-segment connections that are connected only together (one-to-one; 121) ====
 # ===============================================================================================
-# ===============================================================================================
-# find segments that connect only to one neighbor segment both directions
-# from node "t_node" to node "t_neighbor"
-t_conn_one_to_one = []
-for t_node in G2.nodes():
-    t_node_neighbors = list(G2.neighbors(t_node))
-    t_node_time_end      = segments2[t_node][-1][0]
-    t_node_neighbors_next = []
-    for t_neighbor in t_node_neighbors:
-        t_neighbor_time_start    = segments2[t_neighbor][0][0]
-        if t_node_time_end < t_neighbor_time_start:
-            t_node_neighbors_next.append(t_neighbor)
-    if len(t_node_neighbors_next) == 1:
-        t_neighbor              = t_node_neighbors_next[0]
-        t_neighbor_time_start   = segments2[t_neighbor][0][0]
-        t_neighbor_neighbors   = list(G2.neighbors(t_neighbor))
-        
-        t_neighbor_neighbors_back = []
-        for t_neighbor_neighbor in t_neighbor_neighbors:
-            t_neighbor_neighbor_time_end      = segments2[t_neighbor_neighbor][-1][0]
-            if t_neighbor_time_start > t_neighbor_neighbor_time_end:
-                t_neighbor_neighbors_back.append(t_neighbor)
-        if len(t_neighbor_neighbors_back) == 1:
-            t_conn_one_to_one.append(tuple([t_node,t_neighbor]))
+# REMARK: as discussed before directed connections are part of merges, but in unidirectional
+# REMARK: connectios exists an associated (main) connection that makes other a directional
+# REMARK: it was a result of performing nearest neighbor refinement.
+# REMARK: so non split/merge connection is refinement of unidir connection list with info of merge/split
+
+t_conn_121 = [t_conn for t_conn in lr_connections_unidirectional if t_conn not in t_merge_split_culprit_edges_all]
+aa0  = sorted(   segment_conn_end_start_points(t_conn_121, nodes = 1),   key = lambda x: x[0])
+if 1 == 1:
     
-t_conn_one_to_one2 = []
-for t_node,t_forward_connections in t_neighbor_sol_all_next.items():
-    if len(t_forward_connections) ==  1:
-        t_forward_neighbor = list(t_forward_connections.keys())[0]
-        t_forward_neighbor_back_neighbors = t_neighbor_sol_all_prev[t_forward_neighbor]
-        if len(t_forward_neighbor_back_neighbors) == 1 and list(t_forward_neighbor_back_neighbors.keys())[0] == t_node:
-            t_conn_one_to_one2.append(tuple([t_node,t_forward_neighbor]))
-aa  = sorted(   segment_conn_end_start_points(t_conn_one_to_one),   key = lambda x: x[0])
-aa2 = sorted(   segment_conn_end_start_points(t_conn_one_to_one2),  key = lambda x: x[0])
-t_conn_one_to_one_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_one_to_one]
+    # find segments that connect only to one neighbor segment both directions
+    # from node "t_node" to node "t_neighbor"
+    #t_conn_121 = []
+    #for t_node in G2.nodes():
+    #    t_node_neighbors = list(G2.neighbors(t_node))
+    #    t_node_time_end      = segments2[t_node][-1][0]
+    #    t_node_neighbors_next = []
+    #    for t_neighbor in t_node_neighbors:
+    #        t_neighbor_time_start    = segments2[t_neighbor][0][0]
+    #        if t_node_time_end < t_neighbor_time_start:
+    #            t_node_neighbors_next.append(t_neighbor)
+    #    if len(t_node_neighbors_next) == 1:
+    #        t_neighbor              = t_node_neighbors_next[0]
+    #        t_neighbor_time_start   = segments2[t_neighbor][0][0]
+    #        t_neighbor_neighbors   = list(G2.neighbors(t_neighbor))
+        
+    #        t_neighbor_neighbors_back = []
+    #        for t_neighbor_neighbor in t_neighbor_neighbors:
+    #            t_neighbor_neighbor_time_end      = segments2[t_neighbor_neighbor][-1][0]
+    #            if t_neighbor_time_start > t_neighbor_neighbor_time_end:
+    #                t_neighbor_neighbors_back.append(t_neighbor)
+    #        if len(t_neighbor_neighbors_back) == 1:
+    #            t_conn_121.append(tuple([t_node,t_neighbor]))
+    
+    #t_conn_one_to_one2 = []
+    #for t_node,t_forward_connections in t_neighbor_sol_all_next.items():
+    #    if len(t_forward_connections) ==  1:
+    #        t_forward_neighbor = list(t_forward_connections.keys())[0]
+    #        t_forward_neighbor_back_neighbors = t_neighbor_sol_all_prev[t_forward_neighbor]
+    #        if len(t_forward_neighbor_back_neighbors) == 1 and list(t_forward_neighbor_back_neighbors.keys())[0] == t_node:
+    #            t_conn_one_to_one2.append(tuple([t_node,t_forward_neighbor]))
+    #aa  = sorted(   segment_conn_end_start_points(t_conn_121, nodes = 1),   key = lambda x: x[0])
+    #aa2 = sorted(   segment_conn_end_start_points(t_conn_one_to_one2, nodes = 1),  key = lambda x: x[0])
+    #t_conn_one_to_one_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_121]
+    1
+
+# ===============================================================================================
+# separate 121 paths with zero inter length
+# ===============================================================================================
+# REMARK: these cases occur when segment terminates into split with or merge with a node, not a segment
+# REMARK: and 121 separation only concerns itself with segment-segment connecivity
+
+t_conn_121_zero_path = []
+for t_node in t_conn_121:
+    if len(lr_close_segments_simple_paths_inter[t_node]) == 0:
+        t_conn_121_zero_path.append(t_node)
+
+t_conn_121 = [t_node for t_node in t_conn_121 if t_node not in t_conn_121_zero_path]
+
+# ===============================================================================================
+# reconstruct 121 zero path neighbors
+# ===============================================================================================
+# REMARK: zero path implies that solo nodes are connected to prev segment end or next segment start
+t_conn_121_zero_path_nodes = {t_conn:[] for t_conn in t_conn_121_zero_path}
+for t_conn in t_conn_121_zero_path:
+    t_from, t_to    = t_conn
+    t_from_node_end = segments2[t_from  ][-1]
+    t_to_node_start = segments2[t_to    ][0]
+    t_from_neigbors_next    = extractNeighborsNext(     G, t_from_node_end,  lambda x: x[0])
+    t_to_neigbors_prev      = extractNeighborsPrevious( G, t_to_node_start,  lambda x: x[0])
+    t_conn_121_zero_path_nodes[t_conn] = sorted(set(t_from_neigbors_next+t_to_neigbors_prev),key=lambda x: (x[0], x[1]))
 
 
+# ===============================================================================================
 # gather segment hulls and centroids
-t_all_121_segment_IDs = sorted(list(set(sum([list(a) for a in t_conn_one_to_one],[]))))
+# ===============================================================================================
+# REMARK: not doing anything with zero path because it has two or more nodes at one time.
+t_all_121_segment_IDs = sorted(list(set(sum([list(a) for a in t_conn_121],[]))))
 t_segments_121_centroids    = {tID:{} for tID in t_all_121_segment_IDs}
 t_segments_121_areas        = {tID:{} for tID in t_all_121_segment_IDs}
 for tID in t_all_121_segment_IDs:
@@ -1211,7 +1335,7 @@ for tID in t_all_121_segment_IDs:
 # most likely a pseudo split-merge (p_split-merge). large length => most likely solo bubble
 lr_segment_len_large = 7
 lr_conn_one_to_one_large = []
-for t_from,t_to in t_conn_one_to_one:
+for t_from,t_to in t_conn_121:
     t_segment_length_from   = lr_segments_lengths[t_from]
     t_segment_length_to     = lr_segments_lengths[t_to]
     if t_segment_length_from >= lr_segment_len_large and t_segment_length_to >= lr_segment_len_large:
@@ -1222,142 +1346,172 @@ lr_conn_one_to_one_large_test = [(segments2[start][-1][0],segments2[end][0][0]) 
 # ===============================================================================================
 # ======== SHORT SEGMENTS BUT ISOLATED: check if one2one (121) connection is isolated: ==========
 # ===============================================================================================
-# find all simple paths within time period between segments
-# check neighbors of path nodes
-# remove simple path nodes
-# check of some of the remaining nodes are "poking out"
-# ===============================================================================================
-# isolated connection is only connected to its own nodes
+# REMARK: isolated connection is only connected to its own inter-segment path nodes
+# REMARK: and not branching out 1 step further. pretty strict condition
 
-lr_conn_one_to_one_other = [t_conn for t_conn in t_conn_one_to_one if t_conn not in lr_conn_one_to_one_large]
-lr_conn_one_to_one_other_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in lr_conn_one_to_one_other]
+# take inter-segment simple paths, extract nodes; check neighbors of nodes;
+# isolate nonpath nodes; see what isleft. if path had a closed boundary, leftover will be zero.
 
-t_conn_121_other_isolated_not = []
-t_conn_121_other_isolated = []
-for t_from,t_to in lr_conn_one_to_one_other:
+if 1 == 1:
+    lr_conn_one_to_one_other = [t_conn for t_conn in t_conn_121 if t_conn not in lr_conn_one_to_one_large]
+    lr_conn_one_to_one_other_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in lr_conn_one_to_one_other]
 
-    t_from_node_last   = segments2[t_from][-1]
-    t_to_node_first      = segments2[t_to][0]
+    t_conn_121_other_isolated_not = []
+    t_conn_121_other_isolated = []
+    for t_from,t_to in lr_conn_one_to_one_other:
 
-    t_from_node_last_time   = t_from_node_last[0]
-    t_to_node_first_time    = t_to_node_first[0]
-    t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
-    #t_from_to_paths_simple = list(nx.all_simple_paths(G, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps))
-    #t_from_to_paths_simple = lr_close_segments_simple_paths[tuple([t_from,t_to])]
-    #t_from_to_paths_nodes_all = sorted(set(sum(t_from_to_paths_simple,[])),key=lambda x: x[0])
-    #t_from_to_paths_nodes_all_inter = [t_node for t_node in t_from_to_paths_nodes_all if t_node not in [t_from_node_last,t_to_node_first]]
-    t_from_to_paths_nodes_all_inter = lr_close_segments_simple_paths_inter[   tuple([t_from,t_to])]
-    t_all_path_neighbors = []
-    for t_node in t_from_to_paths_nodes_all_inter:
-        t_all_path_neighbors.append(list(G.neighbors(t_node)))
-    t_all_path_neighbors_node_all = sorted(set(sum(t_all_path_neighbors,[])),key=lambda x: x[0])
-    t_nides_not_in_main_path = [t_node for t_node in t_all_path_neighbors_node_all if t_node not in t_from_to_paths_nodes_all_inter + [t_from_node_last,t_to_node_first]]
-    if len(t_nides_not_in_main_path):   t_conn_121_other_isolated_not.append(tuple([t_from,t_to]))
-    else:                               t_conn_121_other_isolated.append(tuple([t_from,t_to]))
+        t_from_node_last   = segments2[t_from][-1]
+        t_to_node_first      = segments2[t_to][0]
 
-t_conn_121_other_isolated_not_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_121_other_isolated_not]
-t_conn_121_other_isolated_test = [(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_121_other_isolated]
+        t_from_node_last_time   = t_from_node_last[0]
+        t_to_node_first_time    = t_to_node_first[0]
+        t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
+        #t_from_to_paths_simple = list(nx.all_simple_paths(G, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps))
+        #t_from_to_paths_simple = lr_close_segments_simple_paths[tuple([t_from,t_to])]
+        #t_from_to_paths_nodes_all = sorted(set(sum(t_from_to_paths_simple,[])),key=lambda x: x[0])
+        #t_from_to_paths_nodes_all_inter = [t_node for t_node in t_from_to_paths_nodes_all if t_node not in [t_from_node_last,t_to_node_first]]
+        t_from_to_paths_nodes_all_inter = lr_close_segments_simple_paths_inter[   tuple([t_from,t_to])]
+        t_all_path_neighbors = []
+        for t_node in t_from_to_paths_nodes_all_inter:
+            t_all_path_neighbors.append(list(G.neighbors(t_node)))
+        t_all_path_neighbors_node_all = sorted(set(sum(t_all_path_neighbors,[])),key=lambda x: x[0])
+        t_nides_not_in_main_path = [t_node for t_node in t_all_path_neighbors_node_all if t_node not in t_from_to_paths_nodes_all_inter + [t_from_node_last,t_to_node_first]]
+        if len(t_nides_not_in_main_path):   t_conn_121_other_isolated_not.append(tuple([t_from,t_to]))
+        else:                               t_conn_121_other_isolated.append(tuple([t_from,t_to]))
+
+    t_conn_121_other_isolated_not_test  = sorted(   segment_conn_end_start_points(t_conn_121_other_isolated_not, nodes = 1),   key = lambda x: x[0])#[(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_121_other_isolated_not]
+    t_conn_121_other_isolated_test      = sorted(   segment_conn_end_start_points(t_conn_121_other_isolated, nodes = 1),   key = lambda x: x[0])#[(segments2[start][-1][0],segments2[end][0][0]) for start,end in t_conn_121_other_isolated]
 
 #drawH(G, paths, node_positions)
 # ===============================================================================================
 # =============== CHECK IF SEGMENTS ARE NOT RELATED TO SPLIT MERGE PREV/POST ====================
 # ===============================================================================================
-# issue of split-merge into merge, which is really also split-merge
-#      /3b\   /5b--6b\
-# 1--2      4          7--8 
-#      \3a/    5a--6a/
-# [1,2]->X->[4,5b,6b] is correct 121 event. although its clear that (4,5a) edge is missing
-a = 1
-t_conn_121_other_terminated = []
-t_conn_121_other_terminated_inspect = []
-t_conn_121_other_terminated_failed = []
-for t_from,t_to in t_conn_121_other_isolated:
-    t_from_large    = True if lr_segments_lengths[t_from]   >= lr_trusted_segment_length else False
-    t_to_large      = True if lr_segments_lengths[t_to]     >= lr_trusted_segment_length else False
-    t_from_pass     = False
-    t_to_pass       = False
-    t_from_inspect  = False
-    t_to_inspect    = False
-    # find neighbors of segment-segment
-    if t_to_large == False:
+# REMARK: example as shows schematically below outlines a problem where pseudo split-merge is not recovered
+# REMARK:      /3b\   /5b--6b\
+# REMARK: 1--2      4          7--8 
+# REMARK:      \3a/    5a--6a/
+# REMARK: [1,2]->X->[4,5b,6b] is correct 121 event. although its clear that (4,5a) edge is missing
+
+if 1==1:
+    sorted(   segment_conn_end_start_points(t_conn_121, nodes = 1),   key = lambda x: x[0])
+
+    t_conn_121_other_terminated = []
+    t_conn_121_other_terminated_inspect = []
+    t_conn_121_other_terminated_failed = []
+
+    for t_conn in t_conn_121_other_isolated:
+
+        t_from, t_to = t_conn
+
+        t_from_start    = G2.nodes[t_from   ]["t_start"]
+        t_to_end        = G2.nodes[t_to     ]["t_end"]
+
+        t_from_neighbors_prev   = [tID for tID in list(G2.neighbors(t_from))    if G2.nodes[tID]["t_end"    ] < t_from_start]
+        t_to_neighbors_next     = [tID for tID in list(G2.neighbors(t_to))      if G2.nodes[tID]["t_start"  ] > t_to_end    ]
+
+        t_conn_back = [tuple(sorted([tID,t_from]))  for tID in t_from_neighbors_prev]
+        t_conn_forw = [tuple(sorted([t_to,tID]))    for tID in t_to_neighbors_next  ]
     
-        t_to_node_last          = segments2[t_to][-1]
-        # check is node has connections forward or is terminated
-        t_to_neighbors_next     = extractNeighborsNext(     G, t_to_node_last,    lambda x: x[0])
-        # 
-        t_to_conn_to = [t_conn for t_conn in lr_close_segments_simple_paths if t_conn[0] == t_to]
-        
-        if len(t_to_neighbors_next) == 0:   # terminated
-            t_to_pass = True
-        elif len(t_to_conn_to) == 1:        # not terminated but has connections to one segment
-            t_conn = t_to_conn_to[0]
-            tID = t_conn[1]                 # check if solo target segment is connected from multiple prev segments
-            t_to_conn_to_from = [t for t in lr_close_segments_simple_paths if t[1] == tID]
-            if len(t_to_conn_to_from) == 1: # solo connections, check for parasitic nodes one step prev to target
-                t_to_neighbors_next_node = segments2[tID][0]
-                t_to_neighbors_next_prev = extractNeighborsPrevious( G, t_to_neighbors_next_node,     lambda x: x[0])
-                # comment: checking only one prev step is not enough, since merge may be shared formultiple steps. but cant do anything now
-                t_to_not_in_main = [ t for t in t_to_neighbors_next_prev if t not in lr_close_segments_simple_paths_inter[t_conn] + [t_to_node_last, t_to_neighbors_next_node]]
-                if len(t_to_not_in_main) == 0:
-                    t_to_pass = True
-                else:
-                    t_to_inspect = True
-            else:
-                t_to_inspect = True
-        else:                               # it splits. should be ok as long as its the only parent
-            t_to_conn_to_from_all = []
-            for t_conn in t_to_conn_to:     # connections from t_to to next -> (t_to, next1), (t_to, next2), ...
-                tID = t_conn[1]             # next; find all connections to next
-                t_to_conn_to_from_all.append([t for t in lr_close_segments_simple_paths if t[1] == tID])
-            t_to_conn_to_from_all = sum(t_to_conn_to_from_all,[])
-            t_to_not_in_main = [t for t in t_to_conn_to_from_all if t not in t_to_conn_to]
-            if len(t_to_not_in_main) == 0:
-                t_to_pass = True
-            else:
-                t_to_inspect = True
+        t_prev_was_split    = True if len([t for t in t_conn_back if t in lr_conn_edges_splits]) > 0 else False
+        t_next_is_merge     = True if len([t for t in t_conn_forw if t in lr_conn_edges_merges]) > 0 else False
 
-    else:
-        t_to_pass = True
+        if not t_prev_was_split and not t_next_is_merge:
+            t_conn_121_other_terminated.append(t_conn)
+        elif ((t_prev_was_split and not t_prev_was_split) or  (not t_prev_was_split and t_next_is_merge)):
+            t_conn_121_other_terminated_inspect.append(t_conn)
+        else: 
+            t_conn_121_other_terminated_failed.append(t_conn)
 
-    if t_from_large == False: # not tested well due to lack of cases. just symmetric to top variant. i hope
-        t_from_node_first       = segments2[t_from][0]
-        t_from_neighbors_prev   = extractNeighborsPrevious( G, t_from_node_first,     lambda x: x[0])
-        t_from_conn_from = [t_conn for t_conn in lr_close_segments_simple_paths if t_conn[1] == t_from]
-        if len(t_from_neighbors_prev) == 0:
-            t_from_pass = True
-        elif len(t_from_conn_from) == 1:    # one connection from-> prev, does not mean prev-> has one conn, but may split
-            t_conn = t_from_conn_from[0]
-            tID = t_conn[0]                 # check forward connections prev-> forward. so step back and foward = from->to
-            t_from_conn_from_to = [t_conn for t_conn in lr_close_segments_simple_paths if t_conn[0] == tID]
-            if len(t_from_conn_from_to) == 1:
-                #assert 1 == -1, "untested territory"
-                t_from_neighbors_prev_node = segments2[tID][-1]
-                t_from_neighbors_prev_next = extractNeighborsNext( G, t_from_neighbors_prev_node,     lambda x: x[0])
-                # comment: checking only one prev step is not enough, since merge may be shared formultiple steps. but cant do anything now
-                t_from_not_in_main = [ t for t in t_from_neighbors_prev_next if t not in lr_close_segments_simple_paths_inter[t_conn] + [t_from_neighbors_prev_node, t_from_node_first]]
-                if len(t_from_not_in_main) == 0:
-                    t_from_pass = True
-                else:
-                    t_from_inspect = True
-            else:
-                t_from_inspect = True
-        else:
-            assert 1 == -1, "unknown territory"
-    else:
-        t_from_pass = True
-
-    if t_from_pass and t_to_pass:
-        t_conn_121_other_terminated.append(tuple([t_from,t_to]))
-    elif ((t_from_pass and t_to_inspect) or  (t_from_inspect and t_to_pass)):
-        t_conn_121_other_terminated_inspect.append(tuple([t_from,t_to]))
-    else: 
-        t_conn_121_other_terminated_failed.append(tuple([t_from,t_to]))
     a = 1
+    if  1 == 1:
+        #t_conn_121_other_terminated = []
+        #t_conn_121_other_terminated_inspect = []
+        #t_conn_121_other_terminated_failed = []
+        #for t_from,t_to in t_conn_121_other_isolated:
+        #    t_from_large    = True if lr_segments_lengths[t_from]   >= lr_trusted_segment_length else False
+        #    t_to_large      = True if lr_segments_lengths[t_to]     >= lr_trusted_segment_length else False
+        #    t_from_pass     = False
+        #    t_to_pass       = False
+        #    t_from_inspect  = False
+        #    t_to_inspect    = False
+        #    # find neighbors of segment-segment
+        #    if t_to_large == False:
+    
+        #        t_to_node_last          = segments2[t_to][-1]
+        #        # check is node has connections forward or is terminated
+        #        t_to_neighbors_next     = extractNeighborsNext(     G, t_to_node_last,    lambda x: x[0])
+        #        # 
+        #        t_to_conn_to = [t_conn for t_conn in lr_close_segments_simple_paths if t_conn[0] == t_to]
+        
+        #        if len(t_to_neighbors_next) == 0:   # terminated
+        #            t_to_pass = True
+        #        elif len(t_to_conn_to) == 1:        # not terminated but has connections to one segment
+        #            t_conn = t_to_conn_to[0]
+        #            tID = t_conn[1]                 # check if solo target segment is connected from multiple prev segments
+        #            t_to_conn_to_from = [t for t in lr_close_segments_simple_paths if t[1] == tID]
+        #            if len(t_to_conn_to_from) == 1: # solo connections, check for parasitic nodes one step prev to target
+        #                t_to_neighbors_next_node = segments2[tID][0]
+        #                t_to_neighbors_next_prev = extractNeighborsPrevious( G, t_to_neighbors_next_node,     lambda x: x[0])
+        #                # comment: checking only one prev step is not enough, since merge may be shared formultiple steps. but cant do anything now
+        #                t_to_not_in_main = [ t for t in t_to_neighbors_next_prev if t not in lr_close_segments_simple_paths_inter[t_conn] + [t_to_node_last, t_to_neighbors_next_node]]
+        #                if len(t_to_not_in_main) == 0:
+        #                    t_to_pass = True
+        #                else:
+        #                    t_to_inspect = True
+        #            else:
+        #                t_to_inspect = True
+        #        else:                               # it splits. should be ok as long as its the only parent
+        #            t_to_conn_to_from_all = []
+        #            for t_conn in t_to_conn_to:     # connections from t_to to next -> (t_to, next1), (t_to, next2), ...
+        #                tID = t_conn[1]             # next; find all connections to next
+        #                t_to_conn_to_from_all.append([t for t in lr_close_segments_simple_paths if t[1] == tID])
+        #            t_to_conn_to_from_all = sum(t_to_conn_to_from_all,[])
+        #            t_to_not_in_main = [t for t in t_to_conn_to_from_all if t not in t_to_conn_to]
+        #            if len(t_to_not_in_main) == 0:
+        #                t_to_pass = True
+        #            else:
+        #                t_to_inspect = True
+
+        #    else:
+        #        t_to_pass = True
+
+        #    if t_from_large == False: # not tested well due to lack of cases. just symmetric to top variant. i hope
+        #        t_from_node_first       = segments2[t_from][0]
+        #        t_from_neighbors_prev   = extractNeighborsPrevious( G, t_from_node_first,     lambda x: x[0])
+        #        t_from_conn_from = [t_conn for t_conn in lr_close_segments_simple_paths if t_conn[1] == t_from]
+        #        if len(t_from_neighbors_prev) == 0:
+        #            t_from_pass = True
+        #        elif len(t_from_conn_from) == 1:    # one connection from-> prev, does not mean prev-> has one conn, but may split
+        #            t_conn = t_from_conn_from[0]
+        #            tID = t_conn[0]                 # check forward connections prev-> forward. so step back and foward = from->to
+        #            t_from_conn_from_to = [t_conn for t_conn in lr_close_segments_simple_paths if t_conn[0] == tID]
+        #            if len(t_from_conn_from_to) == 1:
+        #                #assert 1 == -1, "untested territory"
+        #                t_from_neighbors_prev_node = segments2[tID][-1]
+        #                t_from_neighbors_prev_next = extractNeighborsNext( G, t_from_neighbors_prev_node,     lambda x: x[0])
+        #                # comment: checking only one prev step is not enough, since merge may be shared formultiple steps. but cant do anything now
+        #                t_from_not_in_main = [ t for t in t_from_neighbors_prev_next if t not in lr_close_segments_simple_paths_inter[t_conn] + [t_from_neighbors_prev_node, t_from_node_first]]
+        #                if len(t_from_not_in_main) == 0:
+        #                    t_from_pass = True
+        #                else:
+        #                    t_from_inspect = True
+        #            else:
+        #                t_from_inspect = True
+        #        else:
+        #            assert 1 == -1, "unknown territory"
+        #    else:
+        #        t_from_pass = True
+
+        #    if t_from_pass and t_to_pass:
+        #        t_conn_121_other_terminated.append(tuple([t_from,t_to]))
+        #    elif ((t_from_pass and t_to_inspect) or  (t_from_inspect and t_to_pass)):
+        #        t_conn_121_other_terminated_inspect.append(tuple([t_from,t_to]))
+        #    else: 
+        #        t_conn_121_other_terminated_failed.append(tuple([t_from,t_to]))
+        a = 1
 
 
-lr_conn_one_to_one_prev_split = []
-lr_conn_one_to_one_next_merge = []
-
+    a = 1
 # maybe deal with t_conn_121_other_terminated_inspect here, or during analysis
 
 

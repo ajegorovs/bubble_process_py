@@ -4,6 +4,7 @@ import cv2, os, glob, datetime, re, pickle#, multiprocessing
 # import glob
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+from scipy import interpolate
 # import from custom sub-folders are defined bit lower
 #from imageFunctionsP2 import (overlappingRotatedRectangles,graphUniqueComponents)
 # functions below
@@ -165,6 +166,17 @@ if 1 == 1:
         cx0, cy0 = m['m10'], m['m01']
         centroid = np.array([cx0,cy0])/area
         return  centroid, area
+    
+    # ive tested c_mom_zz in centroid_area_cmomzz. it looks correct from definition m_zz = sum_x,y[r^2] = sum_x,y[(x-x0)^2 + (y-y0)^2]
+    # which is the same as sum_x,y[(x-x0)^2] + sum_x,y[(y-y0)^2] = mu(2,0) + mu(0,2), and from tests on images.
+    def centroid_area_cmomzz(contour):
+        m = cv2.moments(contour)
+        area = int(m['m00'])
+        cx0, cy0 = m['m10'], m['m01']
+        centroid = np.array([cx0,cy0])/area
+        c_mom_xx, c_mom_yy = m['mu20'], m['mu02']
+        c_mom_zz = int((c_mom_xx + c_mom_yy))
+        return  centroid, area, c_mom_zz
 # =========== BUILD OUTPUT FOLDERS =============//
 inputOutsideRoot            = 1                                                  # bmp images inside root, then input folder hierarchy will
 mainInputImageFolder        = r'.\inputFolder'                                   # be created with final inputImageFolder, else custom. NOT USED?!?
@@ -1317,14 +1329,16 @@ for t_conn in t_conn_121_zero_path:
 t_all_121_segment_IDs = sorted(list(set(sum([list(a) for a in t_conn_121],[]))))
 t_segments_121_centroids    = {tID:{} for tID in t_all_121_segment_IDs}
 t_segments_121_areas        = {tID:{} for tID in t_all_121_segment_IDs}
+t_segments_121_mom_z        = {tID:{} for tID in t_all_121_segment_IDs}
 for tID in t_all_121_segment_IDs:
     t_segment = segments2[tID]
     for t_time,*t_subIDs in t_segment:
         t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_subIDs]))
-        t_centroid, t_area = centroid_area(t_hull)
+        t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
         t_node = tuple([t_time] + t_subIDs)
         t_segments_121_centroids[   tID][t_node]   = t_centroid
         t_segments_121_areas[       tID][t_node]   = t_area
+        t_segments_121_mom_z[       tID][t_node]   = t_mom_z
 
             
 
@@ -1513,11 +1527,121 @@ if 1==1:
 
     a = 1
 # maybe deal with t_conn_121_other_terminated_inspect here, or during analysis
+#drawH(G, paths, node_positions)
+# ===============================================================================================
+# ===============================================================================================
+# ============ TEST INTERMERDIATE SEGMENTS FOR LARGE AND CONFIRMED SHORT 121s ===================
+# ===============================================================================================
+# ===============================================================================================
 
-
-
-# prep contour permuation combinations. hold only intermediate nodes
 lr_contour_combs = {tID:{} for tID in lr_conn_one_to_one_large + t_conn_121_other_terminated}
+lr_relevant_conns = lr_conn_one_to_one_large + t_conn_121_other_terminated
+
+# ===============================================================================================
+# ============ interpolate trajectories between segments for further tests ===================
+# ===============================================================================================
+if 1 == 1:
+    def interpolateMiddle2D(t_conn, t_centroid_dict, segments2, t_inter_times, histLen = 5, s = 15, debug = 0, aspect = 'equal'):
+        t_from,t_to     = t_conn
+        t_hist_prev     = segments2[t_from][-histLen:]
+        t_hist_next     = segments2[t_to][:histLen]
+        t_traj_prev     = np.array([t_centroid_dict[t_from][t_node] for t_node in t_hist_prev])
+        t_traj_next     = np.array([t_centroid_dict[  t_to][t_node] for t_node in t_hist_next])
+        t_times_prev    = [t_node[0] for t_node in t_hist_prev]
+        t_times_next    = [t_node[0] for t_node in t_hist_next]
+        t_traj_concat   = np.concatenate((t_traj_prev,t_traj_next))
+        t_times         = t_times_prev + t_times_next
+        x, y            = t_traj_concat.T
+        spline, _       = interpolate.splprep([x, y], u=t_times, s=s,k=1)
+        IEpolation      = np.array(interpolate.splev(t_inter_times, spline,ext=0))
+        if debug:
+            t2D              = np.arange(t_times[0],t_times[-1], 0.1)
+            IEpolationD      = np.array(interpolate.splev(t2D, spline,ext=0))
+            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+            axes.plot(*t_traj_prev.T, '-o', c= 'black')
+            axes.plot(*t_traj_next.T, '-o', c= 'black')
+            axes.plot(*IEpolationD, linestyle='dotted', c='orange')
+            axes.plot(*IEpolation, 'o', c= 'red')
+            axes.set_title(t_conn)
+            axes.set_aspect(aspect)
+            axes.legend(prop={'size': 6})
+            plt.show()
+        return IEpolation.T
+
+    def interpolateMiddle1D(t_conn, t_property_dict, segments2, t_inter_times, rescale = True, histLen = 5, s = 15, debug = 0, aspect = 'equal'):
+        t_from,t_to     = t_conn
+        t_hist_prev     = segments2[t_from][-histLen:]
+        t_hist_next     = segments2[t_to][:histLen]
+        t_traj_prev     = np.array([t_property_dict[t_from][t_node] for t_node in t_hist_prev])
+        t_traj_next     = np.array([t_property_dict[  t_to][t_node] for t_node in t_hist_next])
+        t_times_prev    = [t_node[0] for t_node in t_hist_prev]
+        t_times_next    = [t_node[0] for t_node in t_hist_next]
+        t_traj_concat   = np.concatenate((t_traj_prev,t_traj_next))
+        t_times         = t_times_prev + t_times_next
+
+        if rescale:
+            minVal, maxVal = min(t_traj_concat), max(t_traj_concat)
+            K = max(t_times) - min(t_times)
+            # scale so min-max values are same width as min-max time width
+            t_traj_concat_rescaled = (t_traj_concat - minVal) * (K / (maxVal - minVal))
+            spl = interpolate.splrep(t_times, t_traj_concat_rescaled, k = 1, s = s)
+            IEpolation = interpolate.splev(t_inter_times, spl)
+            # scale back result
+            IEpolation = IEpolation / K * (maxVal - minVal) + minVal
+
+            if debug:
+                t2D              = np.arange(t_times[0],t_times[-1], 0.1)
+                IEpolationD      = interpolate.splev(t2D, spl)
+                IEpolationD      = IEpolationD / K * (maxVal - minVal) + minVal 
+
+        else:
+            spl = interpolate.splrep(t_times, t_traj_concat, k = 1, s = s)
+            IEpolation = interpolate.splev(t_inter_times, spl)
+
+        if debug:
+            if not rescale:
+                t2D              = np.arange(t_times[0],t_times[-1], 0.1)
+                IEpolationD      = interpolate.splev(t2D, spl)
+            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+            axes.plot(t_times_prev, t_traj_prev, '-o', c= 'black')
+            axes.plot(t_times_next, t_traj_next, '-o', c= 'black')
+            axes.plot(t2D, IEpolationD, linestyle='dotted', c='orange')
+            axes.plot(t_inter_times, IEpolation, 'o', c= 'red')
+            axes.set_title(t_conn)
+            axes.set_aspect(aspect)
+            axes.legend(prop={'size': 6})
+            plt.show()
+        return IEpolation.T
+
+lr_121_interpolation_times = {}
+for t_conn in lr_relevant_conns:
+    t_from,t_to     = t_conn
+    t_time_prev     = segments2[t_from][-1][0]
+    t_time_next     = segments2[t_to][0][0]
+    lr_121_interpolation_times[t_conn] = np.arange(t_time_prev+1,t_time_next, 1)
+
+lr_121_interpolation_centroids  = {t_conn:[] for t_conn in lr_relevant_conns}
+lr_121_interpolation_areas      = {t_conn:[] for t_conn in lr_relevant_conns}
+lr_121_interpolation_moment_z   = {t_conn:[] for t_conn in lr_relevant_conns}
+for t_conn in lr_contour_combs:
+    lr_121_interpolation_centroids[t_conn]  = interpolateMiddle2D(t_conn, t_segments_121_centroids,
+                                                                 segments2, lr_121_interpolation_times[t_conn],
+                                                                 histLen = 5, s = 15, debug = 0)
+
+    lr_121_interpolation_areas[t_conn]      = interpolateMiddle1D(t_conn, t_segments_121_areas,
+                                                                 segments2, lr_121_interpolation_times[t_conn],  rescale = True,
+                                                                 histLen = 5, s = 15, debug = 0, aspect = 'auto')
+
+    lr_121_interpolation_moment_z[t_conn]   = interpolateMiddle1D(t_conn, t_segments_121_mom_z,
+                                                                 segments2, lr_121_interpolation_times[t_conn],  rescale = True,
+                                                                 histLen = 5, s = 15, debug = 0, aspect = 'auto')
+    a = 1
+    
+# ===============================================================================================
+# ====  EXTRACT POSSIBLE CONTOUR ELEMENTS FROM PATHS ====
+# ===============================================================================================
+# REMARK: i expect most of the time solution to be all elements in cluster. except real merges
+
 
 for t_conn in lr_contour_combs:
     t_traj = lr_close_segments_simple_paths[t_conn][0]
@@ -1533,14 +1657,21 @@ for t_conn in lr_contour_combs:
         t_nodes[t_time] = sorted(list(set(t_nodes[t_time])))
     lr_contour_combs[t_conn] = t_nodes
 a = 1
+# ===============================================================================================
+# ====  CONSTRUCT PERMUTATIONS FROM CLUSTER ELEMENT CHOICES ====
+# ===============================================================================================
+# REMARK: grab different combinations of elements in clusters
 lr_contour_combs_perms = {t_conn:{t_time:[] for t_time in t_dict} for t_conn,t_dict in lr_contour_combs.items()}
 for t_conn, t_times_contours in lr_contour_combs.items():
     for t_time,t_contours in t_times_contours.items():
         t_perms = sum([list(itertools.combinations(t_contours, r)) for r in range(1,len(t_contours)+1)],[])
         lr_contour_combs_perms[t_conn][t_time] = t_perms
 
-# pre-compute centroids and hull areas:
-# maybe mod later to do non-hull on ST bubbles, or do it in post.
+# ===============================================================================================
+# ====  PRE-CALCULATE HULL CENTROIDS AND AREAS FOR EACH PERMUTATION ====
+# ===============================================================================================
+# REMARK: these will be reused alot in next steps, store them to avoid need of recalculation
+
 lr_permutation_areas_precomputed    = {t_conn:
                                             {t_time:
                                                     {t_perm:0 for t_perm in t_perms}
@@ -1553,14 +1684,26 @@ lr_permutation_centroids_precomputed= {t_conn:
                                              for t_time,t_perms in t_times_perms.items()}
                                         for t_conn,t_times_perms in lr_contour_combs_perms.items()}
 
+lr_permutation_mom_z_precomputed    = {t_conn:
+                                            {t_time:
+                                                    {t_perm:0 for t_perm in t_perms}
+                                             for t_time,t_perms in t_times_perms.items()}
+                                        for t_conn,t_times_perms in lr_contour_combs_perms.items()}
 for t_conn, t_times_perms in lr_contour_combs_perms.items():
     for t_time,t_perms in t_times_perms.items():
         for t_perm in t_perms:
             t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_perm]))
-            t_centroid, t_area = centroid_area(t_hull)
+            t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
 
             lr_permutation_areas_precomputed[t_conn][t_time][t_perm] = t_area
             lr_permutation_centroids_precomputed[t_conn][t_time][t_perm] = t_centroid
+            lr_permutation_mom_z_precomputed[t_conn][t_time][t_perm] = t_mom_z
+
+#drawH(G, paths, node_positions)
+# ===============================================================================================
+# ====  CONSTUCT DIFFERENT PATHS FROM UNIQUE CHOICES ====
+# ===============================================================================================
+# REMARK: try different evolutions of inter-segment paths
 a = 1
 lr_permutation_cases = {t_conn:[] for t_conn in lr_contour_combs}
 lr_permutation_times = {t_conn:[] for t_conn in lr_contour_combs}
@@ -1574,24 +1717,40 @@ for t_conn, t_times_perms in lr_contour_combs_perms.items():
     lr_permutation_cases[t_conn] = sequences
     lr_permutation_times[t_conn] = t_times
 
-# lets look for a shortest path with least area and displacement deviations
-# prep containers
-
+# ===============================================================================================
+# ==== EVALUATE HULL CENTROIDS AND AREAS FOR EACH EVOLUTION, FIND CASES WITH LEAST DEVIATIONS====
+# ===============================================================================================
+# REMARK: evolutions with least path length and are changes should be right ones
+    
 t_all_traj      = {t_conn:[] for t_conn in lr_permutation_cases}
 t_all_areas     = {t_conn:[] for t_conn in lr_permutation_cases}
+t_all_moms      = {t_conn:[] for t_conn in lr_permutation_cases}
 t_sols_c        = {t_conn:[] for t_conn in lr_permutation_cases}
+t_sols_c_i      = {t_conn:[] for t_conn in lr_permutation_cases}
 t_sols_a        = {t_conn:[] for t_conn in lr_permutation_cases}
+t_sols_m        = {t_conn:[] for t_conn in lr_permutation_cases}
 
 for t_conn in lr_permutation_cases:
+    t_c_interp = lr_121_interpolation_centroids[t_conn]
     for t,t_perms in enumerate(lr_permutation_cases[t_conn]):
         # dump sequences of areas and centroids for each possible trajectory
         t_temp_c = []
-        t_temp_a = []       
+        t_temp_a = []     
+        t_temp_m = [] 
         for t_time,t_perm in zip(lr_permutation_times[t_conn],t_perms):
             t_temp_c.append(lr_permutation_centroids_precomputed[t_conn][t_time][t_perm])
             t_temp_a.append(lr_permutation_areas_precomputed[t_conn][t_time][t_perm])
+            t_temp_m.append(lr_permutation_mom_z_precomputed[t_conn][t_time][t_perm])
         t_all_traj[t_conn].append(np.array(t_temp_c).reshape(-1,2))
         t_all_areas[t_conn].append(np.array(t_temp_a))
+        t_all_moms[t_conn].append(np.array(t_temp_m))
+
+    #
+    t_c_inter_traj =  [t[1:-1]       for t in t_all_traj[t_conn]]
+    t_c_inter_traj_diff =  [t - t_c_interp      for t in t_c_inter_traj]
+    t_c_inter_traj_diff_norms = [np.linalg.norm(t, axis=1)  for t in t_c_inter_traj_diff]
+    t_c_i_traj_d_norms_means  = [np.mean(t) for t in t_c_inter_traj_diff_norms]
+    t_c_i_mean_min            = np.argmin(t_c_i_traj_d_norms_means)
 
     # check displacement norms, norm means and stdevs
     t_c_diffs = [np.diff(t,axis = 0)        for t in t_all_traj[t_conn]]
@@ -1601,6 +1760,7 @@ for t_conn in lr_permutation_cases:
 
     t_c_mean_min    = np.argmin(t_c_means)
     t_c_stdevs_min  = np.argmin(t_c_stdevs)
+
 
     # same with areas
     t_areas = np.array(t_all_areas[t_conn])
@@ -1613,14 +1773,30 @@ for t_conn in lr_permutation_cases:
     t_a_mean_min    = np.argmin(t_a_means)
     t_a_stdevs_min  = np.argmin(t_a_stdevs)
 
+    # same with moments
+    t_moments = np.array(t_all_moms[t_conn])
+    t_m_diffs = np.diff(t_moments, axis=1)
+    t_m_d_abs = np.array([np.abs(t) for t in t_m_diffs])
+    t_m_d_a_sum = np.sum(t_m_d_abs, axis = 1)
+    t_m_means = np.mean(t_m_d_abs, axis=1)
+    t_m_stdevs= np.std( t_m_d_abs, axis=1)
+
+    t_m_mean_min    = np.argmin(t_m_means)
+    t_m_stdevs_min  = np.argmin(t_m_stdevs)
+
     # save cases with least mean and stdev
     t_sols_c[t_conn] += [t_c_mean_min,t_c_stdevs_min]
+    t_sols_c_i[t_conn] += [t_c_i_mean_min]
     t_sols_a[t_conn] += [t_a_mean_min,t_a_stdevs_min]
+    t_sols_m[t_conn] += [t_m_mean_min,t_m_stdevs_min]
+a = 1
+# ===============================================================================================
+# ========== INTERPOLATE PATHS BETWEEN SEGMENTS AND COMPARE WITH INTER-SEGMENT SOLUTION =========
+# ===============================================================================================
+# REMARK: least path and area devs might not agree, test remaining choices with interpolation
 
-#lets run though interpolation test
 
 
-from scipy import interpolate
 
 def interpolateMiddle(t_conn,t_sols_c,t_sols_a,t_segments_121_centroids,t_all_traj, lr_permutation_times, segments2, histLen = 5, s = 15, debug = 0):
     t_from,t_to = t_conn

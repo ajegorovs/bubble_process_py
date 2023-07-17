@@ -1300,7 +1300,7 @@ if 1 == 1:
 # ===============================================================================================
 # REMARK: these cases occur when segment terminates into split with or merge with a node, not a segment
 # REMARK: and 121 separation only concerns itself with segment-segment connecivity
-
+# REMARK: this case might be inside merge/split merge.
 t_conn_121_zero_path = []
 for t_node in t_conn_121:
     if len(lr_close_segments_simple_paths_inter[t_node]) == 0:
@@ -1313,6 +1313,7 @@ t_conn_121 = [t_node for t_node in t_conn_121 if t_node not in t_conn_121_zero_p
 # ===============================================================================================
 # REMARK: zero path implies that solo nodes are connected to prev segment end or next segment start
 t_conn_121_zero_path_nodes = {t_conn:[] for t_conn in t_conn_121_zero_path}
+t_conn_121_zp_contour_combs= {t_conn:{} for t_conn in t_conn_121_zero_path}
 for t_conn in t_conn_121_zero_path:
     t_from, t_to    = t_conn
     t_from_node_end = segments2[t_from  ][-1]
@@ -1320,7 +1321,15 @@ for t_conn in t_conn_121_zero_path:
     t_from_neigbors_next    = extractNeighborsNext(     G, t_from_node_end,  lambda x: x[0])
     t_to_neigbors_prev      = extractNeighborsPrevious( G, t_to_node_start,  lambda x: x[0])
     t_conn_121_zero_path_nodes[t_conn] = sorted(set(t_from_neigbors_next+t_to_neigbors_prev),key=lambda x: (x[0], x[1]))
+    t_times = sorted(set([t_node[0] for t_node in t_conn_121_zero_path_nodes[t_conn]]))
+    t_conn_121_zp_contour_combs[t_conn] = {t_time:[] for t_time in t_times}
+    
+    for t_time,*t_subIDs in t_conn_121_zero_path_nodes[t_conn]:
+        t_conn_121_zp_contour_combs[t_conn][t_time] += t_subIDs
 
+    for t_time in t_conn_121_zp_contour_combs[t_conn]:
+         t_conn_121_zp_contour_combs[t_conn][t_time] = sorted(t_conn_121_zp_contour_combs[t_conn][t_time])
+a = 1
 
 # ===============================================================================================
 # gather segment hulls and centroids
@@ -1534,7 +1543,6 @@ if 1==1:
 # ===============================================================================================
 # ===============================================================================================
 
-lr_contour_combs = {tID:{} for tID in lr_conn_one_to_one_large + t_conn_121_other_terminated}
 lr_relevant_conns = lr_conn_one_to_one_large + t_conn_121_other_terminated
 
 # ===============================================================================================
@@ -1614,6 +1622,7 @@ if 1 == 1:
         return IEpolation.T
 
 lr_121_interpolation_times = {}
+
 for t_conn in lr_relevant_conns:
     t_from,t_to     = t_conn
     t_time_prev     = segments2[t_from][-1][0]
@@ -1623,7 +1632,9 @@ for t_conn in lr_relevant_conns:
 lr_121_interpolation_centroids  = {t_conn:[] for t_conn in lr_relevant_conns}
 lr_121_interpolation_areas      = {t_conn:[] for t_conn in lr_relevant_conns}
 lr_121_interpolation_moment_z   = {t_conn:[] for t_conn in lr_relevant_conns}
-for t_conn in lr_contour_combs:
+
+
+for t_conn in lr_relevant_conns:
     lr_121_interpolation_centroids[t_conn]  = interpolateMiddle2D(t_conn, t_segments_121_centroids,
                                                                  segments2, lr_121_interpolation_times[t_conn],
                                                                  histLen = 5, s = 15, debug = 0)
@@ -1642,8 +1653,8 @@ for t_conn in lr_contour_combs:
 # ===============================================================================================
 # REMARK: i expect most of the time solution to be all elements in cluster. except real merges
 
-
-for t_conn in lr_contour_combs:
+lr_contour_combs                = {tID:{} for tID in lr_relevant_conns}
+for t_conn in lr_relevant_conns:
     t_traj = lr_close_segments_simple_paths[t_conn][0]
     t_min = t_traj[0][0]
     t_max = t_traj[-1][0]
@@ -1721,74 +1732,255 @@ for t_conn, t_times_perms in lr_contour_combs_perms.items():
 # ==== EVALUATE HULL CENTROIDS AND AREAS FOR EACH EVOLUTION, FIND CASES WITH LEAST DEVIATIONS====
 # ===============================================================================================
 # REMARK: evolutions with least path length and are changes should be right ones
+
+if 1 == 1:
+    t_all_traj      = {t_conn:[] for t_conn in lr_permutation_cases}
+    t_all_areas     = {t_conn:[] for t_conn in lr_permutation_cases}
+    t_all_moms      = {t_conn:[] for t_conn in lr_permutation_cases}
+    t_sols_c        = {t_conn:[] for t_conn in lr_permutation_cases}
+    t_sols_c_i      = {t_conn:[] for t_conn in lr_permutation_cases}
+    t_sols_a        = {t_conn:[] for t_conn in lr_permutation_cases}
+    t_sols_m        = {t_conn:[] for t_conn in lr_permutation_cases}
+
+    for t_conn in lr_permutation_cases:
+        t_c_interp = lr_121_interpolation_centroids[t_conn]
+        for t,t_perms in enumerate(lr_permutation_cases[t_conn]):
+            # dump sequences of areas and centroids for each possible trajectory
+            t_temp_c = []
+            t_temp_a = []     
+            t_temp_m = [] 
+            for t_time,t_perm in zip(lr_permutation_times[t_conn],t_perms):
+                t_temp_c.append(lr_permutation_centroids_precomputed[t_conn][t_time][t_perm])
+                t_temp_a.append(lr_permutation_areas_precomputed[t_conn][t_time][t_perm])
+                t_temp_m.append(lr_permutation_mom_z_precomputed[t_conn][t_time][t_perm])
+            t_all_traj[t_conn].append(np.array(t_temp_c).reshape(-1,2))
+            t_all_areas[t_conn].append(np.array(t_temp_a))
+            t_all_moms[t_conn].append(np.array(t_temp_m))
+
+        #
+        t_c_inter_traj =  [t[1:-1]       for t in t_all_traj[t_conn]]
+        t_c_inter_traj_diff =  [t - t_c_interp      for t in t_c_inter_traj]
+        t_c_inter_traj_diff_norms = [np.linalg.norm(t, axis=1)  for t in t_c_inter_traj_diff]
+        t_c_i_traj_d_norms_means  = [np.mean(t) for t in t_c_inter_traj_diff_norms]
+        t_c_i_mean_min            = np.argmin(t_c_i_traj_d_norms_means)
+
+        # check displacement norms, norm means and stdevs
+        t_c_diffs = [np.diff(t,axis = 0)        for t in t_all_traj[t_conn]]
+        t_c_norms = [np.linalg.norm(t, axis=1)  for t in t_c_diffs]
+        t_c_means = np.mean(t_c_norms, axis=1)
+        t_c_stdevs= np.std( t_c_norms, axis=1)
+
+        t_c_mean_min    = np.argmin(t_c_means)
+        t_c_stdevs_min  = np.argmin(t_c_stdevs)
+
+
+        # same with areas
+        t_areas = np.array(t_all_areas[t_conn])
+        t_a_diffs = np.diff(t_areas, axis=1)
+        t_a_d_abs = np.array([np.abs(t) for t in t_a_diffs])
+        t_a_d_a_sum = np.sum(t_a_d_abs, axis = 1)
+        t_a_means = np.mean(t_a_d_abs, axis=1)
+        t_a_stdevs= np.std( t_a_d_abs, axis=1)
+
+        t_a_mean_min    = np.argmin(t_a_means)
+        t_a_stdevs_min  = np.argmin(t_a_stdevs)
+
+        # same with moments
+        t_moments = np.array(t_all_moms[t_conn])
+        t_m_diffs = np.diff(t_moments, axis=1)
+        t_m_d_abs = np.array([np.abs(t) for t in t_m_diffs])
+        t_m_d_a_sum = np.sum(t_m_d_abs, axis = 1)
+        t_m_means = np.mean(t_m_d_abs, axis=1)
+        t_m_stdevs= np.std( t_m_d_abs, axis=1)
+
+        t_m_mean_min    = np.argmin(t_m_means)
+        t_m_stdevs_min  = np.argmin(t_m_stdevs)
+
+        # save cases with least mean and stdev
+        t_sols_c[t_conn] += [t_c_mean_min,t_c_stdevs_min]
+        t_sols_c_i[t_conn] += [t_c_i_mean_min]
+        t_sols_a[t_conn] += [t_a_mean_min,t_a_stdevs_min]
+        t_sols_m[t_conn] += [t_m_mean_min,t_m_stdevs_min]
+    a = 1
+
+# ===============================================================================================
+# ========== CALCULATED WEIGHTED SOLUTONS =========
+# ===============================================================================================
+# REMARK: give methods (centroid, area,..) different weights and calculate total weights
+# REMARK: of each evolution occurence ID. Then re-eight solution to 0-1.
+
+if 1 == 1:
+    lr_weighted_solutions = {t_conn:{} for t_conn in lr_permutation_cases}
+
+    # set normalized weights for methods
+    lr_weight_c    = 1
+    lr_weight_c_i  = 1
+    lr_weight_a    = 1
+    lr_weight_m    = 1
+    lr_weights = np.array([lr_weight_c, lr_weight_c_i,lr_weight_a, lr_weight_m])
+    lr_weight_total = np.sum(lr_weights)
+    lr_weight_c, lr_weight_c_i,lr_weight_a, lr_weight_m = lr_weights / lr_weight_total
+
+    for t_conn in lr_permutation_cases:
+        t_all_sols = []
+        t_all_sols += t_sols_c[t_conn]
+        t_all_sols += t_sols_c_i[t_conn]
+        t_all_sols += t_sols_a[t_conn]
+        t_all_sols += t_sols_m[t_conn]
+
+        t_all_sols_unique = sorted(list(set(t_sols_c[t_conn] + t_sols_c_i[t_conn] + t_sols_a[t_conn] + t_sols_m[t_conn])))
+     
+        lr_weighted_solutions[t_conn] = {tID:0 for tID in t_all_sols_unique}
+        for tID in t_all_sols_unique:
+            if tID in t_sols_c[   t_conn]:
+                lr_weighted_solutions[t_conn][tID] += lr_weight_c
+            if tID in t_sols_c_i[   t_conn]:
+                lr_weighted_solutions[t_conn][tID] += lr_weight_c_i
+            if tID in t_sols_a[   t_conn]:
+                lr_weighted_solutions[t_conn][tID] += lr_weight_a
+            if tID in t_sols_m[   t_conn]:
+                lr_weighted_solutions[t_conn][tID] += lr_weight_m
+        # normalize weights for IDs
+        r_total = np.sum([t_weight for t_weight in lr_weighted_solutions[t_conn].values()])
+        lr_weighted_solutions[t_conn] = {tID:round(t_val/r_total,3) for tID,t_val in lr_weighted_solutions[t_conn].items()}
+
+ 
     
-t_all_traj      = {t_conn:[] for t_conn in lr_permutation_cases}
-t_all_areas     = {t_conn:[] for t_conn in lr_permutation_cases}
-t_all_moms      = {t_conn:[] for t_conn in lr_permutation_cases}
-t_sols_c        = {t_conn:[] for t_conn in lr_permutation_cases}
-t_sols_c_i      = {t_conn:[] for t_conn in lr_permutation_cases}
-t_sols_a        = {t_conn:[] for t_conn in lr_permutation_cases}
-t_sols_m        = {t_conn:[] for t_conn in lr_permutation_cases}
+    lr_weighted_solutions_max = {t_conn:0 for t_conn in lr_permutation_cases}
+    lr_weighted_solutions_accumulate_problems = {}
+    for t_conn in lr_permutation_cases:
+        t_weight_max = max(lr_weighted_solutions[t_conn].values())
+        t_keys_max = [tID for tID, t_weight in lr_weighted_solutions[t_conn].items() if t_weight == t_weight_max]
+        if len(t_keys_max) == 1:
+            lr_weighted_solutions_max[t_conn] = t_keys_max[0]
+        else:
+            # >>>>>>>>>>VERY CUSTOM: take sol with max elements in total <<<<<<<<<<<<<<
+            t_combs = [lr_permutation_cases[t_conn][tID] for tID in t_keys_max]
+            t_combs_lens = [np.sum([len(t_perm) for t_perm in t_path]) for t_path in t_combs]
+            t_sol = np.argmax(t_combs_lens) # picks first if there are same lengths
+            lr_weighted_solutions_max[t_conn] = t_keys_max[t_sol]
+            t_count = t_combs_lens.count(max(t_combs_lens))
+            if t_count > 1: lr_weighted_solutions_accumulate_problems[t_conn] = t_combs_lens # holds poistion of t_keys_max, != all keys
+            a = 1
 
+
+# ===============================================================================================
+# ========== INTEGRATE RESOLVED PATHS INTO GRAPH; REMOVE SECONDARY SOLUTIONS =========
+# ===============================================================================================
+# REMARK: refactor nodes from solo objects to clusters. remove all previous nodes and replace with new.
+
+lr_weighted_solutions_max
+lr_permutation_times
+lr_permutation_cases
+lr_contour_combs
 for t_conn in lr_permutation_cases:
-    t_c_interp = lr_121_interpolation_centroids[t_conn]
-    for t,t_perms in enumerate(lr_permutation_cases[t_conn]):
-        # dump sequences of areas and centroids for each possible trajectory
-        t_temp_c = []
-        t_temp_a = []     
-        t_temp_m = [] 
-        for t_time,t_perm in zip(lr_permutation_times[t_conn],t_perms):
-            t_temp_c.append(lr_permutation_centroids_precomputed[t_conn][t_time][t_perm])
-            t_temp_a.append(lr_permutation_areas_precomputed[t_conn][t_time][t_perm])
-            t_temp_m.append(lr_permutation_mom_z_precomputed[t_conn][t_time][t_perm])
-        t_all_traj[t_conn].append(np.array(t_temp_c).reshape(-1,2))
-        t_all_areas[t_conn].append(np.array(t_temp_a))
-        t_all_moms[t_conn].append(np.array(t_temp_m))
+    t_sol   = lr_weighted_solutions_max[t_conn]
+    t_path  = lr_permutation_cases[t_conn][t_sol]             # t_path contains start-end points of segments !!!
+    t_times = lr_permutation_times[t_conn]
+    #t_nodes_old = []
+    t_nodes_new = []
+    for t_time,t_comb in zip(t_times,t_path):
+        #for tID in t_comb:
+        #    t_nodes_old.append(tuple([t_time, tID]))          # old type of nodes in solution: (time,contourID)     e.g (t1,ID1)
+        t_nodes_new.append(tuple([t_time] + list(t_comb)))    # new type of nodes in solution: (time,*clusterIDs)   e.g (t1,ID1,ID2,...)
 
-    #
-    t_c_inter_traj =  [t[1:-1]       for t in t_all_traj[t_conn]]
-    t_c_inter_traj_diff =  [t - t_c_interp      for t in t_c_inter_traj]
-    t_c_inter_traj_diff_norms = [np.linalg.norm(t, axis=1)  for t in t_c_inter_traj_diff]
-    t_c_i_traj_d_norms_means  = [np.mean(t) for t in t_c_inter_traj_diff_norms]
-    t_c_i_mean_min            = np.argmin(t_c_i_traj_d_norms_means)
+    t_nodes_all = []
+    for t_time,t_comb in lr_contour_combs[t_conn].items():
+        for tID in t_comb:
+            t_nodes_all.append(tuple([t_time, tID]))
+    
+    # its easy to remove start-end point nodes, but they will lose connection to segments
+    G.remove_nodes_from(t_nodes_all)
+    # so add extra nodes to make edges with segments, which will create start-end points again.
+    t_from, t_to = t_conn                                     
+    t_nodes_new_sides = [segments2[t_from][-2]] + t_nodes_new + [segments2[t_to][1]]
 
-    # check displacement norms, norm means and stdevs
-    t_c_diffs = [np.diff(t,axis = 0)        for t in t_all_traj[t_conn]]
-    t_c_norms = [np.linalg.norm(t, axis=1)  for t in t_c_diffs]
-    t_c_means = np.mean(t_c_norms, axis=1)
-    t_c_stdevs= np.std( t_c_norms, axis=1)
-
-    t_c_mean_min    = np.argmin(t_c_means)
-    t_c_stdevs_min  = np.argmin(t_c_stdevs)
+    pairs = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
+    
+    G.add_edges_from(pairs)
+    #t_nodes_remaining = [t_node for t_node in t_nodes_all if t_node not in t_nodes_old]
+    
 
 
-    # same with areas
-    t_areas = np.array(t_all_areas[t_conn])
-    t_a_diffs = np.diff(t_areas, axis=1)
-    t_a_d_abs = np.array([np.abs(t) for t in t_a_diffs])
-    t_a_d_a_sum = np.sum(t_a_d_abs, axis = 1)
-    t_a_means = np.mean(t_a_d_abs, axis=1)
-    t_a_stdevs= np.std( t_a_d_abs, axis=1)
+# ===============================================================================================
+# ========== DEAL WITH ZERO PATH 121s >> SKIP IT FOR NOW, IDK WHAT TO DO << =========
+# ===============================================================================================
+# REMARK: zero paths might be part of branches, which means segment relations should be refactored
 
-    t_a_mean_min    = np.argmin(t_a_means)
-    t_a_stdevs_min  = np.argmin(t_a_stdevs)
+t_conn_121_zp_contour_combs
 
-    # same with moments
-    t_moments = np.array(t_all_moms[t_conn])
-    t_m_diffs = np.diff(t_moments, axis=1)
-    t_m_d_abs = np.array([np.abs(t) for t in t_m_diffs])
-    t_m_d_a_sum = np.sum(t_m_d_abs, axis = 1)
-    t_m_means = np.mean(t_m_d_abs, axis=1)
-    t_m_stdevs= np.std( t_m_d_abs, axis=1)
+t_conn_121_other_terminated_failed
 
-    t_m_mean_min    = np.argmin(t_m_means)
-    t_m_stdevs_min  = np.argmin(t_m_stdevs)
+G_copy = G.copy()
+node_positions_c = getNodePos(G_copy.nodes())
+segments2_c, skipped_c = graph_extract_paths(G_copy, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
 
-    # save cases with least mean and stdev
-    t_sols_c[t_conn] += [t_c_mean_min,t_c_stdevs_min]
-    t_sols_c_i[t_conn] += [t_c_i_mean_min]
-    t_sols_a[t_conn] += [t_a_mean_min,t_a_stdevs_min]
-    t_sols_m[t_conn] += [t_m_mean_min,t_m_stdevs_min]
+# Draw extracted segments with bold lines and different color.
+segments2_c = [a for _,a in segments2_c.items() if len(a) > 0]
+segments2_c = list(sorted(segments2_c, key=lambda x: x[0][0]))
+paths_c = {i:vals for i,vals in enumerate(segments2_c)}
+
+#drawH(G, paths, node_positions)
+
+#drawH(G_copy, paths_c, node_positions_c)
+
+# ===============================================================================================
+# ========= deal with 121s that are partly connected with merging/splitting segments << =========
+# ===============================================================================================
+# REMARK: 121s in 't_conn_121_other_terminated_inspect' are derived from split branch
+# REMARK: or result in a merge branch. split->121 might be actually split->merge, same with 
+# REMARK: 121->merge. these are ussualy short-lived, so i might combine them and test
+
+t_conn_121_other_terminated_inspect
+t_conn_121_other_terminated_failed
+lr_conn_edges_splits
+lr_conn_edges_merges
+segment_conn_end_start_points(t_conn_121_other_terminated_inspect, nodes = 1)
+lr_inspect_contour_combs = {t_conn:{} for t_conn in t_conn_121_other_terminated_inspect}
+for t_conn in t_conn_121_other_terminated_inspect:
+    t_from,t_to = t_conn
+    spl = [(t_from_from, t_from_to) for t_from_from, t_from_to in lr_conn_edges_splits if t_from == t_from_to] # 121 left   is some other conn right
+    mrg = [(t_to_from, t_to_to) for t_to_from, t_to_to in lr_conn_edges_merges if t_to == t_to_from]           # 121 right  is some other conn left
+
+    # test on merge, no spl data yet
+    if len(mrg)>0:
+        t_to_merging_IDs = list(set([t[1] for t in mrg]))
+        assert len(t_to_merging_IDs) == 1, "t_conn_121_other_terminated_inspect merge with multiple, this should not trigger"
+        t_to_all_merging_segments = [t_to_from for t_to_from, t_to_to in lr_conn_edges_merges if t_to_to == t_to_merging_IDs[0] and t_to_from != t_to]
+
+        t_from_time_start = segments2[t_from][-4:][0][0] # [-4:][0] = take at furthest from back of at least size 4. list([a,b])[-4:][0] = a
+        t_to_from_time_start = segments2[t_to_merging_IDs[0]][:4][-1][0]
+
+        activeNodes = [node for node in G.nodes() if t_from_time_start <= node[0] <= t_to_from_time_start]
+        subgraph = G.subgraph(activeNodes)
+
+        connected_components_all = [list(nx.node_connected_component(subgraph, key)) for key in activeNodes]
+
+        connected_components_all = [sorted(sub, key=lambda x: (x[0],x[1])) for sub in connected_components_all] # key=lambda x: (x[0],x[1]))
+        connected_components_unique = []
+        [connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
+
+
+
+
+        sol = [t_cc for t_cc in connected_components_unique if segments2[t_from][-1] in t_cc]
+        assert len(sol) == 1, "t_conn_121_other_terminated_inspect inspect path relates to multiple clusters, dont expect it ever to occur"
+
+        t_times = np.arange(t_from_time_start,t_to_from_time_start + 1, 1)
+        t_inspect_contour_combs = {t_time:[] for t_time in t_times}
+    
+        for t_time,*t_subIDs in sol[0]:
+            t_inspect_contour_combs[t_time] += t_subIDs
+
+        for t_time in t_inspect_contour_combs:
+            t_inspect_contour_combs[t_time] = sorted(t_inspect_contour_combs[t_time])
+        
+        lr_inspect_contour_combs[t_conn] = t_inspect_contour_combs
+
+    else:
+        assert 1 == -1, "t_conn_121_other_terminated_inspect case split unexplored" 
+    
+
 a = 1
 # ===============================================================================================
 # ========== INTERPOLATE PATHS BETWEEN SEGMENTS AND COMPARE WITH INTER-SEGMENT SOLUTION =========

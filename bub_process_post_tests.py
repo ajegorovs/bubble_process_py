@@ -1549,14 +1549,9 @@ lr_relevant_conns = lr_conn_one_to_one_large + t_conn_121_other_terminated
 # ============ interpolate trajectories between segments for further tests ===================
 # ===============================================================================================
 if 1 == 1:
-    def interpolateMiddle2D(t_conn, t_centroid_dict, segments2, t_inter_times, histLen = 5, s = 15, debug = 0, aspect = 'equal'):
-        t_from,t_to     = t_conn
-        t_hist_prev     = segments2[t_from][-histLen:]
-        t_hist_next     = segments2[t_to][:histLen]
-        t_traj_prev     = np.array([t_centroid_dict[t_from][t_node] for t_node in t_hist_prev])
-        t_traj_next     = np.array([t_centroid_dict[  t_to][t_node] for t_node in t_hist_next])
-        t_times_prev    = [t_node[0] for t_node in t_hist_prev]
-        t_times_next    = [t_node[0] for t_node in t_hist_next]
+    #def interpolateMiddle2D(t_conn, t_centroid_dict, segments2, t_inter_times, histLen = 5, s = 15, debug = 0, aspect = 'equal', title = "title"):
+    def interpolateMiddle2D(t_times_prev,t_times_next,t_traj_prev, t_traj_next, t_inter_times, s = 15, debug = 0, aspect = 'equal', title = "title"):
+
         t_traj_concat   = np.concatenate((t_traj_prev,t_traj_next))
         t_times         = t_times_prev + t_times_next
         x, y            = t_traj_concat.T
@@ -1570,20 +1565,15 @@ if 1 == 1:
             axes.plot(*t_traj_next.T, '-o', c= 'black')
             axes.plot(*IEpolationD, linestyle='dotted', c='orange')
             axes.plot(*IEpolation, 'o', c= 'red')
-            axes.set_title(t_conn)
+            axes.set_title(title)
             axes.set_aspect(aspect)
             axes.legend(prop={'size': 6})
             plt.show()
         return IEpolation.T
 
-    def interpolateMiddle1D(t_conn, t_property_dict, segments2, t_inter_times, rescale = True, histLen = 5, s = 15, debug = 0, aspect = 'equal'):
-        t_from,t_to     = t_conn
-        t_hist_prev     = segments2[t_from][-histLen:]
-        t_hist_next     = segments2[t_to][:histLen]
-        t_traj_prev     = np.array([t_property_dict[t_from][t_node] for t_node in t_hist_prev])
-        t_traj_next     = np.array([t_property_dict[  t_to][t_node] for t_node in t_hist_next])
-        t_times_prev    = [t_node[0] for t_node in t_hist_prev]
-        t_times_next    = [t_node[0] for t_node in t_hist_next]
+    #def interpolateMiddle1D(t_conn, t_property_dict, segments2, t_inter_times, rescale = True, histLen = 5, s = 15, debug = 0, aspect = 'equal'):
+    def interpolateMiddle1D(t_times_prev,t_times_next,t_traj_prev, t_traj_next, t_inter_times, rescale = True, s = 15, debug = 0, aspect = 'equal', title = "title"):
+
         t_traj_concat   = np.concatenate((t_traj_prev,t_traj_next))
         t_times         = t_times_prev + t_times_next
 
@@ -1615,7 +1605,7 @@ if 1 == 1:
             axes.plot(t_times_next, t_traj_next, '-o', c= 'black')
             axes.plot(t2D, IEpolationD, linestyle='dotted', c='orange')
             axes.plot(t_inter_times, IEpolation, 'o', c= 'red')
-            axes.set_title(t_conn)
+            axes.set_title(title)
             axes.set_aspect(aspect)
             axes.legend(prop={'size': 6})
             plt.show()
@@ -1635,17 +1625,36 @@ lr_121_interpolation_moment_z   = {t_conn:[] for t_conn in lr_relevant_conns}
 
 
 for t_conn in lr_relevant_conns:
-    lr_121_interpolation_centroids[t_conn]  = interpolateMiddle2D(t_conn, t_segments_121_centroids,
-                                                                 segments2, lr_121_interpolation_times[t_conn],
-                                                                 histLen = 5, s = 15, debug = 0)
+    t_from, t_to = t_conn
+    histLen = 5
+    t_hist_prev     = segments2[t_from][-histLen:]
+    t_hist_next     = segments2[t_to][:histLen]
 
-    lr_121_interpolation_areas[t_conn]      = interpolateMiddle1D(t_conn, t_segments_121_areas,
-                                                                 segments2, lr_121_interpolation_times[t_conn],  rescale = True,
-                                                                 histLen = 5, s = 15, debug = 0, aspect = 'auto')
+    t_times_prev    = [t_node[0] for t_node in t_hist_prev]
+    t_times_next    = [t_node[0] for t_node in t_hist_next]
 
-    lr_121_interpolation_moment_z[t_conn]   = interpolateMiddle1D(t_conn, t_segments_121_mom_z,
-                                                                 segments2, lr_121_interpolation_times[t_conn],  rescale = True,
-                                                                 histLen = 5, s = 15, debug = 0, aspect = 'auto')
+    t_traj_prev_c     = np.array([t_segments_121_centroids[t_from][t_node] for t_node in t_hist_prev])
+    t_traj_next_c     = np.array([t_segments_121_centroids[  t_to][t_node] for t_node in t_hist_next])
+
+    t_traj_prev_a     = np.array([t_segments_121_areas[t_from][t_node] for t_node in t_hist_prev])
+    t_traj_next_a     = np.array([t_segments_121_areas[  t_to][t_node] for t_node in t_hist_next])
+
+    t_traj_prev_mz     = np.array([t_segments_121_areas[t_from][t_node] for t_node in t_hist_prev])
+    t_traj_next_mz     = np.array([t_segments_121_areas[  t_to][t_node] for t_node in t_hist_next])
+
+    t_interp_times  = lr_121_interpolation_times[t_conn]
+
+    lr_121_interpolation_centroids[t_conn]  = interpolateMiddle2D(t_times_prev,t_times_next,t_traj_prev_c, t_traj_next_c,
+                                                                  t_interp_times, s = 15, debug = 0,
+                                                                  aspect = 'equal', title = t_conn)
+
+    lr_121_interpolation_areas[t_conn]      = interpolateMiddle1D(t_times_prev,t_times_next,t_traj_prev_a, t_traj_next_a,
+                                                                 t_interp_times,  rescale = True,
+                                                                 s = 15, debug = 0, aspect = 'auto', title = t_conn)
+
+    lr_121_interpolation_moment_z[t_conn]   = interpolateMiddle1D(t_times_prev,t_times_next,t_traj_prev_mz, t_traj_next_mz,
+                                                                 t_interp_times,  rescale = True,
+                                                                 s = 15, debug = 0, aspect = 'auto', title = t_conn)
     a = 1
     
 # ===============================================================================================
@@ -1682,24 +1691,32 @@ for t_conn, t_times_contours in lr_contour_combs.items():
 # ====  PRE-CALCULATE HULL CENTROIDS AND AREAS FOR EACH PERMUTATION ====
 # ===============================================================================================
 # REMARK: these will be reused alot in next steps, store them to avoid need of recalculation
+def lr_init_perm_precomputed(possible_permutation_dict, initialize_value):
+    return {t_conn: {t_time: 
+                            {t_perm:initialize_value for t_perm in t_perms}
+                     for t_time,t_perms in t_times_perms.items()}
+           for t_conn,t_times_perms in possible_permutation_dict.items()}
 
-lr_permutation_areas_precomputed    = {t_conn:
-                                            {t_time:
-                                                    {t_perm:0 for t_perm in t_perms}
-                                             for t_time,t_perms in t_times_perms.items()}
-                                        for t_conn,t_times_perms in lr_contour_combs_perms.items()}
+lr_permutation_areas_precomputed        = lr_init_perm_precomputed(lr_contour_combs_perms,0)
+lr_permutation_centroids_precomputed    = lr_init_perm_precomputed(lr_contour_combs_perms,[0,0])
+lr_permutation_mom_z_precomputed        = lr_init_perm_precomputed(lr_contour_combs_perms,0)
+#lr_permutation_areas_precomputed    = {t_conn:
+#                                            {t_time:
+#                                                    {t_perm:0 for t_perm in t_perms}
+#                                             for t_time,t_perms in t_times_perms.items()}
+#                                        for t_conn,t_times_perms in lr_contour_combs_perms.items()}
 
-lr_permutation_centroids_precomputed= {t_conn:
-                                            {t_time:
-                                                    {t_perm:[0,0] for t_perm in t_perms}
-                                             for t_time,t_perms in t_times_perms.items()}
-                                        for t_conn,t_times_perms in lr_contour_combs_perms.items()}
+#lr_permutation_centroids_precomputed= {t_conn:
+#                                            {t_time:
+#                                                    {t_perm:[0,0] for t_perm in t_perms}
+#                                             for t_time,t_perms in t_times_perms.items()}
+#                                        for t_conn,t_times_perms in lr_contour_combs_perms.items()}
 
-lr_permutation_mom_z_precomputed    = {t_conn:
-                                            {t_time:
-                                                    {t_perm:0 for t_perm in t_perms}
-                                             for t_time,t_perms in t_times_perms.items()}
-                                        for t_conn,t_times_perms in lr_contour_combs_perms.items()}
+#lr_permutation_mom_z_precomputed    = {t_conn:
+#                                            {t_time:
+#                                                    {t_perm:0 for t_perm in t_perms}
+#                                             for t_time,t_perms in t_times_perms.items()}
+#                                        for t_conn,t_times_perms in lr_contour_combs_perms.items()}
 for t_conn, t_times_perms in lr_contour_combs_perms.items():
     for t_time,t_perms in t_times_perms.items():
         for t_perm in t_perms:
@@ -1734,75 +1751,84 @@ for t_conn, t_times_perms in lr_contour_combs_perms.items():
 # REMARK: evolutions with least path length and are changes should be right ones
 
 if 1 == 1:
-    t_all_traj      = {t_conn:[] for t_conn in lr_permutation_cases}
-    t_all_areas     = {t_conn:[] for t_conn in lr_permutation_cases}
-    t_all_moms      = {t_conn:[] for t_conn in lr_permutation_cases}
-    t_sols_c        = {t_conn:[] for t_conn in lr_permutation_cases}
-    t_sols_c_i      = {t_conn:[] for t_conn in lr_permutation_cases}
-    t_sols_a        = {t_conn:[] for t_conn in lr_permutation_cases}
-    t_sols_m        = {t_conn:[] for t_conn in lr_permutation_cases}
+    def lr_evel_perm_interp_data(lr_permutation_cases,lr_121_interpolation_centroids,lr_permutation_times,
+          lr_permutation_centroids_precomputed,lr_permutation_areas_precomputed,lr_permutation_mom_z_precomputed):
+        
+        t_all_traj      = {t_conn:[] for t_conn in lr_permutation_cases}
+        t_all_areas     = {t_conn:[] for t_conn in lr_permutation_cases}
+        t_all_moms      = {t_conn:[] for t_conn in lr_permutation_cases}
+        t_sols_c        = {t_conn:[] for t_conn in lr_permutation_cases}
+        t_sols_c_i      = {t_conn:[] for t_conn in lr_permutation_cases}
+        t_sols_a        = {t_conn:[] for t_conn in lr_permutation_cases}
+        t_sols_m        = {t_conn:[] for t_conn in lr_permutation_cases}
 
-    for t_conn in lr_permutation_cases:
-        t_c_interp = lr_121_interpolation_centroids[t_conn]
-        for t,t_perms in enumerate(lr_permutation_cases[t_conn]):
-            # dump sequences of areas and centroids for each possible trajectory
-            t_temp_c = []
-            t_temp_a = []     
-            t_temp_m = [] 
-            for t_time,t_perm in zip(lr_permutation_times[t_conn],t_perms):
-                t_temp_c.append(lr_permutation_centroids_precomputed[t_conn][t_time][t_perm])
-                t_temp_a.append(lr_permutation_areas_precomputed[t_conn][t_time][t_perm])
-                t_temp_m.append(lr_permutation_mom_z_precomputed[t_conn][t_time][t_perm])
-            t_all_traj[t_conn].append(np.array(t_temp_c).reshape(-1,2))
-            t_all_areas[t_conn].append(np.array(t_temp_a))
-            t_all_moms[t_conn].append(np.array(t_temp_m))
+        for t_conn in lr_permutation_cases:
+            t_c_interp = lr_121_interpolation_centroids[t_conn]
+            for t,t_perms in enumerate(lr_permutation_cases[t_conn]):
+                # dump sequences of areas and centroids for each possible trajectory
+                t_temp_c = []
+                t_temp_a = []     
+                t_temp_m = [] 
+                for t_time,t_perm in zip(lr_permutation_times[t_conn],t_perms):
+                    t_temp_c.append(lr_permutation_centroids_precomputed[t_conn][t_time][t_perm])
+                    t_temp_a.append(lr_permutation_areas_precomputed[t_conn][t_time][t_perm])
+                    t_temp_m.append(lr_permutation_mom_z_precomputed[t_conn][t_time][t_perm])
+                t_all_traj[t_conn].append(np.array(t_temp_c).reshape(-1,2))
+                t_all_areas[t_conn].append(np.array(t_temp_a))
+                t_all_moms[t_conn].append(np.array(t_temp_m))
 
-        #
-        t_c_inter_traj =  [t[1:-1]       for t in t_all_traj[t_conn]]
-        t_c_inter_traj_diff =  [t - t_c_interp      for t in t_c_inter_traj]
-        t_c_inter_traj_diff_norms = [np.linalg.norm(t, axis=1)  for t in t_c_inter_traj_diff]
-        t_c_i_traj_d_norms_means  = [np.mean(t) for t in t_c_inter_traj_diff_norms]
-        t_c_i_mean_min            = np.argmin(t_c_i_traj_d_norms_means)
+            #
+            t_c_inter_traj =  [t[1:-1]       for t in t_all_traj[t_conn]]
+            t_c_inter_traj_diff =  [t - t_c_interp      for t in t_c_inter_traj]
+            t_c_inter_traj_diff_norms = [np.linalg.norm(t, axis=1)  for t in t_c_inter_traj_diff]
+            t_c_i_traj_d_norms_means  = [np.mean(t) for t in t_c_inter_traj_diff_norms]
+            t_c_i_mean_min            = np.argmin(t_c_i_traj_d_norms_means)
 
-        # check displacement norms, norm means and stdevs
-        t_c_diffs = [np.diff(t,axis = 0)        for t in t_all_traj[t_conn]]
-        t_c_norms = [np.linalg.norm(t, axis=1)  for t in t_c_diffs]
-        t_c_means = np.mean(t_c_norms, axis=1)
-        t_c_stdevs= np.std( t_c_norms, axis=1)
+            # check displacement norms, norm means and stdevs
+            t_c_diffs = [np.diff(t,axis = 0)        for t in t_all_traj[t_conn]]
+            t_c_norms = [np.linalg.norm(t, axis=1)  for t in t_c_diffs]
+            t_c_means = np.mean(t_c_norms, axis=1)
+            t_c_stdevs= np.std( t_c_norms, axis=1)
 
-        t_c_mean_min    = np.argmin(t_c_means)
-        t_c_stdevs_min  = np.argmin(t_c_stdevs)
+            t_c_mean_min    = np.argmin(t_c_means)
+            t_c_stdevs_min  = np.argmin(t_c_stdevs)
 
 
-        # same with areas
-        t_areas = np.array(t_all_areas[t_conn])
-        t_a_diffs = np.diff(t_areas, axis=1)
-        t_a_d_abs = np.array([np.abs(t) for t in t_a_diffs])
-        t_a_d_a_sum = np.sum(t_a_d_abs, axis = 1)
-        t_a_means = np.mean(t_a_d_abs, axis=1)
-        t_a_stdevs= np.std( t_a_d_abs, axis=1)
+            # same with areas
+            t_areas = np.array(t_all_areas[t_conn])
+            t_a_diffs = np.diff(t_areas, axis=1)
+            t_a_d_abs = np.array([np.abs(t) for t in t_a_diffs])
+            t_a_d_a_sum = np.sum(t_a_d_abs, axis = 1)
+            t_a_means = np.mean(t_a_d_abs, axis=1)
+            t_a_stdevs= np.std( t_a_d_abs, axis=1)
 
-        t_a_mean_min    = np.argmin(t_a_means)
-        t_a_stdevs_min  = np.argmin(t_a_stdevs)
+            t_a_mean_min    = np.argmin(t_a_means)
+            t_a_stdevs_min  = np.argmin(t_a_stdevs)
 
-        # same with moments
-        t_moments = np.array(t_all_moms[t_conn])
-        t_m_diffs = np.diff(t_moments, axis=1)
-        t_m_d_abs = np.array([np.abs(t) for t in t_m_diffs])
-        t_m_d_a_sum = np.sum(t_m_d_abs, axis = 1)
-        t_m_means = np.mean(t_m_d_abs, axis=1)
-        t_m_stdevs= np.std( t_m_d_abs, axis=1)
+            # same with moments
+            t_moments = np.array(t_all_moms[t_conn])
+            t_m_diffs = np.diff(t_moments, axis=1)
+            t_m_d_abs = np.array([np.abs(t) for t in t_m_diffs])
+            t_m_d_a_sum = np.sum(t_m_d_abs, axis = 1)
+            t_m_means = np.mean(t_m_d_abs, axis=1)
+            t_m_stdevs= np.std( t_m_d_abs, axis=1)
 
-        t_m_mean_min    = np.argmin(t_m_means)
-        t_m_stdevs_min  = np.argmin(t_m_stdevs)
+            t_m_mean_min    = np.argmin(t_m_means)
+            t_m_stdevs_min  = np.argmin(t_m_stdevs)
 
-        # save cases with least mean and stdev
-        t_sols_c[t_conn] += [t_c_mean_min,t_c_stdevs_min]
-        t_sols_c_i[t_conn] += [t_c_i_mean_min]
-        t_sols_a[t_conn] += [t_a_mean_min,t_a_stdevs_min]
-        t_sols_m[t_conn] += [t_m_mean_min,t_m_stdevs_min]
+            # save cases with least mean and stdev
+            t_sols_c[t_conn] += [t_c_mean_min,t_c_stdevs_min]
+            t_sols_c_i[t_conn] += [t_c_i_mean_min]
+            t_sols_a[t_conn] += [t_a_mean_min,t_a_stdevs_min]
+            t_sols_m[t_conn] += [t_m_mean_min,t_m_stdevs_min]
+        return t_sols_c, t_sols_c_i, t_sols_a, t_sols_m
+
     a = 1
 
+    t_args = [lr_permutation_cases,lr_121_interpolation_centroids,lr_permutation_times,
+          lr_permutation_centroids_precomputed,lr_permutation_areas_precomputed,lr_permutation_mom_z_precomputed]
+
+    t_sols_c, t_sols_c_i, t_sols_a, t_sols_m = lr_evel_perm_interp_data(*t_args)
 # ===============================================================================================
 # ========== CALCULATED WEIGHTED SOLUTONS =========
 # ===============================================================================================
@@ -1937,6 +1963,9 @@ lr_conn_edges_splits
 lr_conn_edges_merges
 segment_conn_end_start_points(t_conn_121_other_terminated_inspect, nodes = 1)
 lr_inspect_contour_combs = {t_conn:{} for t_conn in t_conn_121_other_terminated_inspect}
+lr_inspect_c_c_from_to_interp_times = {t_conn:[] for t_conn in t_conn_121_other_terminated_inspect}
+lr_inspect_121_interpolation_times  = {t_conn:[] for t_conn in t_conn_121_other_terminated_inspect}
+lr_inspect_121_interpolation_from_to  = {t_conn:[] for t_conn in t_conn_121_other_terminated_inspect}
 for t_conn in t_conn_121_other_terminated_inspect:
     t_from,t_to = t_conn
     spl = [(t_from_from, t_from_to) for t_from_from, t_from_to in lr_conn_edges_splits if t_from == t_from_to] # 121 left   is some other conn right
@@ -1947,10 +1976,18 @@ for t_conn in t_conn_121_other_terminated_inspect:
         t_to_merging_IDs = list(set([t[1] for t in mrg]))
         assert len(t_to_merging_IDs) == 1, "t_conn_121_other_terminated_inspect merge with multiple, this should not trigger"
         t_to_all_merging_segments = [t_to_from for t_to_from, t_to_to in lr_conn_edges_merges if t_to_to == t_to_merging_IDs[0] and t_to_from != t_to]
+        t_from_nodes_part = segments2[t_from][-4:]  # chain with below
+        t_from_time_start = t_from_nodes_part[0][0] # [-4:][0] = take at furthest from back of at least size 4. list([a,b])[-4:][0] = a
+        t_to_from_nodes_part = segments2[t_to_merging_IDs[0]][:4]
+        t_to_from_time_start = t_to_from_nodes_part[-1][0]
 
-        t_from_time_start = segments2[t_from][-4:][0][0] # [-4:][0] = take at furthest from back of at least size 4. list([a,b])[-4:][0] = a
-        t_to_from_time_start = segments2[t_to_merging_IDs[0]][:4][-1][0]
-
+        lr_inspect_c_c_from_to_interp_times[t_conn].append(t_from_nodes_part)
+        lr_inspect_c_c_from_to_interp_times[t_conn].append(t_to_from_nodes_part)
+        # include start-end of neighbor segments similar like before with 121s
+        t_internal_interp_time_start    = t_from_nodes_part[-1][0] 
+        t_internal_interp_time_end      = t_to_from_nodes_part[0][0] 
+        lr_inspect_121_interpolation_times[t_conn] = np.arange(t_internal_interp_time_start, t_internal_interp_time_end + 1, 1)
+        lr_inspect_121_interpolation_from_to[t_conn] = [t_from, t_to_merging_IDs[0]]
         activeNodes = [node for node in G.nodes() if t_from_time_start <= node[0] <= t_to_from_time_start]
         subgraph = G.subgraph(activeNodes)
 
@@ -1980,6 +2017,117 @@ for t_conn in t_conn_121_other_terminated_inspect:
     else:
         assert 1 == -1, "t_conn_121_other_terminated_inspect case split unexplored" 
     
+
+# prepare possible permuations of clusters
+lr_inspect_contour_combs_perms = {t_conn:{t_time:[] for t_time in t_dict} for t_conn,t_dict in lr_inspect_contour_combs.items()}
+for t_conn, t_times_contours in lr_inspect_contour_combs.items():
+    for t_time,t_contours in t_times_contours.items():
+        t_perms = sum([list(itertools.combinations(t_contours, r)) for r in range(1,len(t_contours)+1)],[])
+        lr_inspect_contour_combs_perms[t_conn][t_time] = t_perms
+# predefine storage
+lr_inspect_permutation_areas_precomputed        = lr_init_perm_precomputed(lr_inspect_contour_combs_perms, 0    )
+lr_inspect_permutation_centroids_precomputed    = lr_init_perm_precomputed(lr_inspect_contour_combs_perms, [0,0])
+lr_inspect_permutation_mom_z_precomputed        = lr_init_perm_precomputed(lr_inspect_contour_combs_perms, 0    )
+# calculate parameters of each combination
+for t_conn, t_times_perms in lr_inspect_contour_combs_perms.items():
+    for t_time,t_perms in t_times_perms.items():
+        for t_perm in t_perms:
+            t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_perm]))
+            t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
+
+            lr_inspect_permutation_areas_precomputed[       t_conn][t_time][t_perm]     = t_area
+            lr_inspect_permutation_centroids_precomputed[   t_conn][t_time][t_perm]     = t_centroid
+            lr_inspect_permutation_mom_z_precomputed[       t_conn][t_time][t_perm]     = t_mom_z
+
+# interpolate middle
+
+lr_inspect_c_c_from_to_interp_times
+
+lr_inspect_121_interpolation_centroids  = {t_conn:[] for t_conn in lr_inspect_c_c_from_to_interp_times}
+lr_inspect_121_interpolation_areas      = {t_conn:[] for t_conn in lr_inspect_c_c_from_to_interp_times}
+lr_inspect_121_interpolation_moment_z   = {t_conn:[] for t_conn in lr_inspect_c_c_from_to_interp_times}
+
+
+for t_conn, [t_hist_prev,t_hist_next] in lr_inspect_c_c_from_to_interp_times.items():
+    t_from, t_to    = lr_inspect_121_interpolation_from_to[t_conn]
+    #histLen = 5
+    #t_hist_prev     = lr_inspect_c_c_from_to_interp_times[t_conn][0]
+    #t_hist_next     = lr_inspect_c_c_from_to_interp_times[t_conn][1]
+
+    t_times_prev    = [t_node[0] for t_node in t_hist_prev]
+    t_times_next    = [t_node[0] for t_node in t_hist_next]
+
+    t_traj_prev_c     = np.array([t_segments_121_centroids[t_from][t_node] for t_node in t_hist_prev])
+    t_traj_next_c     = np.array([t_segments_121_centroids[  t_to][t_node] for t_node in t_hist_next])
+
+    t_traj_prev_a     = np.array([t_segments_121_areas[t_from][t_node] for t_node in t_hist_prev])
+    t_traj_next_a     = np.array([t_segments_121_areas[  t_to][t_node] for t_node in t_hist_next])
+
+    t_traj_prev_mz     = np.array([t_segments_121_areas[t_from][t_node] for t_node in t_hist_prev])
+    t_traj_next_mz     = np.array([t_segments_121_areas[  t_to][t_node] for t_node in t_hist_next])
+
+    t_interp_times  = lr_inspect_121_interpolation_times[t_conn]
+
+    debug = 0
+    lr_inspect_121_interpolation_centroids[t_conn]  = interpolateMiddle2D(t_times_prev,t_times_next,t_traj_prev_c, t_traj_next_c,
+                                                                  t_interp_times, s = 15, debug = debug,
+                                                                  aspect = 'equal', title = t_conn)
+
+    lr_inspect_121_interpolation_areas[t_conn]      = interpolateMiddle1D(t_times_prev,t_times_next,t_traj_prev_a, t_traj_next_a,
+                                                                 t_interp_times,  rescale = True, s = 15, debug = debug,
+                                                                 aspect = 'auto', title = t_conn)
+
+    lr_inspect_121_interpolation_moment_z[t_conn]   = interpolateMiddle1D(t_times_prev,t_times_next,t_traj_prev_mz, t_traj_next_mz,
+                                                                 t_interp_times,  rescale = True, s = 15, debug = debug,
+                                                                 aspect = 'auto', title = t_conn)
+
+    a = 1
+
+lr_inspect_permutation_cases = {t_conn:[] for t_conn in lr_inspect_contour_combs_perms}
+lr_inspect_permutation_times = {t_conn:[] for t_conn in lr_inspect_contour_combs_perms}
+lr_inspect_121_interpolation_times
+for t_conn, t_times_perms in lr_inspect_contour_combs_perms.items():
+    
+    t_values = list([t_val for t_time,t_val in t_times_perms.items() if t_time in lr_inspect_121_interpolation_times[t_conn]])
+    t_times = lr_inspect_121_interpolation_times[t_conn]
+
+    sequences = list(itertools.product(*t_values))
+
+    lr_inspect_permutation_cases[t_conn] = sequences
+    lr_inspect_permutation_times[t_conn] = t_times
+
+t_temp_c = {tID:vals[1:-1] for tID, vals in lr_inspect_121_interpolation_centroids.items()}
+t_args = [lr_inspect_permutation_cases,t_temp_c,lr_inspect_permutation_times,
+          lr_inspect_permutation_centroids_precomputed,lr_inspect_permutation_areas_precomputed,lr_inspect_permutation_mom_z_precomputed]
+
+#t_args = [lr_permutation_cases,lr_121_interpolation_centroids,lr_permutation_times,
+#          lr_permutation_centroids_precomputed,lr_permutation_areas_precomputed,lr_permutation_mom_z_precomputed]
+
+t_sols_c, t_sols_c_i, t_sols_a, t_sols_m = lr_evel_perm_interp_data(*t_args)
+
+
+
+t_sol = 26        
+
+for t_sol in set(sum(list(t_sols_c.values()) + list(t_sols_c_i.values())  + list(t_sols_a.values()) + list(t_sols_m.values()),[]) ):
+    fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+    t_traj = []
+    for t,t_perms in  enumerate(lr_inspect_permutation_cases[t_conn][t_sol]):
+        t_time  = lr_inspect_permutation_times[t_conn][t]
+        #t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t_subID] for t_subID in t_perms]))
+        #axes.plot(*t_hull.reshape(-1,2).T, '-',  c='black', linewidth = 0.3)
+        #for tID in t_perms:
+        #    axes.plot(*g0_contours[t_time][tID].reshape(-1,2).T, '-',  c=np.array(cyclicColor(t))/255, linewidth = 0.5)
+        t_traj.append(lr_inspect_permutation_centroids_precomputed[t_conn][t_time][t_perms])
+    t_traj = np.array(t_traj)
+    axes.plot(*t_traj.T, '-o')
+    #axes.plot(*t_traj_next.T, '-o',  c='black')
+    #axes.plot(x0,y0, '-o')
+        
+    #axes.plot(*IEpolation, linestyle='dotted', c='orange')
+    axes.set_title(t_sol)
+    axes.set_aspect('equal')
+    fig.show()
 
 a = 1
 # ===============================================================================================

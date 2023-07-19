@@ -1836,60 +1836,63 @@ if 1 == 1:
 # REMARK: of each evolution occurence ID. Then re-eight solution to 0-1.
 
 if 1 == 1:
-    lr_weighted_solutions = {t_conn:{} for t_conn in lr_permutation_cases}
+    def lr_weighted_sols(weights, t_sols, lr_permutation_cases):
+        lr_weighted_solutions = {t_conn:{} for t_conn in lr_permutation_cases}
+        lr_weight_c, lr_weight_c_i,lr_weight_a, lr_weight_m = weights
+        # set normalized weights for methods
+        #lr_weight_c    = 1
+        #lr_weight_c_i  = 1
+        #lr_weight_a    = 1
+        #lr_weight_m    = 1
+        lr_weights = np.array(weights)
+        lr_weight_c, lr_weight_c_i,lr_weight_a, lr_weight_m = lr_weights / np.sum(lr_weights)
 
-    # set normalized weights for methods
-    lr_weight_c    = 1
-    lr_weight_c_i  = 1
-    lr_weight_a    = 1
-    lr_weight_m    = 1
-    lr_weights = np.array([lr_weight_c, lr_weight_c_i,lr_weight_a, lr_weight_m])
-    lr_weight_total = np.sum(lr_weights)
-    lr_weight_c, lr_weight_c_i,lr_weight_a, lr_weight_m = lr_weights / lr_weight_total
+        t_sols_c, t_sols_c_i, t_sols_a, t_sols_m = t_sols
+        for t_conn in lr_permutation_cases:
+            t_all_sols = []
+            t_all_sols += t_sols_c[t_conn]
+            t_all_sols += t_sols_c_i[t_conn]
+            t_all_sols += t_sols_a[t_conn]
+            t_all_sols += t_sols_m[t_conn]
 
-    for t_conn in lr_permutation_cases:
-        t_all_sols = []
-        t_all_sols += t_sols_c[t_conn]
-        t_all_sols += t_sols_c_i[t_conn]
-        t_all_sols += t_sols_a[t_conn]
-        t_all_sols += t_sols_m[t_conn]
-
-        t_all_sols_unique = sorted(list(set(t_sols_c[t_conn] + t_sols_c_i[t_conn] + t_sols_a[t_conn] + t_sols_m[t_conn])))
+            t_all_sols_unique = sorted(list(set(t_sols_c[t_conn] + t_sols_c_i[t_conn] + t_sols_a[t_conn] + t_sols_m[t_conn])))
      
-        lr_weighted_solutions[t_conn] = {tID:0 for tID in t_all_sols_unique}
-        for tID in t_all_sols_unique:
-            if tID in t_sols_c[   t_conn]:
-                lr_weighted_solutions[t_conn][tID] += lr_weight_c
-            if tID in t_sols_c_i[   t_conn]:
-                lr_weighted_solutions[t_conn][tID] += lr_weight_c_i
-            if tID in t_sols_a[   t_conn]:
-                lr_weighted_solutions[t_conn][tID] += lr_weight_a
-            if tID in t_sols_m[   t_conn]:
-                lr_weighted_solutions[t_conn][tID] += lr_weight_m
-        # normalize weights for IDs
-        r_total = np.sum([t_weight for t_weight in lr_weighted_solutions[t_conn].values()])
-        lr_weighted_solutions[t_conn] = {tID:round(t_val/r_total,3) for tID,t_val in lr_weighted_solutions[t_conn].items()}
+            lr_weighted_solutions[t_conn] = {tID:0 for tID in t_all_sols_unique}
+            for tID in t_all_sols_unique:
+                if tID in t_sols_c[   t_conn]:
+                    lr_weighted_solutions[t_conn][tID] += lr_weight_c
+                if tID in t_sols_c_i[   t_conn]:
+                    lr_weighted_solutions[t_conn][tID] += lr_weight_c_i
+                if tID in t_sols_a[   t_conn]:
+                    lr_weighted_solutions[t_conn][tID] += lr_weight_a
+                if tID in t_sols_m[   t_conn]:
+                    lr_weighted_solutions[t_conn][tID] += lr_weight_m
+            # normalize weights for IDs
+            r_total = np.sum([t_weight for t_weight in lr_weighted_solutions[t_conn].values()])
+            lr_weighted_solutions[t_conn] = {tID:round(t_val/r_total,3) for tID,t_val in lr_weighted_solutions[t_conn].items()}
 
  
     
-    lr_weighted_solutions_max = {t_conn:0 for t_conn in lr_permutation_cases}
-    lr_weighted_solutions_accumulate_problems = {}
-    for t_conn in lr_permutation_cases:
-        t_weight_max = max(lr_weighted_solutions[t_conn].values())
-        t_keys_max = [tID for tID, t_weight in lr_weighted_solutions[t_conn].items() if t_weight == t_weight_max]
-        if len(t_keys_max) == 1:
-            lr_weighted_solutions_max[t_conn] = t_keys_max[0]
-        else:
-            # >>>>>>>>>>VERY CUSTOM: take sol with max elements in total <<<<<<<<<<<<<<
-            t_combs = [lr_permutation_cases[t_conn][tID] for tID in t_keys_max]
-            t_combs_lens = [np.sum([len(t_perm) for t_perm in t_path]) for t_path in t_combs]
-            t_sol = np.argmax(t_combs_lens) # picks first if there are same lengths
-            lr_weighted_solutions_max[t_conn] = t_keys_max[t_sol]
-            t_count = t_combs_lens.count(max(t_combs_lens))
-            if t_count > 1: lr_weighted_solutions_accumulate_problems[t_conn] = t_combs_lens # holds poistion of t_keys_max, != all keys
-            a = 1
-
-
+        lr_weighted_solutions_max = {t_conn:0 for t_conn in lr_permutation_cases}
+        lr_weighted_solutions_accumulate_problems = {}
+        for t_conn in lr_permutation_cases:
+            t_weight_max = max(lr_weighted_solutions[t_conn].values())
+            t_keys_max = [tID for tID, t_weight in lr_weighted_solutions[t_conn].items() if t_weight == t_weight_max]
+            if len(t_keys_max) == 1:
+                lr_weighted_solutions_max[t_conn] = t_keys_max[0]
+            else:
+                # >>>>>>>>>>VERY CUSTOM: take sol with max elements in total <<<<<<<<<<<<<<
+                t_combs = [lr_permutation_cases[t_conn][tID] for tID in t_keys_max]
+                t_combs_lens = [np.sum([len(t_perm) for t_perm in t_path]) for t_path in t_combs]
+                t_sol = np.argmax(t_combs_lens) # picks first if there are same lengths
+                lr_weighted_solutions_max[t_conn] = t_keys_max[t_sol]
+                t_count = t_combs_lens.count(max(t_combs_lens))
+                if t_count > 1: lr_weighted_solutions_accumulate_problems[t_conn] = t_combs_lens # holds poistion of t_keys_max, != all keys
+                a = 1
+        return lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems
+t_weights = [1,1.5,0,1]
+t_sols = [t_sols_c, t_sols_c_i, t_sols_a, t_sols_m]
+lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems =  lr_weighted_sols(t_weights, t_sols, lr_permutation_cases )
 # ===============================================================================================
 # ========== INTEGRATE RESOLVED PATHS INTO GRAPH; REMOVE SECONDARY SOLUTIONS =========
 # ===============================================================================================
@@ -1946,9 +1949,9 @@ segments2_c = [a for _,a in segments2_c.items() if len(a) > 0]
 segments2_c = list(sorted(segments2_c, key=lambda x: x[0][0]))
 paths_c = {i:vals for i,vals in enumerate(segments2_c)}
 
-#drawH(G, paths, node_positions)
+##drawH(G, paths, node_positions)
 
-#drawH(G_copy, paths_c, node_positions_c)
+##drawH(G_copy, paths_c, node_positions_c)
 
 # ===============================================================================================
 # ========= deal with 121s that are partly connected with merging/splitting segments << =========
@@ -2047,12 +2050,10 @@ lr_inspect_121_interpolation_centroids  = {t_conn:[] for t_conn in lr_inspect_c_
 lr_inspect_121_interpolation_areas      = {t_conn:[] for t_conn in lr_inspect_c_c_from_to_interp_times}
 lr_inspect_121_interpolation_moment_z   = {t_conn:[] for t_conn in lr_inspect_c_c_from_to_interp_times}
 
-
+# similar to OG
 for t_conn, [t_hist_prev,t_hist_next] in lr_inspect_c_c_from_to_interp_times.items():
     t_from, t_to    = lr_inspect_121_interpolation_from_to[t_conn]
-    #histLen = 5
-    #t_hist_prev     = lr_inspect_c_c_from_to_interp_times[t_conn][0]
-    #t_hist_next     = lr_inspect_c_c_from_to_interp_times[t_conn][1]
+
 
     t_times_prev    = [t_node[0] for t_node in t_hist_prev]
     t_times_next    = [t_node[0] for t_node in t_hist_next]
@@ -2096,6 +2097,7 @@ for t_conn, t_times_perms in lr_inspect_contour_combs_perms.items():
     lr_inspect_permutation_cases[t_conn] = sequences
     lr_inspect_permutation_times[t_conn] = t_times
 
+# have to edit centroids, since they are generated bit differently- chop edges. so i can use lr_evel_perm_interp_data()
 t_temp_c = {tID:vals[1:-1] for tID, vals in lr_inspect_121_interpolation_centroids.items()}
 t_args = [lr_inspect_permutation_cases,t_temp_c,lr_inspect_permutation_times,
           lr_inspect_permutation_centroids_precomputed,lr_inspect_permutation_areas_precomputed,lr_inspect_permutation_mom_z_precomputed]
@@ -2103,12 +2105,218 @@ t_args = [lr_inspect_permutation_cases,t_temp_c,lr_inspect_permutation_times,
 #t_args = [lr_permutation_cases,lr_121_interpolation_centroids,lr_permutation_times,
 #          lr_permutation_centroids_precomputed,lr_permutation_areas_precomputed,lr_permutation_mom_z_precomputed]
 
-t_sols_c, t_sols_c_i, t_sols_a, t_sols_m = lr_evel_perm_interp_data(*t_args)
+t_inspect_sols_c, t_inspect_sols_c_i, t_inspect_sols_a, t_inspect_sols_m = lr_evel_perm_interp_data(*t_args) # dropped areas since its almost same as momZ
 
 
 
-t_sol = 26        
+t_weights = [1,2,0,1]
+t_sols = [t_inspect_sols_c, t_inspect_sols_c_i, t_inspect_sols_a, t_inspect_sols_m]
+lr_inspect_weighted_solutions_max, lr_inspect_weighted_solutions_accumulate_problems =  lr_weighted_sols(t_weights, t_sols, lr_inspect_permutation_cases )
 
+
+for t_conn in lr_inspect_permutation_cases:
+    t_sol   = lr_inspect_weighted_solutions_max[t_conn]
+    t_path  = lr_inspect_permutation_cases[t_conn][t_sol]             # t_path contains start-end points of segments !!!
+    t_times = lr_inspect_permutation_times[t_conn]
+    #t_nodes_old = []
+    t_nodes_new = []
+    for t_time,t_comb in zip(t_times,t_path):
+        #for tID in t_comb:
+        #    t_nodes_old.append(tuple([t_time, tID]))          # old type of nodes in solution: (time,contourID)     e.g (t1,ID1)
+        t_nodes_new.append(tuple([t_time] + list(t_comb)))    # new type of nodes in solution: (time,*clusterIDs)   e.g (t1,ID1,ID2,...)
+
+    t_nodes_all = []
+    for t_time,t_comb in {tID:vals for tID,vals in lr_inspect_contour_combs[t_conn].items() if tID in lr_inspect_121_interpolation_times[t_conn]}.items():
+        for tID in t_comb:
+            t_nodes_all.append(tuple([t_time, tID]))
+    
+    # its easy to remove start-end point nodes, but they will lose connection to segments
+    G.remove_nodes_from(t_nodes_all)
+    # so add extra nodes to make edges with segments, which will create start-end points again.
+    t_from, t_to = lr_inspect_121_interpolation_from_to[t_conn]                                     
+    t_nodes_new_sides = [segments2[t_from][-2]] + t_nodes_new + [segments2[t_to][1]]
+
+    pairs = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
+    
+    G.add_edges_from(pairs)
+
+
+G_copy = G.copy()
+node_positions_c = getNodePos(G_copy.nodes())
+segments2_c, skipped_c = graph_extract_paths(G_copy, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
+
+# Draw extracted segments with bold lines and different color.
+segments2_c = [a for _,a in segments2_c.items() if len(a) > 0]
+segments2_c = list(sorted(segments2_c, key=lambda x: x[0][0]))
+paths_c = {i:vals for i,vals in enumerate(segments2_c)}
+
+#drawH(G, paths, node_positions)
+
+#drawH(G_copy, paths_c, node_positions_c)
+
+
+if 1 == 1:
+
+    t_hulls_all = [{time:0 for time,*subIDs in case} for case in segments2_c]
+    t_centroids_all = [{time:np.zeros(2, int) for time,*subIDs in case} for case in segments2_c]
+    for n, case in tqdm(enumerate(segments2_c)):
+        for k,(t_time,*subIDs) in enumerate(case):
+         t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t_subID] for t_subID in subIDs]))
+         t_hulls_all[n][t_time] = t_hull
+         t_centroid = centroid_area(t_hull)[0]
+         t_centroids_all[n][t_time] = t_centroid.astype(int)
+    
+    if 1 == -1:
+        binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
+        imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(binarizedMaskArr.shape[0])]
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        fontScale = 0.7; thickness = 4;
+        for n, case in tqdm(enumerate(segments2_c)):
+            case    = sorted(case, key=lambda x: x[0])
+            for k,subCase in enumerate(case):
+                t_time,*subIDs = subCase
+                for subID in subIDs:
+                    cv2.drawContours(  imgs[t_time],   g0_contours[t_time], subID, cyclicColor(n), 2)
+                #x,y,w,h = lessRoughBRs[time][subCase]
+            
+                t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t_subID] for t_subID in subIDs]))
+                x,y,w,h = cv2.boundingRect(t_hull)
+            
+                cv2.drawContours(  imgs[t_time],  [t_hull], -1, cyclicColor(n), 2)
+                #x,y,w,h = g0_bigBoundingRect[time][ID]
+                #cv2.rectangle(imgs[time], (x,y), (x+w,y+h), cyclicColor(n), 1)
+                [cv2.putText(imgs[t_time], str(n), (x,y), font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]# connected clusters = same color
+            for k,subCase in enumerate(case):
+                t_time,*subIDs = subCase
+                useTimes = [t for t in t_centroids_all[n].keys() if t <= t_time and t > t_time - 10]#
+                pts = np.array([t_centroids_all[n][t] for t in useTimes]).reshape(-1, 1, 2)
+            
+                cv2.polylines(imgs[t_time], [pts] ,0, (255,255,255), 3)
+                cv2.polylines(imgs[t_time], [pts] ,0, cyclicColor(n), 2)
+                [cv2.circle(imgs[t_time], tuple(p), 3, cyclicColor(n), -1) for [p] in pts]
+
+                for subID in subIDs:
+                    startPos2 = g0_contours[t_time][subID][-30][0] 
+                    [cv2.putText(imgs[t_time], str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
+        
+    if 1 == -1:
+        #cv2.imshow('a',imgs[time])
+        for k,img in enumerate(imgs):
+            if k in activeTimes:
+                folder = r"./post_tests/testImgs2/"
+                fileName = f"{str(k).zfill(4)}.png"
+                cv2.imwrite(os.path.join(folder,fileName) ,img)
+                #cv2.imshow('a',img)
+
+
+# ===============================================================================================
+# ========= PROCESS MERGES: RESOLVE PRE-MERGE AS CLOSE AS POSSIBLE =========
+# ===============================================================================================
+# REMARK: merge begins too soon because bounding rectangles begin to overlap
+# REMARK: for merges each branch should be resolved forward from pool of combinations
+# REMARK: to improve extrapolation ive decided to configure smoothing parameters 
+# REMARK: iteratevly based on ability to predict each next step.
+# REMARK: overal best prediction parameter wins
+
+def interpolate_trajectory(trajectory, time_parameters, which_times, s = 10, k = 1, debug = 0, axes = 0, title = 'title', aspect = 'equal'):
+    
+    spline_object, _ = interpolate.splprep([*trajectory.T] , u=time_parameters, s=s,k=k) 
+    interpolation_values = np.array(interpolate.splev(which_times, spline_object,ext=0))
+    
+    if debug == 1:
+        newPlot = False
+        if axes == 0:
+            newPlot = True
+            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+            axes.plot(*trajectory.T , '-o')
+        if min(which_times)> max(time_parameters):     # extrapolation
+            t_min = max(time_parameters); t_max = max(which_times)
+        else:
+            t_min, t_max = min(time_parameters), max(time_parameters)
+        #t_min, t_max = min(time_parameters), max(max(which_times), max(time_parameters)) # if which_times in  time_parameters, plot across time_parameters, else from min(time_parameters) to max(which_times)
+        interpolation_values_d = np.array(interpolate.splev(np.arange(t_min, t_max + 0.1, 0.1), spline_object,ext=0))
+        axes.plot(*interpolation_values_d, linestyle='dotted', c='orange')
+        axes.scatter(*interpolation_values, c='red',s = 100)
+
+        if newPlot:
+            axes.set_aspect(aspect)
+            axes.set_title(title)
+            plt.show()
+    return interpolation_values.T
+
+t_cs = np.array(list(t_centroids_all[1].values()))
+t_ts = np.array(list(t_centroids_all[1].keys()))
+aa = interpolate_trajectory(trajectory = t_cs,time_parameters = t_ts,which_times = t_ts[2:5] + 0.5 ,s = 0, k = 1, debug = 0 ,axes = 0, title = 'title', aspect = 'equal')
+
+t_from, t_to = 0, t_cs.shape[0]
+trajectory = t_cs[t_from:t_to]
+time = t_ts[t_from:t_to]
+trajectory_length = trajectory.shape[0]
+h_num_points = 8                                                                              # i want this long history at max
+h_start_point_index = 0                                                                       # starting at this index
+h_num_points_available = min(h_num_points, trajectory_length - h_start_point_index)         # but past start, there are only total-start available
+h_indicies = np.arange(h_start_point_index, h_start_point_index + h_num_points_available, 1)
+
+do_work_next_n      = trajectory_length - h_num_points 
+
+fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+axes.plot(*trajectory.T , '-o')
+
+
+k_all = (1,2)
+s_all = (0,1,5,10,25,50,100,1000,10000)
+
+combinations = list(itertools.product(k_all, s_all))
+errors_tot_all = {}
+asd         = {k:0.0 for k in k_all}
+asd_stop    = {k:0 for k in k_all}
+for t_comb in combinations:
+    k  = t_comb[0]; s = t_comb[1]
+    if asd_stop[k] == 1: continue 
+    t_errors = {}
+    for t_start_index in np.arange(h_start_point_index, h_start_point_index + do_work_next_n , 1):# 
+        h_num_points_available = min(h_num_points, trajectory.shape[0] - t_start_index)           # but past start, there are only total-start available
+        h_indicies = np.arange(t_start_index, t_start_index + h_num_points_available, 1)
+        #print(f'start:{t_start_index}:{h_indicies}')
+        if t_start_index + h_num_points_available == trajectory_length: break
+        t_predict_index = t_start_index + h_num_points_available                                  # some mumbo jumbo with indicies, but its correct
+
+        t_trajectory    = trajectory[   h_indicies]
+        t_time          = time[         h_indicies]
+        t_real_val      = [trajectory[   t_predict_index]]
+        t_predict_time  = [time[         t_predict_index]]
+        t_sol = interpolate_trajectory(t_trajectory, t_time, which_times = t_predict_time ,s = s, k = k, debug = 0 ,axes = axes, title = 'title', aspect = 'equal')
+        t_errors[t_predict_index] = np.linalg.norm(np.diff(np.concatenate((t_sol,t_real_val)), axis = 0), axis = 1)[0] # kind of have to spec axis for norm, but it works
+    t_errors_tot = round(np.sum(list(t_errors.values()))/len(t_errors), 3)
+
+    
+    if asd[k] == t_errors_tot:
+        asd_stop[k] = 1;print(f'stop: k = {k} at s = {s}, err = {t_errors_tot}')
+    else:
+        asd[k] = t_errors_tot
+        errors_tot_all[t_comb] = t_errors_tot
+
+axes.set_aspect('equal')
+axes.set_title(f's = {s}; k = {k}; error= {t_errors_tot:.2f}')
+
+plt.figure(fig.number)
+plt.show()
+
+a = 1
+
+
+
+#usefulPoints = startTime
+
+#interval    = min(interpolatinIntevalLength,usefulPoints)
+
+#startPoint  = max(0,startTime-interval) 
+#endPoint    = min(startTime,startPoint + interval)
+##
+#x,y = trajectory[startPoint:endPoint].T
+#t0 = np.arange(startPoint,endPoint,1)
+
+# plot check solutions
 for t_sol in set(sum(list(t_sols_c.values()) + list(t_sols_c_i.values())  + list(t_sols_a.values()) + list(t_sols_m.values()),[]) ):
     fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
     t_traj = []

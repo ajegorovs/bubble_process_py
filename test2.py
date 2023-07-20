@@ -95,103 +95,154 @@ import numpy as np, pickle
 #plt.show()
 #a =1
 
-def centroid_area_cmomzz(contour):
-    m = cv2.moments(contour)
-    area = int(m['m00'])
-    cx0, cy0 = m['m10'], m['m01']
-    centroid = np.array([cx0,cy0])/area
-    c_mom_xx, c_mom_yy = m['mu20'], m['mu02']
-    c_mom_zz = int((c_mom_xx + c_mom_yy))
-    return  centroid, area, c_mom_zz
+#def centroid_area_cmomzz(contour):
+#    m = cv2.moments(contour)
+#    area = int(m['m00'])
+#    cx0, cy0 = m['m10'], m['m01']
+#    centroid = np.array([cx0,cy0])/area
+#    c_mom_xx, c_mom_yy = m['mu20'], m['mu02']
+#    c_mom_zz = int((c_mom_xx + c_mom_yy))
+#    return  centroid, area, c_mom_zz
 
-import cv2
+#import cv2
+#import numpy as np
+
+## Create a black image as the background
+#image0 = np.zeros((200, 200), dtype=np.uint8)
+
+## Define the center and radius of the circle
+#center = (100, 100)
+#radius = 50
+
+## Draw the filled circle on the image
+#cv2.circle(image0, center, radius, (255, 255, 255), -1)
+
+## Find contours in the image
+#contours, hierarchy = cv2.findContours(image0, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+## Extract the contour of the filled circle (assuming there is only one contour)
+#circle_contour = contours[0]
+
+#mask = image0.copy()
+#M = cv2.moments(mask)
+
+## Calculate the centroid coordinates
+#cx = int(M['m10'] / M['m00'])
+#cy = int(M['m01'] / M['m00'])
+
+## Calculate the moment of inertia
+#moment_of_inertia = 0.0
+#for y in range(mask.shape[0]):
+#    for x in range(mask.shape[1]):
+#        if mask[y, x] == 255:  # Inside the object
+#            squared_distance = ((x - cx) ** 2 + (y - cy) ** 2)
+#            moment_of_inertia += squared_distance
+
+#print("Moment of inertia:", moment_of_inertia)
+
+#moment_of_inertia_circle = moment_of_inertia
+
+## Create a black image as the background
+#image = np.zeros((200, 200), dtype=np.uint8)
+
+## Define the top-left and bottom-right corners of the square
+#top_left = (75, 75)
+#bottom_right = (125, 125)
+
+## Draw the filled square on the image
+#cv2.rectangle(image, top_left, bottom_right, 255, -1)
+##cv2.imshow("Image", image)
+## Find contours in the image
+#contours, hierarchy = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+## Extract the contour of the filled square (assuming there is only one contour)
+#square_contour = contours[0]
+
+## Calculate the moments of the filled shape
+#mask = image.copy()
+#M = cv2.moments(mask)
+
+## Calculate the centroid coordinates
+#cx = int(M['m10'] / M['m00'])
+#cy = int(M['m01'] / M['m00'])
+
+## Calculate the moment of inertia
+#moment_of_inertia = 0.0
+#for y in range(mask.shape[0]):
+#    for x in range(mask.shape[1]):
+#        if mask[y, x] == 255:  # Inside the object
+#            squared_distance = ((x - cx) ** 2 + (y - cy) ** 2)
+#            moment_of_inertia += squared_distance
+
+#print("Moment of inertia:", moment_of_inertia)
+#moment_of_inertia_rect = moment_of_inertia
+#s=  50
+#hs = 50/2
+#ar0 = s**2
+## 4 x quater segment
+#cm0 = s**4/6
+
+#aa0 = centroid_area_cmomzz(square_contour)
+
+
+## Display the image with the filled circle
+##cv2.imshow("Image", image)
+#ar = np.pi*radius**2
+#aa = centroid_area_cmomzz(circle_contour)
+#cm = 1/4*radius**4 * 2* np.pi 
+#moment_of_inertia_circle
+#a = 1
+
+
+from collections import deque
 import numpy as np
 
-# Create a black image as the background
-image0 = np.zeros((200, 200), dtype=np.uint8)
+class TrajectoryBuffer:
+    def __init__(self, max_size):
+        self.max_size = max_size
+        self.buffer = deque(maxlen=max_size)
 
-# Define the center and radius of the circle
-center = (100, 100)
-radius = 50
+    def append(self, trajectory):
+        if not isinstance(trajectory, np.ndarray) or trajectory.shape != (2,):
+            raise ValueError("Trajectory should be a 1x2 NumPy array.")
+        
+        if len(self.buffer) == self.max_size:
+            self.buffer.popleft()
+        self.buffer.append(trajectory)
 
-# Draw the filled circle on the image
-cv2.circle(image0, center, radius, (255, 255, 255), -1)
+    def get_data(self):
+        return np.array(self.buffer)
 
-# Find contours in the image
-contours, hierarchy = cv2.findContours(image0, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    def get_last_trajectory(self):
+        if len(self.buffer) > 0:
+            return self.buffer[-1]
+        else:
+            return None
 
-# Extract the contour of the filled circle (assuming there is only one contour)
-circle_contour = contours[0]
+d = deque(maxlen=5)
+d.extend(np.array([[0,0],[1,1],[2,2],[3,3],[4,4]]))
+print(d)
+# deque([1, 2, 3, 4, 5], maxlen=5)
+d.append([5,5])
+print(d)
+# deque([2, 3, 4, 5, 10], maxlen=5)
 
-mask = image0.copy()
-M = cv2.moments(mask)
+# Create the TrajectoryBuffer with a maximum size of 3
+trajectory_buffer = TrajectoryBuffer(max_size=3)
 
-# Calculate the centroid coordinates
-cx = int(M['m10'] / M['m00'])
-cy = int(M['m01'] / M['m00'])
+# Append 1x2 arrays to the buffer
+trajectory_buffer.append(np.array([1, 2]))
+trajectory_buffer.append(np.array([3, 4]))
+trajectory_buffer.append(np.array([5, 6]))
 
-# Calculate the moment of inertia
-moment_of_inertia = 0.0
-for y in range(mask.shape[0]):
-    for x in range(mask.shape[1]):
-        if mask[y, x] == 255:  # Inside the object
-            squared_distance = ((x - cx) ** 2 + (y - cy) ** 2)
-            moment_of_inertia += squared_distance
+# Check the buffer content
+print(trajectory_buffer.get_data())
 
-print("Moment of inertia:", moment_of_inertia)
+# Append a new 1x2 array, which will trigger the shift in the buffer
+trajectory_buffer.append(np.array([7, 8]))
 
-moment_of_inertia_circle = moment_of_inertia
-
-# Create a black image as the background
-image = np.zeros((200, 200), dtype=np.uint8)
-
-# Define the top-left and bottom-right corners of the square
-top_left = (75, 75)
-bottom_right = (125, 125)
-
-# Draw the filled square on the image
-cv2.rectangle(image, top_left, bottom_right, 255, -1)
-#cv2.imshow("Image", image)
-# Find contours in the image
-contours, hierarchy = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-# Extract the contour of the filled square (assuming there is only one contour)
-square_contour = contours[0]
-
-# Calculate the moments of the filled shape
-mask = image.copy()
-M = cv2.moments(mask)
-
-# Calculate the centroid coordinates
-cx = int(M['m10'] / M['m00'])
-cy = int(M['m01'] / M['m00'])
-
-# Calculate the moment of inertia
-moment_of_inertia = 0.0
-for y in range(mask.shape[0]):
-    for x in range(mask.shape[1]):
-        if mask[y, x] == 255:  # Inside the object
-            squared_distance = ((x - cx) ** 2 + (y - cy) ** 2)
-            moment_of_inertia += squared_distance
-
-print("Moment of inertia:", moment_of_inertia)
-moment_of_inertia_rect = moment_of_inertia
-s=  50
-hs = 50/2
-ar0 = s**2
-# 4 x quater segment
-cm0 = s**4/6
-
-aa0 = centroid_area_cmomzz(square_contour)
-
-
-# Display the image with the filled circle
-#cv2.imshow("Image", image)
-ar = np.pi*radius**2
-aa = centroid_area_cmomzz(circle_contour)
-cm = 1/4*radius**4 * 2* np.pi 
-moment_of_inertia_circle
-a = 1
+# Check the buffer content after the shift
+print(trajectory_buffer.get_data())
 
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key

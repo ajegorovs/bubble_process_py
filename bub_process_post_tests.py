@@ -1,4 +1,5 @@
 import enum
+from tracemalloc import start
 import numpy as np, itertools, networkx as nx, sys
 import cv2, os, glob, datetime, re, pickle#, multiprocessing
 # import glob
@@ -177,6 +178,120 @@ if 1 == 1:
         c_mom_xx, c_mom_yy = m['mu20'], m['mu02']
         c_mom_zz = int((c_mom_xx + c_mom_yy))
         return  centroid, area, c_mom_zz
+
+    # given list of nodes of tupe (time,*subIDs), gather all subIDs for each unique time and sort
+    def prep_combs_clusters_from_nodes(t_nodes):
+        t_times = sorted(set([t_node[0] for t_node in t_nodes]))
+        t_return = {t_time:[] for t_time in t_times}
+        for t_time,*t_subIDs in t_nodes:
+            t_return[t_time] += [min(t_subIDs)] # <<<<<<<< in case of many IDs inside, take only minimal, as representative >><<< its not really used currently!!!
+        return {t_time:sorted(t_subIDs) for t_time,t_subIDs in t_return.items()}
+
+    def check_overlap(segments):
+        # given list of segments designated as [seg_1, seg_2,..] = [(start_1,end_1),...]
+        # return which seg_ at least partially intsects with other segment, assuming continous space between start and end. otherwise use set intersection.
+        overlaps = []
+        for i in range(len(segments)):
+            for j in range(i+1, len(segments)):
+                seg1 = segments[i]
+                seg2 = segments[j]
+            
+                if seg1[0] <= seg2[1] and seg1[1] >= seg2[0]:
+                    overlaps.append((i, j))
+    
+        return overlaps
+
+    def extract_graph_connected_components(graph, sort_function = lambda x: x):     # lambda x: x[0]; lambda x: (x[0], x[1])
+        # extract all conneted component= clusters from graph. to extract unique clusters,
+        # all options have to be sorted to drop identical. sorting can be done by sort_function.
+        connected_components_all = [list(nx.node_connected_component(graph, key)) for key in graph.nodes()]
+        connected_components_all = [sorted(sub, key = sort_function) for sub in connected_components_all] 
+        connected_components_unique = []
+        [connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
+        return connected_components_unique
+
+    def order_segment_levels(t_segments, debug = 0):
+        #[needs : check_overlap, cyclicColor, networkx as nx, plt, np]
+
+        # want to draw bunch of segments horizontally, but they overlay and have to be stacked vertically
+        # if generally they overlay locally, then they can be vertically compressed, if one of prev segments has ended
+
+        # SEGMENTS are list of sequences of nodes like paths: [path1, path2, ..] and path = (node1, node2,..)
+        # NODE holds its time in name with other paremeter, such as contour IDS: node = (time, ID1, ID2) = (time,*subIDS)
+        # lambda functions are used to specify which element is time. e.g time = (lambda x: x[0])(time, ID1, ID2) 
+
+        # initialize positions as zeroes
+        t_pos = {t:0 for t in range(len(t_segments))}
+        # transform segments to start-end times
+        start_end = [(seg[0][0],seg[-1][0]) for seg in t_segments]
+        # check which segments overlap any way
+        overlap = check_overlap(start_end)
+        # form a graph to extract overlapping clusters
+        HH = nx.Graph()
+        t_all_nodes = list(range(len(t_segments)))
+        HH.add_nodes_from(t_all_nodes)
+        for g in t_all_nodes:
+            HH.nodes()[g]["t_start"]    = t_segments[g][0][0]
+            HH.nodes()[g]["t_end"]      = t_segments[g][-1][0]
+        HH.add_edges_from(overlap)
+
+        # extract connected components =  clusters
+        t_cc = extract_graph_connected_components(HH, lambda x: x)
+
+        if debug: fig, axes = plt.subplots(1, 1, figsize=( 10,5), sharex=True, sharey=True)
+
+        for t_set in t_cc:
+        
+            # sort by starting position to establish hierarchy, secondary sort by end position
+            t_set = sorted(t_set, key = lambda x: [HH.nodes[x]["t_start"],HH.nodes[x]["t_end"]])
+
+            # initialize odered subcluster positions as ladder. worst case scenaro it stays a ladder
+            for t_k, t_from in enumerate(t_set):
+                t_pos[t_from] = t_k
+
+            if debug: # plot og for reference
+                for t_k,t_from in enumerate(t_set):
+                    t_start = HH.nodes[t_from]["t_start"]
+                    t_stop  = HH.nodes[t_from]["t_end"]
+                    x = [t_start,t_stop]
+                    y = [t_pos[t_from],t_pos[t_from]]
+                    axes.plot(x, y ,'-c',c=np.array(cyclicColor(t_k))/255, label = t_from)
+            
+            # overwrite_nodes contains nodes that gave their position to other segment. so they are out of donor pool.
+            overwrite_nodes = []
+
+            for t_k,t_from in enumerate(t_set):
+                # take all which have start earlier than you:
+
+                    # first all nodes that have started earlier or at same time, except donors
+                t_from_all_prev             = [tID for tID in t_set if HH.nodes[tID]["t_start"] <= HH.nodes[t_from]["t_start"] and tID not in overwrite_nodes]
+
+                    # then check which of them terminate earler than node start
+                t_non_overlapping_all_prev  =  [tID for tID in t_from_all_prev if HH.nodes[tID]["t_end"] < HH.nodes[t_from]["t_start"]]
+
+                # t_non_overlapping_all_prev are available spot donors
+
+                if len(t_non_overlapping_all_prev)>0:
+                    # get their positions and take lowest. lowest crit is viable, but visually not the best
+                    t_places        = {t_node:t_pos[t_node] for t_node in t_non_overlapping_all_prev}
+                    minKey = min(t_places, key = t_places.get)
+
+                    # accept donated position and add donor to exclusion list
+                    t_pos[t_from]   = t_places[minKey]
+                    overwrite_nodes.append(minKey)
+
+                    if debug:
+                        t_start = HH.nodes[t_from]["t_start"]
+                        t_stop  = HH.nodes[t_from]["t_end"]
+                        x = [t_start,t_stop]
+                        y = [t_pos[t_from],t_pos[t_from]]
+                        plt.plot(x, y ,linestyle='dotted',c=np.array(cyclicColor(t_k))/255)
+
+        if debug:
+            plt.legend(ncol=len(t_segments))
+            plt.show()
+        return t_pos
+
 # =========== BUILD OUTPUT FOLDERS =============//
 inputOutsideRoot            = 1                                                  # bmp images inside root, then input folder hierarchy will
 mainInputImageFolder        = r'.\inputFolder'                                   # be created with final inputImageFolder, else custom. NOT USED?!?
@@ -659,6 +774,9 @@ def getNodePos(test):
             # form dict in form key: position. time is x-pos. y is modified by order.
             node_positions[key] = (t,c2*S-meanD)
     return node_positions
+
+
+
 node_positions = getNodePos(test)
 allNodes = list(H.nodes())
 removeNodes = list(range(len(connected_components_unique)))
@@ -758,12 +876,23 @@ def drawH(H, paths, node_positions):
 
     nx.set_node_attributes(H, node_positions, 'pos')
 
-    pos = nx.get_node_attributes(H, 'pos')
+    pos         = nx.get_node_attributes(H, 'pos')
+    label_offset= 0.05
+    lable_pos   = {k: (v[0], v[1] + (-1)**(k[0]%2) * label_offset) for k, v in pos.items()}
+    labels      = {node: f"{node}" for node in H.nodes()}
 
     fig, ax = plt.subplots(figsize=( 10,5))
-    nx.draw(H, pos, with_labels=True, node_size=50, node_color='lightblue',font_size=6,
-            font_color='black', edge_color=list(colors_edges2.values()), width = list(width2.values()))
+
+    nx.draw_networkx_edges( H, pos, alpha=1, width = list(width2.values()), edge_color = list(colors_edges2.values()))
+    nx.draw_networkx_nodes( H, pos, node_size = 50, node_color='lightblue', alpha=1)
+    #label_options = {"ec": "k", "fc": "white", "alpha": 0.3}
+    nx.draw_networkx_labels(H, pos = lable_pos, labels=labels, font_size=7)#, bbox=label_options
+    
+    
+    #nx.draw(H, pos, with_labels=False, node_size=50, node_color='lightblue',font_size=6,
+    #        font_color='black', edge_color=list(colors_edges2.values()), width = list(width2.values()))
     plt.show()
+    a = 1
 
 #drawH(H, paths, node_positions)
 
@@ -2217,92 +2346,242 @@ if 1 == 1:
 # REMARK: to improve extrapolation ive decided to configure smoothing parameters 
 # REMARK: iteratevly based on ability to predict each next step.
 # REMARK: overal best prediction parameter wins
-
-def interpolate_trajectory(trajectory, time_parameters, which_times, s = 10, k = 1, debug = 0, axes = 0, title = 'title', aspect = 'equal'):
+if 1 == 1:
+    def interpolate_trajectory(trajectory, time_parameters, which_times, s = 10, k = 1, debug = 0, axes = 0, title = 'title', aspect = 'equal'):
     
-    spline_object, _ = interpolate.splprep([*trajectory.T] , u=time_parameters, s=s,k=k) 
-    interpolation_values = np.array(interpolate.splev(which_times, spline_object,ext=0))
+        spline_object, _ = interpolate.splprep([*trajectory.T] , u=time_parameters, s=s,k=k) 
+        interpolation_values = np.array(interpolate.splev(which_times, spline_object,ext=0))
     
-    if debug == 1:
-        newPlot = False
-        if axes == 0:
-            newPlot = True
-            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
-            axes.plot(*trajectory.T , '-o')
-        if min(which_times)> max(time_parameters):     # extrapolation
-            t_min = max(time_parameters); t_max = max(which_times)
-        else:
-            t_min, t_max = min(time_parameters), max(time_parameters)
-        #t_min, t_max = min(time_parameters), max(max(which_times), max(time_parameters)) # if which_times in  time_parameters, plot across time_parameters, else from min(time_parameters) to max(which_times)
-        interpolation_values_d = np.array(interpolate.splev(np.arange(t_min, t_max + 0.1, 0.1), spline_object,ext=0))
-        axes.plot(*interpolation_values_d, linestyle='dotted', c='orange')
-        axes.scatter(*interpolation_values, c='red',s = 100)
+        if debug == 1:
+            newPlot = False
+            if axes == 0:
+                newPlot = True
+                fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+                axes.plot(*trajectory.T , '-o')
+            if min(which_times)> max(time_parameters):     # extrapolation
+                t_min = max(time_parameters); t_max = max(which_times)
+            else:
+                t_min, t_max = min(time_parameters), max(time_parameters)
+            #t_min, t_max = min(time_parameters), max(max(which_times), max(time_parameters)) # if which_times in  time_parameters, plot across time_parameters, else from min(time_parameters) to max(which_times)
+            interpolation_values_d = np.array(interpolate.splev(np.arange(t_min, t_max + 0.1, 0.1), spline_object,ext=0))
+            axes.plot(*interpolation_values_d, linestyle='dotted', c='orange')
+            axes.scatter(*interpolation_values, c='red',s = 100)
 
-        if newPlot:
-            axes.set_aspect(aspect)
-            axes.set_title(title)
-            plt.show()
-    return interpolation_values.T
+            if newPlot:
+                axes.set_aspect(aspect)
+                axes.set_title(title)
+                plt.show()
+        return interpolation_values.T
 
-t_cs = np.array(list(t_centroids_all[1].values()))
-t_ts = np.array(list(t_centroids_all[1].keys()))
-aa = interpolate_trajectory(trajectory = t_cs,time_parameters = t_ts,which_times = t_ts[2:5] + 0.5 ,s = 0, k = 1, debug = 0 ,axes = 0, title = 'title', aspect = 'equal')
 
-t_from, t_to = 0, t_cs.shape[0]
-trajectory = t_cs[t_from:t_to]
-time = t_ts[t_from:t_to]
-trajectory_length = trajectory.shape[0]
+    from collections import deque
+
+    class CircularBuffer:
+        def __init__(self, size, initial_data=None):
+            self.size   = size
+            self.buffer = deque(maxlen=size)
+            if initial_data is not None:
+                self.extend(initial_data)
+
+        def append(self, element):
+            if isinstance(element, list):
+                for item in element:
+                    self.buffer.append(item)
+            else:
+                self.buffer.append(element)
+
+        def extend(self, list):
+            self.buffer.extend(list)
+
+        def get_data(self):
+            return np.array(self.buffer)
+
+
 h_num_points = 8                                                                              # i want this long history at max
-h_start_point_index = 0                                                                       # starting at this index
-h_num_points_available = min(h_num_points, trajectory_length - h_start_point_index)         # but past start, there are only total-start available
-h_indicies = np.arange(h_start_point_index, h_start_point_index + h_num_points_available, 1)
-
-do_work_next_n      = trajectory_length - h_num_points 
-
-fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
-axes.plot(*trajectory.T , '-o')
-
-
+h_start_point_index = 0 
 k_all = (1,2)
 s_all = (0,1,5,10,25,50,100,1000,10000)
-
 combinations = list(itertools.product(k_all, s_all))
-errors_tot_all = {}
-asd         = {k:0.0 for k in k_all}
-asd_stop    = {k:0 for k in k_all}
-for t_comb in combinations:
-    k  = t_comb[0]; s = t_comb[1]
-    if asd_stop[k] == 1: continue 
-    t_errors = {}
-    for t_start_index in np.arange(h_start_point_index, h_start_point_index + do_work_next_n , 1):# 
-        h_num_points_available = min(h_num_points, trajectory.shape[0] - t_start_index)           # but past start, there are only total-start available
-        h_indicies = np.arange(t_start_index, t_start_index + h_num_points_available, 1)
-        #print(f'start:{t_start_index}:{h_indicies}')
-        if t_start_index + h_num_points_available == trajectory_length: break
-        t_predict_index = t_start_index + h_num_points_available                                  # some mumbo jumbo with indicies, but its correct
+t_extrapolate_sol = {}
+t_extrapolate_sol_comb = {}
+# take confirmed merge starting segment and determine k and s values for better extrapolation
+for t_conn in [(4,13)]: #lr_conn_edges_merges
+    t_from, t_to        = t_conn
+    trajectory          = np.array(list(t_centroids_all[t_from].values()))
+    time                = np.array(list(t_centroids_all[t_from].keys()))
+    trajectory_length   = trajectory.shape[0]
+                                                                          # starting at this index
+    h_num_points_available  = min(h_num_points, trajectory_length - h_start_point_index)         # but past start, there are only total-start available
+    h_indicies              = np.arange(h_start_point_index, h_start_point_index + h_num_points_available, 1)
 
-        t_trajectory    = trajectory[   h_indicies]
-        t_time          = time[         h_indicies]
-        t_real_val      = [trajectory[   t_predict_index]]
-        t_predict_time  = [time[         t_predict_index]]
-        t_sol = interpolate_trajectory(t_trajectory, t_time, which_times = t_predict_time ,s = s, k = k, debug = 0 ,axes = axes, title = 'title', aspect = 'equal')
-        t_errors[t_predict_index] = np.linalg.norm(np.diff(np.concatenate((t_sol,t_real_val)), axis = 0), axis = 1)[0] # kind of have to spec axis for norm, but it works
-    t_errors_tot = round(np.sum(list(t_errors.values()))/len(t_errors), 3)
+    do_work_next_n          = trajectory_length - h_num_points 
 
     
-    if asd[k] == t_errors_tot:
-        asd_stop[k] = 1;print(f'stop: k = {k} at s = {s}, err = {t_errors_tot}')
-    else:
-        asd[k] = t_errors_tot
-        errors_tot_all[t_comb] = t_errors_tot
 
-axes.set_aspect('equal')
-axes.set_title(f's = {s}; k = {k}; error= {t_errors_tot:.2f}')
+    axes = 0
+    errors_tot_all  = {}
+    errors_sol_all   = {}
+    errors_sol_diff_norms_all   = {}
+    # track previous error value for each k and track wheter iterator for set k should skip rest s.
+    t_last_error_k  = {k:0.0 for k in k_all}
+    t_stop_k        = {k:0 for k in k_all}
+    
+    for t_comb in combinations:
+        k  = t_comb[0]; s = t_comb[1]
+        if t_stop_k[k] == 1: continue 
+        t_errors        = {}
+        t_sols          = {}
+        
+        for t_start_index in np.arange(h_start_point_index, h_start_point_index + do_work_next_n , 1):# 
+            h_num_points_available = min(h_num_points, trajectory.shape[0] - t_start_index)           # but past start, there are only total-start available
+            h_indicies = np.arange(t_start_index, t_start_index + h_num_points_available, 1)
+            #print(f'start:{t_start_index}:{h_indicies}')
+            if t_start_index + h_num_points_available == trajectory_length: break
+            t_predict_index = t_start_index + h_num_points_available                                  # some mumbo jumbo with indicies, but its correct
 
-plt.figure(fig.number)
-plt.show()
+            t_trajectory    = trajectory[   h_indicies]
+            t_time          = time[         h_indicies]
+            t_real_val      = [trajectory[   t_predict_index]]
+            t_predict_time  = [time[         t_predict_index]]
+            t_sol = interpolate_trajectory(t_trajectory, t_time, which_times = t_predict_time ,s = s, k = k, debug = 0 ,axes = axes, title = 'title', aspect = 'equal')
+            t_sols[t_predict_index]         = t_sol[0]
+            t_errors[t_predict_index]       = np.linalg.norm(np.diff(np.concatenate((t_sol,t_real_val)), axis = 0), axis = 1)[0] # kind of have to spec axis for norm, but it works
 
-a = 1
+        t_errors_tot                        = round(np.sum(list(t_errors.values()))/len(t_errors), 3)
+        errors_sol_all[t_comb]              = t_sols
+        errors_sol_diff_norms_all[t_comb]   = t_errors
+
+    
+        if t_last_error_k[k] == t_errors_tot:
+            t_stop_k[k] = 1;print(f'stop: k = {k} at s = {s}, err = {t_errors_tot}')
+        else:
+            t_last_error_k[k] = t_errors_tot
+            errors_tot_all[t_comb] = t_errors_tot
+    
+
+    t_comb_sol = min(errors_tot_all, key=errors_tot_all.get)
+    #traj_sol = np.array(list(errors_sol_all[t_comb_sol].values()))
+    #fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+    #axes.plot(*trajectory.T , '-o')
+    #axes.scatter(*traj_sol.T , c='red')
+    #axes.set_aspect('equal')
+    #axes.set_title(f's = {s}; k = {k}; error= {t_errors_tot:.2f}')
+
+    #plt.figure(fig.number)
+    #plt.show()
+
+    t_k,t_s = t_comb_sol
+
+   
+    t_from_time_end = segments2[t_from][-1][0]
+    t_to_time_start = segments2[t_to][0][0]
+
+    # extract active segments during inter-time between from_to merge. edges not included
+    activeSegments = set(sum([vals for t,vals in lr_time_active_segments.items() if t_from_time_end < t < t_to_time_start],[]))
+    active_segm_nodes = sum([segments2[tID] for tID in activeSegments],[])
+
+    activeNodes = [node for node in G.nodes() if t_from_time_end <= node[0] <= t_to_time_start and node not in active_segm_nodes]
+
+    subgraph = G.subgraph(activeNodes)
+    
+    connected_components_unique = extract_graph_connected_components(subgraph, lambda x: (x[0],x[1]))
+
+    sol = [t_cc for t_cc in connected_components_unique if segments2[t_from][-1] in t_cc]
+    assert len(sol) == 1, "t_conn_121_other_terminated_inspect inspect path relates to multiple clusters, dont expect it ever to occur"
+
+
+    sol_combs = prep_combs_clusters_from_nodes(sol[0])
+    sol_combs = {t_time:t_comb for t_time,t_comb in sol_combs.items() if t_time > t_from_time_end}
+    
+    # cyclic buffer that stores N entries and pushes old ones out when new value is appended
+    N = 5
+    t_last_deltas   = list(errors_sol_diff_norms_all[t_comb_sol].values())[-5:]
+    t_norm_buffer   = CircularBuffer(N,             t_last_deltas               )
+    t_traj_buff     = CircularBuffer(h_num_points,  trajectory[  -h_num_points:])
+    t_time_buff     = CircularBuffer(h_num_points,  time[        -h_num_points:])
+    t_time_next     = time[-1] + 1
+    t_extrapolate_sol[t_conn] = {}
+    t_extrapolate_sol_comb[t_conn] = {}
+    for t_time, t_comb in sol_combs.items():
+        # extrapolate traj
+        t_extrap = interpolate_trajectory(t_traj_buff.get_data(), t_time_buff.get_data(), which_times = [t_time_next] ,s = t_s, k = t_k, debug = 0 ,axes = axes, title = 'title', aspect = 'equal')[0]
+
+        # get possible permutations
+        a = 1
+        t_permutations = sum([list(itertools.combinations(t_comb, r)) for r in range(1,len(t_comb)+1)],[])
+        t_centroids = []
+        t_areas     = []
+        for t_permutation in t_permutations:
+            t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][tID] for tID in t_permutation]))
+            t_centroid, t_area = centroid_area(t_hull)
+            t_centroids.append(t_centroid)
+            t_areas.append(t_area)
+        
+        t_diffs = np.array(t_centroids).reshape(-1,2) - t_extrap
+        t_diff_norms = np.linalg.norm(t_diffs, axis=1)
+        t_where_min = np.argmin(t_diff_norms)
+        t_sol_d_norm = t_diff_norms[t_where_min]
+        t_known_norms = np.array(t_norm_buffer.get_data())
+        t_mean = np.mean(t_known_norms)
+        t_std = np.std(t_known_norms)
+        if t_diff_norms[t_where_min] < max(t_mean, 5) + 5* t_std:
+            t_norm_buffer.append(t_sol_d_norm)
+            t_traj_buff.append(t_extrap)
+            t_time_buff.append(t_time_next)
+            t_time_next  += 1
+            t_extrapolate_sol[t_conn][t_time] = t_extrap
+            t_extrapolate_sol_comb[t_conn][t_time] = t_permutations[t_where_min]
+            print(f"inter!:c{t_permutations[t_where_min]}, m{t_mean}, s{t_std}, df{t_diff_norms[t_where_min]}")
+        else:
+
+            a = 1
+            print(f"stdev too much!:c{t_permutations[t_where_min]}, m{t_mean}, s{t_std}, df{t_diff_norms[t_where_min]}")
+            break
+
+
+
+
+    a = 1
+
+            
+
+
+
+    segments3, skipped = graph_extract_paths(G,lambda x : x[0])
+
+    # Draw extracted segments with bold lines and different color.
+    segments3 = [a for _,a in segments3.items() if len(a) > 0]
+    segments3 = list(sorted(segments3, key=lambda x: x[0][0]))
+    paths = {i:vals for i,vals in enumerate(segments3)}
+
+ 
+    t_pos = order_segment_levels(segments3, debug = 0)
+
+    a = 1
+
+    all_segments_nodes = sorted(sum(segments3,[]), key = lambda x: [x[0],x[1]])
+    all_nodes_pos = {tID:(0,0) for tID in G.nodes()}
+    for t_k, t_segment in enumerate(segments3):
+        for t_node in t_segment:
+            all_nodes_pos[t_node] = (t_node[0],0.28*t_pos[t_k])
+
+    not_segment_nodes = [t_node for t_node in G.nodes() if t_node not in all_segments_nodes]
+    # not_segment_nodes contain non-segment nodes, thus they are solo ID nodes: (time,ID)
+    not_segment_nodes_clusters = prep_combs_clusters_from_nodes(not_segment_nodes)
+    for t_time, t_subIDs in not_segment_nodes_clusters.items():
+        for t_k, t_subID in enumerate(t_subIDs):
+            t_node = tuple([t_time,t_subID])
+            all_nodes_pos[t_node] = (t_time,t_k)
+
+
+    
+    node_positions = all_nodes_pos
+
+    
+    #drawH(G, paths, node_positions)
+    N = 5
+    buffer = CircularBuffer(N)
+  
 
 
 

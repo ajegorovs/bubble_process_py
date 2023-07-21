@@ -1,7 +1,10 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\post_tests",
+    "\\post_tests\\base code examples",
+    "\\post_tests\\modules"
   ],
-  "SelectedNode": "\\bubbles_postProcessing.py",
+  "SelectedNode": "\\bub_process_post_tests.py",
   "PreviewInSolutionExplorer": false
 }

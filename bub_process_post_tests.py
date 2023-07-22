@@ -371,7 +371,7 @@ if 1 == 1:
         def get_data(self):
             return np.array(self.buffer)
 
-    def extrapolate_find_k_s(trajectory, time, t_k_s_combs, debug = 0, debug_show_num_best = 3):
+    def extrapolate_find_k_s(trajectory, time, t_k_s_combs, h_num_points, h_start_point_index = 0, debug = 0, debug_show_num_best = 3):
         trajectory_length   = trajectory.shape[0]
 
         do_work_next_n          = trajectory_length - h_num_points 
@@ -442,6 +442,15 @@ if 1 == 1:
             plt.figure(fig_k_s.number)
             plt.show()
         return t_OG_comb_sol, errors_sol_diff_norms_all
+
+
+    def lr_reindex_masters(relations, connections):
+        if type(connections) == list:
+            return [(relations[fr], relations[to]) for fr,to in connections]
+        elif type(connections) == tuple:
+            return (relations[connections[0]], relations[connections[1]])
+        else: 
+            raise ValueError("wrong input type. list of tuple or single tuple expected")
 
 
 
@@ -1040,7 +1049,7 @@ def drawH(H, paths, node_positions):
     fig, ax = plt.subplots(figsize=( 10,5))
 
     nx.draw_networkx_edges( H, pos, alpha=1, width = list(width2.values()), edge_color = list(colors_edges2.values()))
-    nx.draw_networkx_nodes( H, pos, node_size = 50, node_color='lightblue', alpha=1)
+    nx.draw_networkx_nodes( H, pos, node_size = 30, node_color='lightblue', alpha=1)
     #label_options = {"ec": "k", "fc": "white", "alpha": 0.3}
     nx.draw_networkx_labels(H, pos = lable_pos, labels=labels, font_size=7)#, bbox=label_options
     
@@ -1085,19 +1094,19 @@ lr_missingNodes = [node for node in allIDs if node not in lr_allNodesSegm] # !! 
 assert set(skipped)==set(lr_missingNodes), "set(skipped) is not same as set(lr_missingNodes)"
 
 
-def segment_conn_end_start_points(connections, nodes = 0):
+def segment_conn_end_start_points(connections, segment_list = segments2, nodes = 0):
     if connections is not None:
         if type(connections) == tuple:
             start,end = connections
             if nodes == 1:
-                return (segments2[start][-1],segments2[end][0])
+                return (segment_list[start][-1],    segment_list[end][0])
             else:
-                return (segments2[start][-1][0],segments2[end][0][0])
+                return (segment_list[start][-1][0], segment_list[end][0][0])
         if type(connections) == list:
             if nodes == 1:
-                return [(segments2[start][-1],segments2[end][0]) for start,end in connections]
+                return [(segment_list[start][-1],   segment_list[end][0]) for start,end in connections]
             else:
-                return [(segments2[start][-1][0],segments2[end][0][0]) for start,end in connections]
+                return [(segment_list[start][-1][0],segment_list[end][0][0]) for start,end in connections]
         else:
             return None
 # ===============================================================================================
@@ -1804,8 +1813,8 @@ for t_conn in lr_relevant_conns:
     t_traj_prev_a     = np.array([t_segments_121_areas[t_from][t_node] for t_node in t_hist_prev])
     t_traj_next_a     = np.array([t_segments_121_areas[  t_to][t_node] for t_node in t_hist_next])
 
-    t_traj_prev_mz     = np.array([t_segments_121_areas[t_from][t_node] for t_node in t_hist_prev])
-    t_traj_next_mz     = np.array([t_segments_121_areas[  t_to][t_node] for t_node in t_hist_next])
+    t_traj_prev_mz     = np.array([t_segments_121_mom_z[t_from][t_node] for t_node in t_hist_prev])
+    t_traj_next_mz     = np.array([t_segments_121_mom_z[  t_to][t_node] for t_node in t_hist_next])
 
     t_interp_times  = lr_121_interpolation_times[t_conn]
 
@@ -2047,10 +2056,34 @@ lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems =  lr_weigh
 # ===============================================================================================
 # REMARK: refactor nodes from solo objects to clusters. remove all previous nodes and replace with new.
 
+
+ 
+# ===============
+# 1) say lr_relevant_conns -> lr_permutation_cases contain segments that are trusted and self-contained, dont need extra history
+# but others might benefit from extra history.
+# 2) each resolved t_conn means both segments can be merged into one. but chain of connections can be resolved
+# this chain should be condensed into one segment and possibly used to help resolve other, harder cases.
+# ===============
+
+C1 = nx.Graph()
+C1.add_edges_from(list(lr_permutation_cases.keys()))
+    
+lr_C1_condensed_connections = extract_graph_connected_components(C1, lambda x: x)
+
+# lets condense all sub-segments into one with smallest index. EDIT: give each segment index its master. since number of segments will shrink anyway
+t_condensed_connections_all_nodes = sorted(sum(lr_C1_condensed_connections,[])) # neext next
+lr_C1_condensed_connections_relations = {tID: tID for tID in range(len(segments2))} #t_condensed_connections_all_nodes
+for t_subIDs in lr_C1_condensed_connections:
+    for t_subID in t_subIDs:
+        lr_C1_condensed_connections_relations[t_subID] = min(t_subIDs)
+
+# lr_C1_condensed_connections_relations is such that when given segment ID it provides its master ID, and master points at itself
+
 lr_weighted_solutions_max
 lr_permutation_times
 lr_permutation_cases
 lr_contour_combs
+t_segments_new = segments2.copy()
 for t_conn in lr_permutation_cases:
     t_sol   = lr_weighted_solutions_max[t_conn]
     t_path  = lr_permutation_cases[t_conn][t_sol]             # t_path contains start-end points of segments !!!
@@ -2076,16 +2109,71 @@ for t_conn in lr_permutation_cases:
     pairs = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
     
     G.add_edges_from(pairs)
-    #t_nodes_remaining = [t_node for t_node in t_nodes_all if t_node not in t_nodes_old]
+
+    # determine t_from masters index, send that segment intermediate nodes and second segment
+    # if t_from is its own master, it still works, check it with simple ((0,1),(1,2)) and {0:0,1:0,2:0}
+    t_from_new = lr_C1_condensed_connections_relations[t_from]
+    t_nodes_intermediate = list(sorted(t_nodes_new, key = lambda x: x[0]))[1:-1]
+    t_segments_new[t_from_new] += t_nodes_intermediate
+    t_segments_new[t_from_new] += segments2[t_to]
+
     
+    # fill centroid, area and momement of innertia zz missing for intermediate segment
+    for t_time,*t_subIDs in t_nodes_intermediate:
+        t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_subIDs]))
+        t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
+        t_node = tuple([t_time] + t_subIDs)
+        t_segments_121_centroids[t_from_new][t_node]   = t_centroid
+        t_segments_121_areas[    t_from_new][t_node]   = t_area
+        t_segments_121_mom_z[    t_from_new][t_node]   = t_mom_z
+    
+    # copy data from inherited
+    t_segments_121_centroids[   t_from_new] = {**t_segments_121_centroids[   t_from_new],  **t_segments_121_centroids[   t_to]}
+    t_segments_121_areas[       t_from_new] = {**t_segments_121_areas[       t_from_new],  **t_segments_121_areas[       t_to]}
+    t_segments_121_mom_z[       t_from_new] = {**t_segments_121_mom_z[       t_from_new],  **t_segments_121_mom_z[       t_to]}
 
+    # wipe data if t_from is inherited
+    if t_from_new != t_from:
+        t_segments_new[             t_from] = []
+        t_segments_121_centroids[   t_from] = {}
+        t_segments_121_areas[       t_from] = {}
+        t_segments_121_mom_z[       t_from] = {}
+    
+    # wipe data from t_to anyway
+    t_segments_new[                 t_to]   = []
+    t_segments_121_centroids[       t_to]   = {}
+    t_segments_121_areas[           t_to]   = {}
+    t_segments_121_mom_z[           t_to]   = {}
 
+# resort data in case of broken order. i think its easier to sort keys and reconstruct with sorted keys 121 data.
+for t in t_condensed_connections_all_nodes:
+    t_segments_new[t]               = list(sorted(t_segments_new[t], key = lambda x: x[0]))
+    t_sorted_keys                   = sorted(list(t_segments_121_centroids[t].keys()), key = lambda x: x[0])
+    t_segments_121_centroids[   t]  = {tID: t_segments_121_centroids[   t][tID] for tID in t_sorted_keys}
+    t_segments_121_areas[       t]  = {tID: t_segments_121_areas[       t][tID] for tID in t_sorted_keys}
+    t_segments_121_mom_z[       t]  = {tID: t_segments_121_mom_z[       t][tID] for tID in t_sorted_keys}
+
+#for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # ===============================================================================================
 # ========== DEAL WITH ZERO PATH 121s >> SKIP IT FOR NOW, IDK WHAT TO DO << =========
 # ===============================================================================================
 # REMARK: zero paths might be part of branches, which means segment relations should be refactored
 
 
+t_conn_121_zero_path
+t_conn_121_zp_contour_combs
+# plan:
+# 1) take  start segment, end segment IDs, get history if possible
+# since its zero inter path, t_conn_121_zp_contour_combs contains last seg end and next seg start
+# combs have same two times as zero length inter segment. even in worst case scenario there is 1 point history
+# 2) take history on both sidez and interpolate middle
+# 3) check fitness of combinations
+# 4) pick best, done!
+
+
+# relations will be changed here
+lr_C2_condensed_connections_relations = lr_C1_condensed_connections_relations.copy()
+C2 = C1.copy()
 
 # ===============================================================================================
 # ========= deal with 121s that are partly connected with merging/splitting segments << =========
@@ -2094,17 +2182,23 @@ for t_conn in lr_permutation_cases:
 # REMARK: or result in a merge branch. split->121 might be actually split->merge, same with 
 # REMARK: 121->merge. these are ussualy short-lived, so i might combine them and test
 
-lr_conn_121_other_terminated_inspect
-lr_conn_121_other_terminated_failed
-lr_conn_edges_splits
-lr_conn_edges_merges
-segment_conn_end_start_points(lr_conn_121_other_terminated_inspect, nodes = 1)
-lr_inspect_contour_combs = {t_conn:{} for t_conn in lr_conn_121_other_terminated_inspect}
-lr_inspect_c_c_from_to_interp_times = {t_conn:[] for t_conn in lr_conn_121_other_terminated_inspect}
-lr_inspect_121_interpolation_times  = {t_conn:[] for t_conn in lr_conn_121_other_terminated_inspect}
-lr_inspect_121_interpolation_from_to  = {t_conn:[] for t_conn in lr_conn_121_other_terminated_inspect}
-lr_inspect_121_to_merge_possible_IDs = {}
-lr_inspect_121_to_merge_resolved_IDs = {}
+
+# !!!!!!!!!!!!!!!!!!!!!!!!!!I DID NOT TEST MASTER RELATIONS FOR THIS CODE !!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+lr_conn_121_other_terminated_inspect    = lr_reindex_masters(lr_C2_condensed_connections_relations, lr_conn_121_other_terminated_inspect)
+lr_conn_121_other_terminated_failed     = lr_reindex_masters(lr_C2_condensed_connections_relations, lr_conn_121_other_terminated_inspect)
+lr_conn_edges_splits                    = lr_reindex_masters(lr_C2_condensed_connections_relations, lr_conn_edges_splits)
+lr_conn_edges_merges                    = lr_reindex_masters(lr_C2_condensed_connections_relations, lr_conn_edges_merges)
+
+#segment_conn_end_start_points(lr_conn_121_other_terminated_inspect, nodes = 1)
+lr_inspect_contour_combs                = {t_conn:{} for t_conn in lr_conn_121_other_terminated_inspect}
+lr_inspect_c_c_from_to_interp_times     = {t_conn:[] for t_conn in lr_conn_121_other_terminated_inspect}
+lr_inspect_121_interpolation_times      = {t_conn:[] for t_conn in lr_conn_121_other_terminated_inspect}
+lr_inspect_121_interpolation_from_to    = {t_conn:[] for t_conn in lr_conn_121_other_terminated_inspect}
+lr_inspect_121_to_merge_possible_IDs    = {}
+lr_inspect_121_to_merge_resolved_IDs    = {}
 for t_conn in lr_conn_121_other_terminated_inspect:
     t_from,t_to = t_conn
     spl = [(t_from_from, t_from_to) for t_from_from, t_from_to in lr_conn_edges_splits if t_from == t_from_to] # 121 left   is some other conn right
@@ -2115,9 +2209,9 @@ for t_conn in lr_conn_121_other_terminated_inspect:
         t_to_merging_IDs = list(set([t[1] for t in mrg]))
         assert len(t_to_merging_IDs) == 1, "lr_conn_121_other_terminated_inspect merge with multiple, this should not trigger"
         t_to_all_merging_segments = [t_to_from for t_to_from, t_to_to in lr_conn_edges_merges if t_to_to == t_to_merging_IDs[0] and t_to_from != t_to]
-        t_from_nodes_part = segments2[t_from][-4:]  # chain with below
+        t_from_nodes_part = t_segments_new[t_from][-4:]  # chain with below
         t_from_time_start = t_from_nodes_part[0][0] # [-4:][0] = take at furthest from back of at least size 4. list([a,b])[-4:][0] = a
-        t_to_from_nodes_part = segments2[t_to_merging_IDs[0]][:4]
+        t_to_from_nodes_part = t_segments_new[t_to_merging_IDs[0]][:4]
         t_to_from_time_start = t_to_from_nodes_part[-1][0]
 
         lr_inspect_c_c_from_to_interp_times[t_conn].append(t_from_nodes_part)
@@ -2140,7 +2234,7 @@ for t_conn in lr_conn_121_other_terminated_inspect:
 
 
 
-        sol = [t_cc for t_cc in connected_components_unique if segments2[t_from][-1] in t_cc]
+        sol = [t_cc for t_cc in connected_components_unique if t_segments_new[t_from][-1] in t_cc]
         assert len(sol) == 1, "lr_conn_121_other_terminated_inspect inspect path relates to multiple clusters, dont expect it ever to occur"
 
         t_times = np.arange(t_from_time_start,t_to_from_time_start + 1, 1)
@@ -2202,8 +2296,8 @@ for t_conn, [t_hist_prev,t_hist_next] in lr_inspect_c_c_from_to_interp_times.ite
     t_traj_prev_a     = np.array([t_segments_121_areas[t_from][t_node] for t_node in t_hist_prev])
     t_traj_next_a     = np.array([t_segments_121_areas[  t_to][t_node] for t_node in t_hist_next])
 
-    t_traj_prev_mz     = np.array([t_segments_121_areas[t_from][t_node] for t_node in t_hist_prev])
-    t_traj_next_mz     = np.array([t_segments_121_areas[  t_to][t_node] for t_node in t_hist_next])
+    t_traj_prev_mz     = np.array([t_segments_121_mom_z[t_from][t_node] for t_node in t_hist_prev])
+    t_traj_next_mz     = np.array([t_segments_121_mom_z[  t_to][t_node] for t_node in t_hist_next])
 
     t_interp_times  = lr_inspect_121_interpolation_times[t_conn]
 
@@ -2240,16 +2334,29 @@ t_temp_c = {tID:vals[1:-1] for tID, vals in lr_inspect_121_interpolation_centroi
 t_args = [lr_inspect_permutation_cases,t_temp_c,lr_inspect_permutation_times,
           lr_inspect_permutation_centroids_precomputed,lr_inspect_permutation_areas_precomputed,lr_inspect_permutation_mom_z_precomputed]
 
-#t_args = [lr_permutation_cases,lr_121_interpolation_centroids,lr_permutation_times,
-#          lr_permutation_centroids_precomputed,lr_permutation_areas_precomputed,lr_permutation_mom_z_precomputed]
 
-t_inspect_sols_c, t_inspect_sols_c_i, t_inspect_sols_a, t_inspect_sols_m = lr_evel_perm_interp_data(*t_args) # dropped areas since its almost same as momZ
+t_inspect_sols_c, t_inspect_sols_c_i, t_inspect_sols_a, t_inspect_sols_m = lr_evel_perm_interp_data(*t_args) # dropped areas since its almost same as momZ ??? check pls
 
 
 
 t_weights = [1,2,0,1]
 t_sols = [t_inspect_sols_c, t_inspect_sols_c_i, t_inspect_sols_a, t_inspect_sols_m]
 lr_inspect_weighted_solutions_max, lr_inspect_weighted_solutions_accumulate_problems =  lr_weighted_sols(t_weights, t_sols, lr_inspect_permutation_cases )
+
+
+# heres small detail, from-to from inspect part is a fake connection, its connected to a split or merge
+# so real connection is in lr_inspect_121_interpolation_from_to
+C3 = C2.copy()
+t_temp = [tuple(lr_inspect_121_interpolation_from_to[t]) for t in lr_inspect_permutation_cases]
+C3.add_edges_from(t_temp)
+    
+lr_C3_condensed_connections = extract_graph_connected_components(C3, lambda x: x)
+# lets condense all sub-segments into one with smallest index. EDIT: give each segment index its master. since number of segments will shrink anyway
+t_condensed_connections_all_nodes = sorted(sum(lr_C3_condensed_connections,[])) # neext next
+lr_C3_condensed_connections_relations = {tID: tID for tID in range(len(t_segments_new))} #t_condensed_connections_all_nodes
+for t_subIDs in lr_C3_condensed_connections:
+    for t_subID in t_subIDs:
+        lr_C3_condensed_connections_relations[t_subID] = min(t_subIDs)
 
 
 for t_conn in lr_inspect_permutation_cases:
@@ -2272,8 +2379,10 @@ for t_conn in lr_inspect_permutation_cases:
     G.remove_nodes_from(t_nodes_all)
     #[lr_conn_edges_merges.remove(t_edge) for t_edge in 
     # so add extra nodes to make edges with segments, which will create start-end points again.
+    t_from, t_to_fake = t_conn
+
     t_from, t_to = lr_inspect_121_interpolation_from_to[t_conn]                                     
-    t_nodes_new_sides = [segments2[t_from][-2]] + t_nodes_new + [segments2[t_to][1]]
+    t_nodes_new_sides = [t_segments_new[t_from][-2]] + t_nodes_new + [t_segments_new[t_to][1]]
 
     pairs = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
     
@@ -2281,34 +2390,67 @@ for t_conn in lr_inspect_permutation_cases:
     # confirm stored possible = resolved
     lr_inspect_121_to_merge_resolved_IDs[t_conn] = lr_inspect_121_to_merge_possible_IDs[t_conn]
 
+    # =========== have to modify it from OG because its merge/split case, so extra branches
+    # determine t_from masters index, send that segment intermediate nodes and second segment
+    # if t_from is its own master, it still works, check it with simple ((0,1),(1,2)) and {0:0,1:0,2:0}
+    t_from_new = lr_C3_condensed_connections_relations[t_from]
+    t_nodes_intermediate = list(sorted(t_nodes_new, key = lambda x: x[0]))[1:-1]
+    t_segments_new[t_from_new] += t_nodes_intermediate
+    t_segments_new[t_from_new] += t_segments_new[t_to] # edited from OG
 
-t_hulls_all = [{time:0 for time,*subIDs in case} for case in segments2]
-t_centroids_all = [{time:np.zeros(2, int) for time,*subIDs in case} for case in segments2]
-for n, case in tqdm(enumerate(segments2)):
-    for k,(t_time,*subIDs) in enumerate(case):
+    
+    # fill centroid, area and momement of innertia zz missing for intermediate segment
+    for t_time,*t_subIDs in t_nodes_intermediate:
+        t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_subIDs]))
+        t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
+        t_node = tuple([t_time] + t_subIDs)
+        t_segments_121_centroids[t_from_new][t_node]   = t_centroid
+        t_segments_121_areas[    t_from_new][t_node]   = t_area
+        t_segments_121_mom_z[    t_from_new][t_node]   = t_mom_z
+    
+    # copy data from inherited
+    t_segments_121_centroids[   t_from_new] = {**t_segments_121_centroids[   t_from_new],  **t_segments_121_centroids[   t_to]}
+    t_segments_121_areas[       t_from_new] = {**t_segments_121_areas[       t_from_new],  **t_segments_121_areas[       t_to]}
+    t_segments_121_mom_z[       t_from_new] = {**t_segments_121_mom_z[       t_from_new],  **t_segments_121_mom_z[       t_to]}
+
+    # wipe data if t_from is inherited
+    if t_from_new != t_from:
+        t_segments_new[             t_from] = []
+        t_segments_121_centroids[   t_from] = {}
+        t_segments_121_areas[       t_from] = {}
+        t_segments_121_mom_z[       t_from] = {}
+    
+    # wipe data from t_to anyway
+    t_segments_new[                 t_to]   = []
+    t_segments_121_centroids[       t_to]   = {}
+    t_segments_121_areas[           t_to]   = {}
+    t_segments_121_mom_z[           t_to]   = {}
+
+
+a = 1
+t_hulls_all = [{time:0 for time,*subIDs in case} for case in t_segments_new]
+t_centroids_all = [{time:np.zeros(2, int) for time,*subIDs in case} for case in t_segments_new]
+t_centroids_all_redo_IDs = [tID for tID in range(len(t_segments_new)) if tID not in t_condensed_connections_all_nodes]
+for tID in tqdm(t_centroids_all_redo_IDs):
+    case = t_segments_new[tID]
+    for t_k,(t_time,*subIDs) in enumerate(case):
         t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t_subID] for t_subID in subIDs]))
-        t_hulls_all[n][t_time] = t_hull
+        t_hulls_all[tID][t_time] = t_hull
         t_centroid = centroid_area(t_hull)[0]
-        t_centroids_all[n][t_time] = t_centroid.astype(int)
+        t_centroids_all[tID][t_time] = t_centroid
+
+for tID in t_condensed_connections_all_nodes:
+    t_centroids_all[tID] = {t_time:t_vals  for (t_time,*t_subIDs), t_vals in t_segments_121_centroids[tID].items()}
 
 
 if 1 == -1:
 
-    t_hulls_all = [{time:0 for time,*subIDs in case} for case in segments2_c]
-    t_centroids_all = [{time:np.zeros(2, int) for time,*subIDs in case} for case in segments2_c]
-    for n, case in tqdm(enumerate(segments2_c)):
-        for k,(t_time,*subIDs) in enumerate(case):
-         t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t_subID] for t_subID in subIDs]))
-         t_hulls_all[n][t_time] = t_hull
-         t_centroid = centroid_area(t_hull)[0]
-         t_centroids_all[n][t_time] = t_centroid.astype(int)
-    
-    if 1 == -1:
+    if 1 == 1:
         binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
         imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(binarizedMaskArr.shape[0])]
         font = cv2.FONT_HERSHEY_SIMPLEX
         fontScale = 0.7; thickness = 4;
-        for n, case in tqdm(enumerate(segments2_c)):
+        for n, case in tqdm(enumerate(t_segments_new)):
             case    = sorted(case, key=lambda x: x[0])
             for k,subCase in enumerate(case):
                 t_time,*subIDs = subCase
@@ -2336,7 +2478,7 @@ if 1 == -1:
                     startPos2 = g0_contours[t_time][subID][-30][0] 
                     [cv2.putText(imgs[t_time], str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
         
-    if 1 == -1:
+    if 1 == 1:
         #cv2.imshow('a',imgs[time])
         for k,img in enumerate(imgs):
             if k in activeTimes:
@@ -2347,8 +2489,11 @@ if 1 == -1:
 
 
 
+
 lr_resolved_one_sided_merges = sum(list(lr_inspect_121_to_merge_resolved_IDs.values()),[])
 lr_conn_edges_merges = [t_conn for t_conn in lr_conn_edges_merges if t_conn[1] not in lr_resolved_one_sided_merges]
+
+lr_conn_edges_merges                    = lr_reindex_masters(lr_C3_condensed_connections_relations, lr_conn_edges_merges)
 
 # ===============================================================================================
 # ========= PROCESS MERGES: RESOLVE PRE-MERGE AS CLOSE AS POSSIBLE =========
@@ -2362,8 +2507,18 @@ lr_conn_edges_merges = [t_conn for t_conn in lr_conn_edges_merges if t_conn[1] n
 
 #for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
+
+# remember which segment indicies are active at each time step
+lr_time_active_segments = {t:[] for t in lr_time_active_segments}
+for k,t_segment in enumerate(t_segments_new):
+    t_times = [a[0] for a in t_segment]
+    for t in t_times:
+        lr_time_active_segments[t].append(k)
+
+
 h_num_points = 8                                                                              # i want this long history at max
-h_start_point_index = 0 
+h_start_point_index = 0
+h_start_max_points = 20
 k_all = (1,2)
 s_all = (0,1,5,10,25,50,100,1000,10000)
 t_k_s_combs = list(itertools.product(k_all, s_all))
@@ -2373,23 +2528,23 @@ t_extrapolate_sol_comb = {}
 
 for t_conn in lr_conn_edges_merges: # [(4,13)] lr_conn_edges_merges segment_conn_end_start_points(lr_conn_edges_merges, nodes = 1)
     t_from, t_to        = t_conn
-    t_from_end          = segments2[t_from  ][-1][0]
-    t_to_start          = segments2[t_to    ][0 ][0]
-    if t_to_start - t_from_end == 1: continue
+    t_from_time_end = t_segments_new[t_from][-1][0]
+    t_to_time_start = t_segments_new[t_to][0][0]
+    if t_to_time_start - t_from_time_end == 1: continue
     trajectory          = np.array(list(t_centroids_all[t_from].values()))
     time                = np.array(list(t_centroids_all[t_from].keys()))
 
-    t_comb_sol, errors_sol_diff_norms_all = extrapolate_find_k_s(trajectory, time, t_k_s_combs, debug = 1, debug_show_num_best = 2)
+    # if trajectory is too long, extrapolate only h_start_max_points points, so take traj of length h_start_max_points + h_num_points
+    h_start_point_index =  max(0, trajectory.shape[0] - h_start_max_points - h_num_points)
+    t_comb_sol, errors_sol_diff_norms_all = extrapolate_find_k_s(trajectory, time, t_k_s_combs, h_num_points, h_start_point_index, debug = 1, debug_show_num_best = 2)
 
     t_k,t_s = t_comb_sol
 
    
-    t_from_time_end = segments2[t_from][-1][0]
-    t_to_time_start = segments2[t_to][0][0]
-
+    
     # extract active segments during inter-time between from_to merge. edges not included
     activeSegments = set(sum([vals for t,vals in lr_time_active_segments.items() if t_from_time_end < t < t_to_time_start],[]))
-    active_segm_nodes = sum([segments2[tID] for tID in activeSegments],[])
+    active_segm_nodes = sum([t_segments_new[tID] for tID in activeSegments],[])
 
     activeNodes = [node for node in G.nodes() if t_from_time_end <= node[0] <= t_to_time_start and node not in active_segm_nodes]
 
@@ -2397,7 +2552,7 @@ for t_conn in lr_conn_edges_merges: # [(4,13)] lr_conn_edges_merges segment_conn
     
     connected_components_unique = extract_graph_connected_components(subgraph, lambda x: (x[0],x[1]))
 
-    sol = [t_cc for t_cc in connected_components_unique if segments2[t_from][-1] in t_cc]
+    sol = [t_cc for t_cc in connected_components_unique if t_segments_new[t_from][-1] in t_cc]
     assert len(sol) == 1, "lr_conn_121_other_terminated_inspect inspect path relates to multiple clusters, dont expect it ever to occur"
 
 

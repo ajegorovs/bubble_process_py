@@ -1595,9 +1595,9 @@ a = 1
 # ===============================================================================================
 # REMARK: not doing anything with zero path because it has two or more nodes at one time.
 t_all_121_segment_IDs = sorted(list(set(sum([list(a) for a in t_conn_121],[]))))
-t_segments_121_centroids    = {tID:{} for tID in t_all_121_segment_IDs}
-t_segments_121_areas        = {tID:{} for tID in t_all_121_segment_IDs}
-t_segments_121_mom_z        = {tID:{} for tID in t_all_121_segment_IDs}
+t_segments_121_centroids    = {tID:{} for tID in range(len(segments2))}
+t_segments_121_areas        = {tID:{} for tID in range(len(segments2))}
+t_segments_121_mom_z        = {tID:{} for tID in range(len(segments2))}
 for tID in t_all_121_segment_IDs:
     t_segment = segments2[tID]
     for t_time,*t_subIDs in t_segment:
@@ -2169,12 +2169,127 @@ t_conn_121_zp_contour_combs
 # 2) take history on both sidez and interpolate middle
 # 3) check fitness of combinations
 # 4) pick best, done!
+t_conn_121_zero_path0 = t_conn_121_zp_contour_combs.copy()
+t_conn_121_zero_path    = lr_reindex_masters(lr_C1_condensed_connections_relations, t_conn_121_zero_path)
+t_conn_121_zp_contour_combs = {lr_reindex_masters(lr_C1_condensed_connections_relations, t):t_vals for t,t_vals in t_conn_121_zp_contour_combs.items()}
+for t_conn in t_conn_121_zero_path:
+    t_from, t_to = t_conn
+    t_traj_prev_c   = t_segments_new[t_from][-4:]
+    t_traj_next_c     = t_segments_new[t_to][:4]
+    # zero path has only step with multiple nodes, where we have to choose correct
+    t_interp_times  = [t for t, t_vals in t_conn_121_zp_contour_combs[t_conn].items() if len(t_vals) > 1]
+    t_traj_nodes_prev   = [t_node for t_node in t_traj_prev_c if t_node[0] not in t_interp_times]
+    t_traj_nodes_next   = [t_node for t_node in t_traj_next_c if t_node[0] not in t_interp_times]
+    
+    # ugh! hate to recalculate centroids, but idk where and if ive done it before!!!
+    t_traj_prev_c = []
+    for t_node in t_traj_nodes_prev:
+        t_time, tID = t_node
+        t_hull  = cv2.convexHull(g0_contours[t_time][tID])
+        t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
+        t_traj_prev_c.append(t_centroid)
+
+    t_traj_next_c = []
+    for t_node in t_traj_nodes_next:
+        t_time, tID = t_node
+        t_hull  = cv2.convexHull(g0_contours[t_time][tID])
+        t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
+        t_traj_next_c.append(t_centroid)
+
+    t_times_prev    = [t_node[0] for t_node in t_traj_nodes_prev]
+    t_times_next    = [t_node[0] for t_node in t_traj_nodes_next]
+    t_interp        = interpolateMiddle2D(t_times_prev,t_times_next,t_traj_prev_c, t_traj_next_c,
+                                                                  t_interp_times, s = 15, debug = 0,
+                                                                  aspect = 'equal', title = t_conn)
+    t_time = t_interp_times[0]
+    t_combs = t_conn_121_zp_contour_combs[t_conn][t_time]
+    t_perms = sum([list(itertools.combinations(t_combs, r)) for r in range(1,len(t_combs)+1)],[])
+    t_choices_c = []
+    for t_perm in t_perms:
+        t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_perm]))
+        t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
+        t_choices_c.append(t_centroid)
+    t_choices_c = np.array(t_choices_c)
+    t_diffs = t_choices_c - t_interp[0]
+    t_norms = np.linalg.norm(t_diffs, axis = 1)
+    t_sol_ID = np.argmin(t_norms)
+    t_sol = t_perms[t_sol_ID]
+
+    t_nodes_all = []
+    for tID in t_combs:
+            t_nodes_all.append(tuple([t_time, tID]))
+    
+    # remove all single nodes from new cluster node
+    G.remove_nodes_from(t_nodes_all)
+    t_from_node_last    = t_traj_nodes_prev[-1]
+    t_to_node_first     = t_traj_nodes_next[0]
+    t_node_new          = tuple([t_time]+list(t_sol))
+    t_conns_new = [(t_from_node_last,t_node_new),(t_node_new,t_to_node_first)]
+    G.add_edges_from(t_conns_new)
+
+    
+    t_from_new = lr_C1_condensed_connections_relations[t_from]
+    t_segments_new[t_from_new]  = [t_node for t_node in t_segments_new[t_from_new   ] if t_node not in t_nodes_all]
+    t_segments_new[t_to]        = [t_node for t_node in t_segments_new[t_to         ] if t_node not in t_nodes_all]
+
+    t_nodes_intermediate = [t_node_new]
+    
+    t_segments_new[t_from_new] += t_nodes_intermediate
+    t_segments_new[t_from_new] += t_segments_new[t_to]
+
+    # zero paths were not included because end points were uncertain
+    if len( t_segments_121_centroids[t_from_new]) == 0:
+        t_nodes_intermediate = t_segments_new[t_from_new] + t_nodes_intermediate
+
+    if len( t_segments_121_centroids[t_to]) == 0:
+        t_nodes_intermediate = t_nodes_intermediate + t_segments_new[t_to] 
+
+
+    # fill centroid, area and momement of innertia zz missing for intermediate segment
+    for t_time,*t_subIDs in t_nodes_intermediate:
+        t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_subIDs]))
+        t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
+        t_node = tuple([t_time] + t_subIDs)
+        t_segments_121_centroids[t_from_new][t_node]   = t_centroid
+        t_segments_121_areas[    t_from_new][t_node]   = t_area
+        t_segments_121_mom_z[    t_from_new][t_node]   = t_mom_z
+    
+    # copy data from inherited
+    t_segments_121_centroids[   t_from_new] = {**t_segments_121_centroids[   t_from_new],  **t_segments_121_centroids[   t_to]}
+    t_segments_121_areas[       t_from_new] = {**t_segments_121_areas[       t_from_new],  **t_segments_121_areas[       t_to]}
+    t_segments_121_mom_z[       t_from_new] = {**t_segments_121_mom_z[       t_from_new],  **t_segments_121_mom_z[       t_to]}
+
+    # wipe data if t_from is inherited
+    if t_from_new != t_from:
+        t_segments_new[             t_from] = []
+        t_segments_121_centroids[   t_from] = {}
+        t_segments_121_areas[       t_from] = {}
+        t_segments_121_mom_z[       t_from] = {}
+    
+    # wipe data from t_to anyway
+    t_segments_new[                 t_to]   = []
+    t_segments_121_centroids[       t_to]   = {}
+    t_segments_121_areas[           t_to]   = {}
+    t_segments_121_mom_z[           t_to]   = {}
+    a = 1
 
 
 # relations will be changed here
-lr_C2_condensed_connections_relations = lr_C1_condensed_connections_relations.copy()
+#lr_C2_condensed_connections_relations = lr_C1_condensed_connections_relations.copy()
 C2 = C1.copy()
+C2.add_edges_from(t_conn_121_zero_path)
+    
+lr_C2_condensed_connections = extract_graph_connected_components(C2, lambda x: x)
 
+# lets condense all sub-segments into one with smallest index. EDIT: give each segment index its master. since number of segments will shrink anyway
+t_condensed_connections_all_nodes = sorted(sum(lr_C2_condensed_connections,[])) # neext next
+lr_C2_condensed_connections_relations = {tID: tID for tID in range(len(segments2))} #t_condensed_connections_all_nodes
+for t_subIDs in lr_C2_condensed_connections:
+    for t_subID in t_subIDs:
+        lr_C2_condensed_connections_relations[t_subID] = min(t_subIDs)
+
+
+#for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # ===============================================================================================
 # ========= deal with 121s that are partly connected with merging/splitting segments << =========
 # ===============================================================================================
@@ -2608,13 +2723,13 @@ for t_conn in lr_conn_edges_merges: # [(4,13)] lr_conn_edges_merges segment_conn
 
 
     a = 1
-
+#for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             
 
 
     
     
-    
+a = 1  
 #usefulPoints = startTime
 
 #interval    = min(interpolatinIntevalLength,usefulPoints)

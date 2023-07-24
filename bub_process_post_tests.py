@@ -371,10 +371,10 @@ if 1 == 1:
         def get_data(self):
             return np.array(self.buffer)
 
-    def extrapolate_find_k_s(trajectory, time, t_k_s_combs, h_num_points, h_start_point_index = 0, debug = 0, debug_show_num_best = 3):
+    def extrapolate_find_k_s(trajectory, time, t_k_s_combs, h_interp_len_max, h_start_point_index = 0, debug = 0, debug_show_num_best = 3):
         trajectory_length   = trajectory.shape[0]
 
-        do_work_next_n          = trajectory_length - h_num_points 
+        do_work_next_n          = trajectory_length - h_interp_len_max 
 
         errors_tot_all  = {}
         errors_sol_all   = {}
@@ -390,12 +390,12 @@ if 1 == 1:
             t_errors        = {}
             t_sols          = {}
         
-            t_traj_buff     = CircularBuffer(h_num_points,  trajectory[h_start_point_index:h_start_point_index + h_num_points])
-            t_time_buff     = CircularBuffer(h_num_points,  time[      h_start_point_index:h_start_point_index + h_num_points])
+            t_traj_buff     = CircularBuffer(h_interp_len_max,  trajectory[h_start_point_index:h_start_point_index + h_interp_len_max])
+            t_time_buff     = CircularBuffer(h_interp_len_max,  time[      h_start_point_index:h_start_point_index + h_interp_len_max])
         
 
             for t_start_index in np.arange(h_start_point_index, h_start_point_index + do_work_next_n , 1):# 
-                h_num_points_available = min(h_num_points, trajectory.shape[0] - t_start_index)           # but past start, there are only total-start available
+                h_num_points_available = min(h_interp_len_max, trajectory.shape[0] - t_start_index)           # but past start, there are only total-start available
                 if t_start_index + h_num_points_available == trajectory_length: break
                 t_predict_index = t_start_index + h_num_points_available                                  # some mumbo jumbo with indicies, but its correct
 
@@ -898,7 +898,8 @@ if 1 == -1:
 
 
 # analyze single strand
-doX = 60#84
+doX = 30#20#15#2#1#60#84
+lessRough_all = connected_components_unique.copy()
 test = connected_components_unique[doX]
 # find times where multiple elements are connected (split/merge)
 def getNodePos2(dic0, S = 20):
@@ -1345,12 +1346,14 @@ for node, t_conn in t_neighbor_sol_all_prev.items():
 for node, t_conn in t_neighbor_sol_all_next.items():
     for node2, weight in t_conn.items():
         G2.add_edge(node, node2, weight=1/weight)
-
+#for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # ===============================================================================================
 # ===============================================================================================
 # === calculate all paths between nearest segments ===
 # ===============================================================================================
 # ===============================================================================================
+
+#segment_conn_end_start_points((11,20), nodes = 1)
 if 1 == 1:
     lr_close_segments_simple_paths = {}
     lr_close_segments_simple_paths_inter = {}
@@ -1363,6 +1366,7 @@ if 1 == 1:
             t_from_node_last_time   = t_from_node_last[0]
             t_to_node_first_time    = t_to_node_first[0]
             t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
+
             t_from_to_paths_simple  = list(nx.all_simple_paths(G, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps))
 
         
@@ -2635,9 +2639,11 @@ for k,t_segment in enumerate(t_segments_new):
         lr_time_active_segments[t].append(k)
 
 
-h_num_points = 8                                                                              # i want this long history at max
-h_start_point_index = 0
-h_start_max_points = 20
+h_interp_len_max = 8          # i want this long history at max
+h_interp_len_min = 3      # 
+h_start_point_index = 0   # default start from index 0
+h_analyze_p_max = 20   # at best analyze this many points, it requires total traj of len h_analyze_p_max + "num pts for interp"
+h_analyze_p_min = 5    # 
 k_all = (1,2)
 s_all = (0,1,5,10,25,50,100,1000,10000)
 t_k_s_combs = list(itertools.product(k_all, s_all))
@@ -2649,19 +2655,39 @@ for t_conn in lr_conn_edges_merges: # [(4,13)] lr_conn_edges_merges segment_conn
     t_from, t_to        = t_conn
     t_from_time_end = t_segments_new[t_from][-1][0]
     t_to_time_start = t_segments_new[t_to][0][0]
-    if t_to_time_start - t_from_time_end == 1:
+    if t_to_time_start - t_from_time_end == 1:  # nothing to interpolate?
         t_extrapolate_sol_comb[t_conn] = {}     # although not relevant here, i want to store t_conn for next code
         continue
     trajectory          = np.array(list(t_centroids_all[t_from].values()))
     time                = np.array(list(t_centroids_all[t_from].keys()))
+    t_do_k_s_anal = False
+    
+    if  trajectory.shape[0] > h_analyze_p_max + h_interp_len_max:   # history is large
 
-    # if trajectory is too long, extrapolate only h_start_max_points points, so take traj of length h_start_max_points + h_num_points
-    h_start_point_index =  max(0, trajectory.shape[0] - h_start_max_points - h_num_points)
-    t_comb_sol, errors_sol_diff_norms_all = extrapolate_find_k_s(trajectory, time, t_k_s_combs, h_num_points, h_start_point_index, debug = 0, debug_show_num_best = 2)
+        h_start_point_index2 = trajectory.shape[0] - h_analyze_p_max - h_interp_len_max
 
-    t_k,t_s = t_comb_sol
+        h_interp_len_max2 = h_interp_len_max
+        
+        t_do_k_s_anal = True
 
-   
+    elif trajectory.shape[0] > h_analyze_p_min + h_interp_len_min:  # history is smaller, give pro to interp length rather inspected number count
+                                                                    # traj [0,1,2,3,4,5], min_p = 2 -> 4 & 5, inter_min_len = 3
+        h_start_point_index2 = 0                                    # interp segments: [2,3,4 & 5], [1,2,3 & 4]
+                                                                    # but have 1 elem of hist to spare: [1,2,3,4 & 5], [0,1,2,3 & 4]
+        h_interp_len_max2 = trajectory.shape[0]  - h_analyze_p_min  # so inter_min_len = len(traj) - min_p = 6 - 2 = 4
+        
+        t_do_k_s_anal = True
+
+    else:
+        h_interp_len_max2 = trajectory.shape[0]                     # traj is very small
+
+    if t_do_k_s_anal:                                               # test differet k and s combinations and gather inerpolation history.
+        t_comb_sol, errors_sol_diff_norms_all = extrapolate_find_k_s(trajectory, time, t_k_s_combs, h_interp_len_max2, h_start_point_index2, debug = 0, debug_show_num_best = 2)
+        t_k,t_s = t_comb_sol
+    else:                                                           # use this with set k = 1, s = 5 to generate some interp history.
+        t_comb_sol, errors_sol_diff_norms_all = extrapolate_find_k_s(trajectory, time, [(1,5)], 2, 0, debug = 0, debug_show_num_best = 2)
+        t_k,t_s = t_comb_sol
+        
     
     # extract active segments during inter-time between from_to merge. edges not included
     activeSegments = set(sum([vals for t,vals in lr_time_active_segments.items() if t_from_time_end < t < t_to_time_start],[]))
@@ -2681,11 +2707,11 @@ for t_conn in lr_conn_edges_merges: # [(4,13)] lr_conn_edges_merges segment_conn
     sol_combs = {t_time:t_comb for t_time,t_comb in sol_combs.items() if t_time > t_from_time_end}
     
     # cyclic buffer that stores N entries and pushes old ones out when new value is appended
-    N = 5
-    t_last_deltas   = list(errors_sol_diff_norms_all[t_comb_sol].values())[-5:]
-    t_norm_buffer   = CircularBuffer(N,             t_last_deltas               )
-    t_traj_buff     = CircularBuffer(h_num_points,  trajectory[  -h_num_points:])
-    t_time_buff     = CircularBuffer(h_num_points,  time[        -h_num_points:])
+    N = 5       # errors_sol_diff_norms_all might be smaller than N, no fake numbers are initialized inside
+    t_last_deltas   = list(errors_sol_diff_norms_all[t_comb_sol].values())[-N:]
+    t_norm_buffer   = CircularBuffer(N,                 t_last_deltas                    )
+    t_traj_buff     = CircularBuffer(h_interp_len_max2, trajectory[  -h_interp_len_max2:])
+    t_time_buff     = CircularBuffer(h_interp_len_max2, time[        -h_interp_len_max2:])
     t_time_next     = time[-1] + 1
     t_extrapolate_sol[t_conn] = {}
     t_extrapolate_sol_comb[t_conn] = {}

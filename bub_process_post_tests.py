@@ -316,7 +316,7 @@ if 1 == 1:
         for t_time, t_subIDs in not_segment_nodes_clusters.items():
             for t_k, t_subID in enumerate(t_subIDs):
                 t_node = tuple([t_time,t_subID])
-                all_nodes_pos[t_node] = (t_time,t_k)
+                all_nodes_pos[t_node] = (t_time,0.28*(t_k - 0.5))
         
         drawH(G, paths, all_nodes_pos)
 
@@ -1036,8 +1036,8 @@ def drawH(H, paths, node_positions):
                 break
             else:
 
-                colors_edges2[(u,v)] = np.array((0,0,0))
-                width2[(u,v)] = 2
+                colors_edges2[(u,v)] = np.array((0.5,0.5,0.5))
+                width2[(u,v)] = 1
 
     nx.set_node_attributes(H, node_positions, 'pos')
 
@@ -1048,7 +1048,7 @@ def drawH(H, paths, node_positions):
 
     fig, ax = plt.subplots(figsize=( 10,5))
 
-    nx.draw_networkx_edges( H, pos, alpha=1, width = list(width2.values()), edge_color = list(colors_edges2.values()))
+    nx.draw_networkx_edges( H, pos, alpha=0.5, width = list(width2.values()), edge_color = list(colors_edges2.values()))
     nx.draw_networkx_nodes( H, pos, node_size = 30, node_color='lightblue', alpha=1)
     #label_options = {"ec": "k", "fc": "white", "alpha": 0.3}
     nx.draw_networkx_labels(H, pos = lable_pos, labels=labels, font_size=7)#, bbox=label_options
@@ -1536,6 +1536,9 @@ if 1 == 1:
 
     #segment_conn_end_start_points(lr_conn_edges_splits, nodes = 1)
     #segment_conn_end_start_points(lr_conn_edges_merges, nodes = 1)
+
+    lr_conn_merges_to_nodes     = sorted(list(set([t_node[1] for t_node in lr_conn_edges_merges])))
+    lr_conn_splits_from_nodes   = sorted(list(set([t_node[0] for t_node in lr_conn_edges_splits])))
     a = 1
 #drawH(G, paths, node_positions)
 #segment_conn_end_start_points(lr_connections_directed)
@@ -2607,7 +2610,8 @@ if 1 == -1:
 
 lr_resolved_one_sided_merges = sum(list(lr_inspect_121_to_merge_resolved_IDs.values()),[])
 lr_conn_edges_merges = [t_conn for t_conn in lr_conn_edges_merges if t_conn[1] not in lr_resolved_one_sided_merges]
-
+lr_conn_merges_to_nodes = [tID for tID in lr_conn_merges_to_nodes if tID not in lr_resolved_one_sided_merges]
+lr_conn_merges_to_nodes = [lr_C3_condensed_connections_relations[tID] for tID in lr_conn_merges_to_nodes]
 lr_conn_edges_merges                    = lr_reindex_masters(lr_C3_condensed_connections_relations, lr_conn_edges_merges)
 
 # ===============================================================================================
@@ -2645,13 +2649,15 @@ for t_conn in lr_conn_edges_merges: # [(4,13)] lr_conn_edges_merges segment_conn
     t_from, t_to        = t_conn
     t_from_time_end = t_segments_new[t_from][-1][0]
     t_to_time_start = t_segments_new[t_to][0][0]
-    if t_to_time_start - t_from_time_end == 1: continue
+    if t_to_time_start - t_from_time_end == 1:
+        t_extrapolate_sol_comb[t_conn] = {}     # although not relevant here, i want to store t_conn for next code
+        continue
     trajectory          = np.array(list(t_centroids_all[t_from].values()))
     time                = np.array(list(t_centroids_all[t_from].keys()))
 
     # if trajectory is too long, extrapolate only h_start_max_points points, so take traj of length h_start_max_points + h_num_points
     h_start_point_index =  max(0, trajectory.shape[0] - h_start_max_points - h_num_points)
-    t_comb_sol, errors_sol_diff_norms_all = extrapolate_find_k_s(trajectory, time, t_k_s_combs, h_num_points, h_start_point_index, debug = 1, debug_show_num_best = 2)
+    t_comb_sol, errors_sol_diff_norms_all = extrapolate_find_k_s(trajectory, time, t_k_s_combs, h_num_points, h_start_point_index, debug = 0, debug_show_num_best = 2)
 
     t_k,t_s = t_comb_sol
 
@@ -2725,551 +2731,750 @@ for t_conn in lr_conn_edges_merges: # [(4,13)] lr_conn_edges_merges segment_conn
     a = 1
 #for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             
-
-
-    
-    
-a = 1  
-#usefulPoints = startTime
-
-#interval    = min(interpolatinIntevalLength,usefulPoints)
-
-#startPoint  = max(0,startTime-interval) 
-#endPoint    = min(startTime,startPoint + interval)
-##
-#x,y = trajectory[startPoint:endPoint].T
-#t0 = np.arange(startPoint,endPoint,1)
-
-# plot check solutions
-for t_sol in set(sum(list(t_sols_c.values()) + list(t_sols_c_i.values())  + list(t_sols_a.values()) + list(t_sols_m.values()),[]) ):
-    fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
-    t_traj = []
-    for t,t_perms in  enumerate(lr_inspect_permutation_cases[t_conn][t_sol]):
-        t_time  = lr_inspect_permutation_times[t_conn][t]
-        #t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t_subID] for t_subID in t_perms]))
-        #axes.plot(*t_hull.reshape(-1,2).T, '-',  c='black', linewidth = 0.3)
-        #for tID in t_perms:
-        #    axes.plot(*g0_contours[t_time][tID].reshape(-1,2).T, '-',  c=np.array(cyclicColor(t))/255, linewidth = 0.5)
-        t_traj.append(lr_inspect_permutation_centroids_precomputed[t_conn][t_time][t_perms])
-    t_traj = np.array(t_traj)
-    axes.plot(*t_traj.T, '-o')
-    #axes.plot(*t_traj_next.T, '-o',  c='black')
-    #axes.plot(x0,y0, '-o')
-        
-    #axes.plot(*IEpolation, linestyle='dotted', c='orange')
-    axes.set_title(t_sol)
-    axes.set_aspect('equal')
-    fig.show()
-
-a = 1
-# ===============================================================================================
-# ========== INTERPOLATE PATHS BETWEEN SEGMENTS AND COMPARE WITH INTER-SEGMENT SOLUTION =========
-# ===============================================================================================
-# REMARK: least path and area devs might not agree, test remaining choices with interpolation
-
-
-
-
-def interpolateMiddle(t_conn,t_sols_c,t_sols_a,t_segments_121_centroids,t_all_traj, lr_permutation_times, segments2, histLen = 5, s = 15, debug = 0):
-    t_from,t_to = t_conn
-    t_possible_sols = sorted(list(set(t_sols_c[t_conn] + t_sols_a[t_conn])))
-    t_trajectories = {tID:t_all_traj[t_conn][tID] for tID in t_possible_sols}
-    t_hist_prev     = segments2[t_from][-histLen:]
-    t_hist_next     = segments2[t_to][:histLen]
-    t_traj_prev     = np.array([t_segments_121_centroids[t_from][t_node] for t_node in t_hist_prev])
-    t_traj_next     = np.array([t_segments_121_centroids[  t_to][t_node] for t_node in t_hist_next])
-    t_times_prev    = [t_node[0] for t_node in t_hist_prev]
-    t_times_next    = [t_node[0] for t_node in t_hist_next]
-    t_traj_concat   = np.concatenate((t_traj_prev,t_traj_next))
-    t_times         = t_times_prev + t_times_next
-    x, y            = t_traj_concat.T
-    spline, _       = interpolate.splprep([x, y], u=t_times, s=s,k=1)
-
-    t2              = np.arange(t_times[0],t_times[-1],0.1)
-    IEpolation      = np.array(interpolate.splev(t2, spline,ext=0))
-    t_missing       = lr_permutation_times[t_conn][1:-1]
-    t_interp_missing= np.array(interpolate.splev(t_missing, spline,ext=0)).T   # notice transpose sempai :3
-
-    t_sol_diffs     = {}
-    for t_sol, t_traj in t_trajectories.items():
-        t_diffs = t_interp_missing- t_traj[1:-1]
-        t_sol_diffs[t_sol] = [np.linalg.norm(t_diff) for t_diff in t_diffs]
-        
-    if debug:
-        fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
-        axes.plot(*t_traj_prev.T, '-o', c= 'black')
-        axes.plot(*t_traj_next.T, '-o', c= 'black')
-        
-        axes.plot(*IEpolation, linestyle='dotted', c='orange')
-    
-
-        for t_sol, t_traj in t_trajectories.items():
-            axes.plot(*t_traj.T, '-o', label = t_sol)
-        axes.set_title(t_conn)
-        axes.set_aspect('equal')
-        axes.legend(prop={'size': 6})
-        plt.show()
-    return t_sol_diffs
-
-# tested this second, first below cssssssssssssss
-sol = []
-for t_conn in t_sols_c:#[(18,19)]
-    aa = interpolateMiddle(t_conn,t_sols_c,t_sols_a,t_segments_121_centroids,t_all_traj,lr_permutation_times, segments2, debug = 0)
-    sol.append(aa)
-a = 1
-    
-
-for t_conn in t_sols_c:#[(18,19)]
-    t_from,t_to = t_conn
-    t_possible_sols = sorted(list(set(t_sols_c[t_conn] + t_sols_a[t_conn])))
-    t_trajectories = {tID:t_all_traj[t_conn][tID] for tID in t_possible_sols}
-    t_hist_prev     = segments2[t_from][-4:-1]
-    t_hist_next     = segments2[t_to][1:4]
-    t_traj_prev     = np.array([t_segments_121_centroids[t_from][t_node] for t_node in t_hist_prev])
-    t_traj_next     = np.array([t_segments_121_centroids[  t_to][t_node] for t_node in t_hist_next])
-    t_times_prev    = [t_node[0] for t_node in t_hist_prev]
-    t_times_next    = [t_node[0] for t_node in t_hist_next]
-    #t_mean_displ = {tID:np.diff(t_traj,axis = 0)       for tID, t_traj in t_trajectories.items()}
-    t_mean_displ = {tID:np.mean(np.diff(t_traj,axis = 0) ,axis = 0) for tID, t_traj in t_trajectories.items()}
-    for t_sol, t_traj in t_trajectories.items():
-        #t_diag = t_mean_displ[t_sol]
-        #t_diag_inv = 1/t_diag
-        #t_scale_inv = np.diag(t_diag)
-        #t_scale = np.diag(t_diag_inv)
-        #t_traj_scaled = np.dot(t_traj,t_scale)#t_scale @ t_traj.T #np.matmul(t_scale,)
-        #t = np.diff(t_traj_scaled,axis = 0)
-        #t_traj_2 = np.dot(t_traj_scaled,t_scale_inv)
-
-        #x,y = t_traj_scaled.T
-        x0,y0 = t_traj.T
-        t_concat = np.concatenate((t_traj_prev,t_traj,t_traj_next))
-        x,y = t_concat.T
-        t0 = lr_permutation_times[t_conn]
-        t_times = t_times_prev + list(t0) + t_times_next
-        spline, _ = interpolate.splprep([x, y], u=t_times, s=10,k=1)
-
-        #t2 = np.arange(t0[0],t0[-1],0.1)
-        t2 = np.arange(t_times[0],t_times[-1],0.1)
-        IEpolation = np.array(interpolate.splev(t2, spline,ext=0))
-    
-        fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
-        
-        for t,t_perms in  enumerate(lr_permutation_cases[t_conn][t_sol]):
-            t_time  = t0[t]
-            t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t_subID] for t_subID in t_perms]))
-            axes.plot(*t_hull.reshape(-1,2).T, '-',  c='black', linewidth = 0.3)
-            for tID in t_perms:
-                axes.plot(*g0_contours[t_time][tID].reshape(-1,2).T, '-',  c=np.array(cyclicColor(t))/255, linewidth = 0.5)
-        axes.plot(*t_traj_prev.T, '-o',  c='black')
-        axes.plot(*t_traj_next.T, '-o',  c='black')
-        axes.plot(x0,y0, '-o')
-        
-        axes.plot(*IEpolation, linestyle='dotted', c='orange')
-        axes.set_title(t_conn)
-        axes.set_aspect('equal')
-        fig.show()
-    a = 1
-
-
-for t_conn, test in lr_contour_combs.items():
-    yoo     = {t:[] for t in test}
-    for t,subIDs in test.items():
-        s = sum([list(itertools.combinations(subIDs, r)) for r in range(1,len(subIDs)+1)],[])
-        yoo[t] += s
-        a = 1
-    yoo2 = {t:[] for t in test}
-    for t,permList in yoo.items(): 
-        for perm in permList:
-            hull = cv2.convexHull(np.vstack([g0_contours[t][c] for c in perm]))
-            yoo2[t].append(cv2.contourArea(hull))
-            #yoo2[t].append(cv2.boundingRect(np.vstack([g0_contours[t][c] for c in perm])) )
-
-    #rectAreas = {t:[] for t in test}
-    #maxArea = 0
-    #minArea = 9999999999
-    #for t,rectList in yoo2.items(): 
-    #    for x,y,w,h in rectList:
-    #        area = w*h
-    #        rectAreas[t].append(area)
-    #        maxArea = max(maxArea,area)
-    #        minArea = min(minArea,area)
-    rectAreas = yoo2
-    minTime,maxTime = min(rectAreas), max(rectAreas)
-
-    soloTimes = [a for a,b in rectAreas.items() if len(b) == 1]
-    missingTimes = [a for a,b in rectAreas.items() if len(b) > 1]
-    from scipy.interpolate import splev, splrep
-    x = soloTimes
-    y0 = np.array([b[0] for a,b in  rectAreas.items() if a in soloTimes])
-    minArea,maxArea = min(y0), max(y0)
-    K = maxTime - minTime
-    y = (y0 - minArea) * (K / (maxArea - minArea))
-    spl = splrep(soloTimes, y, k = 1, s = 0.7)
-
-    x2 = np.linspace(min(rectAreas), max(rectAreas), 30)
-    y2 = splev(x2, spl)
-    y2 = y2/(K / (maxArea - minArea)) + minArea
-    y = y/(K / (maxArea - minArea)) + minArea
-    fig = plt.figure()
-    for t in missingTimes:
-        for rA in rectAreas[t]:
-            plt.scatter([t],[rA], c='b')
-    plt.plot(x, y, 'o', x2, y2)
-    fig.suptitle(lr_multi_conn_intr[tID][0])
-    #plt.show()
-
-a = 1
-# Draw the graph with constrained x-positions and automatic y-positions
-#nx.draw(G, pos, with_labels=True)
-
-##drawH(G, paths, node_positions)
-
-# check if extracted intervals are "clean", dont contain merge
-# clean means there are nodes attached to all available paths
-# => check neighbors of all nodes in path and see if they are their own neigbors
-# this test is too strict, but allows to isolate pseudo split-merges 
-t_sols = []
-for t_conn in lr_trusted_interval_test_prio:
-    a = lr_paths_segm2[t_conn]
-    t_from,t_to = t_conn
-    t_node_from_last   = segments2[t_from][-1]
-    t_node_to_first    = segments2[t_to][0]
-    t_neighbors_from_next       = extractNeighborsNext(     G, t_node_from_last,    lambda x: x[0])
-    t_neighbors_to_previous     = extractNeighborsPrevious( G, t_node_to_first,     lambda x: x[0])
-
-    t_all_path_nodes = sorted(set(sum(lr_paths_segm[t_conn],[])),key=lambda x: x[0])
-    
-    t_all_path_nodes = t_all_path_nodes
-    t_all_path_neigbors = []
-    for t_node in t_all_path_nodes[1:-1]:
-        t_all_path_neigbors.append(list(G.neighbors(t_node)))
-
-    t_all_path_neigbors.append(t_neighbors_from_next)
-    t_all_path_neigbors.append(t_neighbors_to_previous)
-
-    t_all_path_neigbors = sorted(set(sum(t_all_path_neigbors,[])),key=lambda x: x[0])
-    #t_all_path_neigbors = [t_node for t_node in t_all_path_neigbors if t_node not in [t_node_from_last,t_node_to_first]]
-    if t_all_path_neigbors != t_all_path_nodes: continue
-    t_sols.append(t_conn)
-
-    #t_nodes_all = sum(t_hist_pre.values(),[]) + sum(t_hist_post.values(),[]) +sum(t_paths_choices,[])
-    #t_nodes_all = sorted(set(t_nodes_all))
-    #t_times_all = [a[0] for a in t_nodes_all]
-    #t_times_cIDs = {t:[] for t in t_times_all}
-    #for t,cID in t_nodes_all:
-    #    t_times_cIDs[t].append(cID)
-    #for t in t_times_cIDs:
-    #    t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
-a = 1
-#drawH(G, paths, node_positions)
-# ===============================================================================================
-# ===============================================================================================
-# === find split-merge (possibly fake) events; detect split-merges that look like real merges ===
-# ===============================================================================================
-# ===============================================================================================
-
-# since nodes and edges represent spacial overlap of cluster elements at each time paths between two nodes
-# should (?) contain all elements for permutations for bubble reconstruction from partial reflections
-
-# !!!!!!!!!!!!!!====================<<<<<<<<<<<<<<<
-# best case scenario of a path is overlap between single contour bubbles.
-# in that case solution is shortest trajectory :)
-# might want to check for area befor and after, in case of merge. overall, i have to do permutations.
-# elements that begin from nothing are problematic. in case split-merge, i should include them into paths, but in reverse.
-# same with split-merge that happend 2+ steps. means bubble splits into two segments and is reconstructed.
-# but also might split into one segment, and other starts from nothing. so merge them in reverse path.
-
-# 1) check if multiple segments are merged into 1. might be merge, might be split-merge fake or not. area will help.
-# take endpoints of all paths
-lr_paths_endpoints = {**{key:a[0][-1] for key,a in lr_paths_segm.items()},
-                      **{key:a[0][-1] for key,a in lr_paths_other.items()}}
-
-# find common endpoints. inverse dictionary = endpoint:connections
-rev_multidict = {}
-for key, value in lr_paths_endpoints.items():
-    rev_multidict.setdefault(value, set()).add(key)
-# if endpoint is associated with multiple connections, extract these connections
-lr_multi_conn = [list(a) for a in rev_multidict.values() if len(a)>1]
-lr_multi_conn_all = sum(lr_multi_conn,[])
-# decide which merge branch is main. expore every merge path
-# path length is not correct metric, since it may be continuation via merge
-lr_multi_conn_win = []
-for t_merges_options in lr_multi_conn:
-    # grab time at which segments merge
-    t_merge_time = segments2[int(t_merges_options[0][1])][0][0]
-    # initialize times for paths which will be compared for 'path length/age' and if set time is legit or intermediate
-    t_earliest_time     = {t_ID:0 for t_ID in t_merges_options}
-    t_terminated_time   = {t_ID:0 for t_ID in t_merges_options}
-    for t_path in t_merges_options:
-        # t_path is ID in segments2, take its starting node.
-        # lr_paths_other has no history (no prior neighbors)
-        if type(t_path[0]) == str:
-            t_earliest_time[t_path] = t_merge_time - 1
-            t_terminated_time[t_path] = 1
-            continue
-        t_nodes_path    = segments2[t_path[0]]                       
-
-        t_node_first    = t_nodes_path[0]
-        t_node_last     = t_nodes_path[-1]
-        t_prev_neighbors = [node for node in list(G.neighbors(t_node_first)) if node[0] < t_node_first[0]]
-        if len(t_prev_neighbors) == 0:
-            t_earliest_time[t_path] = t_node_first[0]
-            t_terminated_time[t_path] = 1
-    # check if we can drop terminated paths. if path is terminated and time is bigger than any unterminated, drop it.
-    for t_path in t_merges_options:
-        t_other_times = [t for tID,t in t_earliest_time.items() if tID != t_path]
-        if t_terminated_time[t_path] == 1 and t_earliest_time[t_path] > min(t_other_times):
-            t_earliest_time.pop(t_path,None)
-            t_terminated_time.pop(t_path,None)
-
-    t_IDs_left = list(t_earliest_time.keys())
-    if len(t_IDs_left) == 1: lr_multi_conn_win.append(t_IDs_left[0])
-    else: assert 1 == -1, "split-merge. need to develop dominant branch further"
-
-# ===============================================================================================
-# ===============================================================================================
-# == find INTeRmediate interval paths, short PREv and POST history. deal with merge hist after ==
-# ===============================================================================================
-# ===============================================================================================
-lr_multi_conn_pre   = {conn:{} for conn in lr_paths_segm.keys()}
-lr_multi_conn_intr  = {conn:{} for conn in lr_paths_segm.keys()} 
-lr_multi_conn_post  = {conn:{} for conn in lr_paths_segm.keys()} 
-for t_conn, t_paths_nodes in lr_paths_segm.items():
-    tID_from = t_conn[0]
-    tID_to  = t_conn[1]
-    # if multi merge
-    t_is_part_of_merge = True if t_conn in lr_multi_conn_all else False
-    t_is_part_of_merge_and_main = True if t_is_part_of_merge and t_conn in lr_multi_conn_win else False
-    t_is_followed_by_merge = True if tID_to in [a[0] for a in lr_multi_conn_all] else False
-    t_other_paths_nodes = []
-    t_other_path_conn   = []
-    if t_is_part_of_merge_and_main:
-        # extract other (pseudo) merging segments. other paths only.
-        t_other_path_conn = [a for a in lr_multi_conn if t_conn in a]
-        t_other_path_conn = [[a for a in b if a != t_conn] for b in t_other_path_conn]
-        #[t_other_path_conn[k].remove(t_conn) for k in range(len(t_other_path_conn))]
-        t_other_path_conn = sum(t_other_path_conn,[])
-        # preprend prev history of segment before intermediate segment
-        #t_other_path_pre = {ID:[] for ID in t_other_path_conn}
-        #for ID in t_other_path_conn:
-        #    if type(ID[0]) != str:
-        #        t_other_path_pre[ID] += segments2[ID[0]][:-1]
-        # some mumbo-jumbo with string keys to differentiate lr_paths_other from lr_paths_segm
-        t_other_paths_nodes = []
-        for ID in t_other_path_conn:
-            if type(ID[0]) == str:
-                for t_path in lr_paths_other[ID]:
-                    t_other_paths_nodes.append(t_path)  
-            else:
-                for t_path in lr_paths_segm[ID]:
-                    t_other_paths_nodes.append(t_path)
-            #if type(ID[0]) == str:
-            #    for t_path in lr_paths_other[ID]:
-            #        t_other_paths_nodes.append(t_other_path_pre[ID]+t_path)  
-            #else:
-            #    for t_path in lr_paths_segm[ID]:
-            #        t_other_paths_nodes.append(t_other_path_pre[ID]+t_path)
-        a = 1            
-        #t_other_paths_nodes = [t_other_path_pre[ID] + lr_paths_other[ID] 
-        #                       if type(ID[0]) == str 
-        #                       else lr_paths_segm[ID] for ID in t_other_path_conn]
-        #t_other_paths_nodes = sum(t_other_paths_nodes,[])
-        #t_join_paths = t_paths_nodes + t_other_paths_nodes
-        # there is no prev history for lr_paths_other, lr_paths_segm has at least 2 nodes
-    elif t_is_part_of_merge:
-        continue
+# ===========
+# check whether  merges share nodes?
+# =============
+lr_conn_merges_good = [] # may be redo to dict of tID?
+lr_conn_merges_good = {tID:[] for tID in lr_conn_merges_to_nodes}
+for tID in lr_conn_merges_to_nodes:
+    # grab t_conns with same merge to node
+    t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
+    # extract all times of merge branches
+    t_times_all = list(sorted(set(sum([list(t_extrapolate_sol_comb[t_conn].keys()) for t_conn in t_conns_relevant],[]))))
+    # gather all contour ID combinations that were resolved for all merge branches
+    t_combs_of_times = {t_time:[] for t_time in t_times_all}
+    for t_conn in t_conns_relevant:
+        for t_time, t_comb in t_extrapolate_sol_comb[t_conn].items():
+            t_combs_of_times[t_time] += list(t_comb)
+    # inspect if there are duplicates in contors =  branches share nodes = bad
+    t_combs_of_times_num_copies = {t_time:[] for t_time in t_times_all}
+    for t_time, t_comb in t_combs_of_times.items():
+        _,t_num_copies = np.unique(t_comb, return_counts = True)
+        t_combs_of_times_num_copies[t_time] = t_num_copies
+    # save all times which have more than 1 duplicate
+    t_times_combs_multi = []
+    for t_time, t_copies_num in t_combs_of_times_num_copies.items():
+        t_copies_has = True if any([1 if t > 1 else 0 for t in t_copies_num]) else False
+        if t_copies_has : t_times_combs_multi.append(t_time)
+    if len(t_times_combs_multi) == 0:
+        lr_conn_merges_good[tID] += t_conns_relevant
     else:
-        t_other_paths_nodes = []
-    # app- and pre- pend path segments to intermediate area. 
-    # case where split-merge is folled by disconnected split-merge (on of elements is not connected via overlay)
-    # is problematic. 
-    # >>>>>>>>>>>>>>>>!!!!!!!!!!!!!!!!!!!!!!!!!<<<<<<<<<<<<<<
-    # i should split this code into two. one stablishes intermediate part
-    # and other can relate intermediate parts together, if needed.
-
-    # ====================
-    # store history prior to intermediate segment. solo bubble = 1 contour = last N steps
-    # pseudo merge = multiple branches => include branches and take N steps prior
-    a = 1
-    t_og_max_t =  segments2[tID_from][-1][0]
-    if not t_is_part_of_merge:
-        lr_multi_conn_pre[t_conn][tID_from] = segments2[tID_from][-4:-1]
-    else:
-        # find minimal time from othat branches
-        t_other_min_t = min([a[0] for a in sum(t_other_paths_nodes,[])])
-        # extract OG history only 3 steps prior to first branch (timewise) <<< 3 or so! idk, have to test
-        lr_multi_conn_pre[t_conn][tID_from] = [a for a in segments2[tID_from] if t_og_max_t> a[0] > t_other_min_t - 4]
-        t_other_IDs = [a[0] for a in t_other_path_conn]
-        for tID in t_other_IDs:
-            if type(tID) != str:
-                lr_multi_conn_pre[t_conn][tID] = segments2[tID]
-    # store history post intermediate segment.     solo bubble = 1 contour = next N steps
-    # if followed by merge, ideally take solo N steps before merge. but this info not avalable yet. do it after
-    if not t_is_followed_by_merge:
-        lr_multi_conn_post[t_conn][tID_to]  = segments2[tID_to][1:4]
-
-    t_join_paths            = t_paths_nodes + t_other_paths_nodes
-    # store all paths in intermediate interval
-    lr_multi_conn_intr[t_conn]   = t_paths_nodes + t_other_paths_nodes 
-    # collect all viable contour IDs from intermediate time
-    #t_all_nodes = sum(t_join_paths,[])
-    #t_all_times = list(sorted(np.unique([a[0] for a in t_all_nodes])))
-    #t_times_cIDs = {t:[] for t in t_all_times}
-    #for t,cID in t_all_nodes:
-    #    t_times_cIDs[t].append(cID)
-    #for t in t_times_cIDs:
-    #    t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
-    #lr_multi_conn_choices[t_conn] = t_times_cIDs
-    # test intermediate contour combinations
-    # 
-#lr_multi_conn_all and t_conn in lr_multi_conn_win
-
-# ===============================================================================================
-# ===============================================================================================
-# ========================== deal with POST history if its a merge ==============================
-# ===============================================================================================
-# ===============================================================================================
-# isolate easy cases where split-merge has history on both sides
-t_all_merging = [a[0] for a in lr_multi_conn_win]
-for t_conn, t_paths_choices in lr_multi_conn_post.items():
-    t_end_ID = t_conn[1]
-    if len(t_paths_choices) == 0 and t_end_ID in t_all_merging:
-        t_next_merge_all = [a for a in lr_multi_conn_win if a[0] == t_end_ID]
-        assert len(t_next_merge_all)<2, "post history-> multi merge. something i did not account for"
-        t_conn_next_merge    = t_next_merge_all[0]
-        t_og_min_t      = segments2[t_end_ID][0][0]
-        # pick min branches time: take all branches except main, extract first node, and extract from it time. pick min
-        t_other_min_t   = min([a[0][0] for ID,a in lr_multi_conn_pre[t_conn_next_merge].items() if ID != t_end_ID])
-
-        # end history at: if there is time before merge take 3 (or so) steps before it.
-        # it its earlier, squeeze interval. if merge is straight after, post history will be zero.
-        t_max_time =  min(t_og_min_t + 4, t_other_min_t )
-        lr_multi_conn_post[t_conn][t_end_ID] = [a for a in segments2[t_end_ID] if t_og_min_t < a[0] < t_max_time]
-#drawH(G, paths, node_positions)
-# ===============================================================================================
-# ===============================================================================================
-# ============== form combinations of elements from PRE-INTR-Post connectedness data ============
-# ===============================================================================================
-# ===============================================================================================
-lr_multi_conn_choices = {conn:{} for conn in lr_paths_segm.keys()}
-
-for t_conn, t_paths_choices in lr_multi_conn_intr.items():
-    t_hist_pre  = lr_multi_conn_pre[t_conn]
-    t_hist_post = lr_multi_conn_post[t_conn]
-    t_nodes_all = sum(t_hist_pre.values(),[]) + sum(t_hist_post.values(),[]) +sum(t_paths_choices,[])
-    t_nodes_all = sorted(set(t_nodes_all))
-    t_times_all = [a[0] for a in t_nodes_all]
-    t_times_cIDs = {t:[] for t in t_times_all}
-    for t,cID in t_nodes_all:
-        t_times_cIDs[t].append(cID)
-    for t in t_times_cIDs:
-        t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
-    lr_multi_conn_choices[t_conn] = t_times_cIDs
-
-for tID,test in lr_multi_conn_choices.items():
-    if len(test)==0: continue
-    #test    = {325: [2], 326: [1], 327: [3], 328: [2], 329: [1, 3], 330: [2], 331: [1], 332: [1], 333: [1]}
-    yoo     = {t:[] for t in test}
-    for t,subIDs in test.items():
-        s = sum([list(itertools.combinations(subIDs, r)) for r in range(1,len(subIDs)+1)],[])
-        yoo[t] += s
-        a = 1
-    yoo2 = {t:[] for t in test}
-    for t,permList in yoo.items(): 
-        for perm in permList:
-            hull = cv2.convexHull(np.vstack([g0_contours[t][c] for c in perm]))
-            yoo2[t].append(cv2.contourArea(hull))
-            #yoo2[t].append(cv2.boundingRect(np.vstack([g0_contours[t][c] for c in perm])) )
-
-    #rectAreas = {t:[] for t in test}
-    #maxArea = 0
-    #minArea = 9999999999
-    #for t,rectList in yoo2.items(): 
-    #    for x,y,w,h in rectList:
-    #        area = w*h
-    #        rectAreas[t].append(area)
-    #        maxArea = max(maxArea,area)
-    #        minArea = min(minArea,area)
-    rectAreas = yoo2
-    minTime,maxTime = min(rectAreas), max(rectAreas)
-
-    soloTimes = [a for a,b in rectAreas.items() if len(b) == 1]
-    missingTimes = [a for a,b in rectAreas.items() if len(b) > 1]
-    from scipy.interpolate import splev, splrep
-    x = soloTimes
-    y0 = np.array([b[0] for a,b in  rectAreas.items() if a in soloTimes])
-    minArea,maxArea = min(y0), max(y0)
-    K = maxTime - minTime
-    y = (y0 - minArea) * (K / (maxArea - minArea))
-    spl = splrep(soloTimes, y, k = 1, s = 0.7)
-
-    x2 = np.linspace(min(rectAreas), max(rectAreas), 30)
-    y2 = splev(x2, spl)
-    y2 = y2/(K / (maxArea - minArea)) + minArea
-    y = y/(K / (maxArea - minArea)) + minArea
-    fig = plt.figure()
-    for t in missingTimes:
-        for rA in rectAreas[t]:
-            plt.scatter([t],[rA], c='b')
-    plt.plot(x, y, 'o', x2, y2)
-    fig.suptitle(lr_multi_conn_intr[tID][0])
-    #plt.show()
-
-# >>>>>>>>>>>>> !!!!!!!!!!!!!!!!!!!! <<<<<<<<<<<<< CONCLUSIONS
-# long trends can be trusted: e.g long solo- split-merge - long solo
-# transition to short segments may be misleading e.g split into two parts perist - area is halfed at split
-# fast split-merge kind of reduces trust, which is related to segment length. but it should not.
-# ^ may be longterm trends should be analyzed first. idk what to do about real merges then.
-
+        raise ValueError(f"merge branches share nodes, not encountered before. t_conns_relevant:{t_conns_relevant}")
     a = 1
 
+a = 1    
+# for_graph_plots(G)    #         <<<<<<<<<<<<<<<<<<<<<<<<<<<<< 
+# ===========
+# modify graph based on extended merge branches
+# =============
+# REMARK: branches are extended as far as possible. all secondary edges across branches can be purged
+# REMARK: after branch ends its back to a wild territory - messy pre-merge connetions between nodes
+# REMARK: old solo nodes are remove, new solo-cluster nodes that are forming branches are added.
+# REMARK: branches might not be extended the to merge node and may terminate in different times
+# ======:
+# REMARK: maybe im overthinking, but purging nodes and adding edges in sequence should mess up next branch. 
+# REMARK: e.g for a branch that ended earlier, i want to store edges 1-timestep after end, into the wild.
+# REMARK: one such edge can be connected to a path of different branch.
+# REMARK: next branch, that terminates later, and passes though that node, will be re-initialized
+# REMARK: - that will drop all secondary connections along its path
+# REMARK: by that logix order of sequence does not matter, and end of branch will be connected
+# REMARK: only to free nodes.
+# REMARK: i propose two options: 
+# REMARK: 1) to do it in one iteration which should be correct if purges are "self-governing".
+# REMARK: 2) to gather all nodes and future neighbors, reinitilize nodes (maybe a fault here) and drop
+# REMARK: future neighbors that are part of merge branches
+# REMARK: 1) is well though through. 2) idea works, its more difficult, some issues like solo/vs cluster node
+# REMARK: is not resolved, comparing to 1). USE 1) FOR NOW.
 
+# for_graph_plots(G)             #<<<<<<<<<<<<<<<<<<<<<<<<<<<<< 
 
-# usefulPoints = startTime
-## interval gets capped at interpolatinIntevalLength if there are more points
-#interval    = min(interpolatinIntevalLength,usefulPoints)
-## maybe max not needed, since interval is capped
-#startPoint  = max(0,startTime-interval) 
-#endPoint    = min(startTime,startPoint + interval) # not sure about interval or interpolatinIntevalLength
-##
-#x,y = trajectory[startPoint:endPoint].T
-#t0 = np.arange(startPoint,endPoint,1)
-## interpolate and exterpolate to t2 this window
-#spline, _ = interpolate.splprep([x, y], u=t0, s=10000,k=1)
-#t2 = np.arange(startPoint,endPoint+1,1)
-#IEpolation = np.array(interpolate.splev(t2, spline,ext=0))
-# >>>>>>>>> !!!!!!!! <<<<<<< most works. EXCEPT split into isolated node. segment merge into non-isolated nodes
+# 1)
+if 1 == 1:
+    for t_to,t_conns in lr_conn_merges_good.items():
+        for t_conn in t_conns:
+            t_from, t_to = t_conn
+        
+            t_combs = t_extrapolate_sol_comb[t_conn]
 
+            if len(t_combs) == 0: continue
 
-#TODO: do a reconstruction via area (maybe trajectory) of BRs using lr_multi_conn_choices
+            t_nodes_all = []                                            # solo nodes will be deleted
+            t_nodes_new = []                                            # new composite nodes are formed
 
+            for t_time,t_subIDs in t_combs.items():
 
-#drawH(G, paths, node_positions)
+                for t_subID in t_subIDs:                                # single object nodes
+                    t_nodes_all.append((t_time,t_subID))
 
-# analyze fake split-merge caused by partial reflections. during period of time bubble is represented by reflections on its opposite side
-# which might appear as a split. 
+                t_nodes_new.append(tuple([t_time] + list(t_subIDs)))    # cluster object nodes
+        
+            t_nodes_all += [t_segments_new[t_from][-1]]                 # (*) last old may have multiple connections not
+                                                                        # covered by best choices in sol-n, so they are will stay.
+            # find end edges to reconnect into graph
+            # if last node is composite of solo nodes, each might have its edges
+            t_time_end, *t_node_subIDs =  t_nodes_new[-1]               # grab subIDs and reconver solo nodes. i do this because
+            t_node_last_solo_IDS = [(t_time_end,t_subID) for t_subID in t_node_subIDs] #  its easy to pick [-1], not lookup last time.
 
-# if bubble is well behavade (good segment), it will be solo contour, then split and merge in 1 or more steps.
+            f = lambda x: x[0]
+            t_node_last_solo_IDS_to = list(set(sum([extractNeighborsNext(G, t_node, f) for t_node in t_node_last_solo_IDS],[])))
 
-# find end points of rough good segments
+            t_edges_next_new = [(t_nodes_new[-1] , t_node) for t_node in t_node_last_solo_IDS_to] # composite to old next neighbors
 
+            G.remove_nodes_from(t_nodes_all)                            # remove all solo nodes and replace them with composite
+            
+            t_nodes_new_sides = t_segments_new[t_from][-2:] + t_nodes_new#  take nodes from -2 to end of segment, why -2 see (*)
 
-# ======================
+            t_edges_sequence = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
+            
+            G.add_edges_from(t_edges_sequence)                          # from sequence of nodes create edges -> auto nodes
+            G.add_edges_from(t_edges_next_new)                          # add future edges to solo nodes.
+
+            t_segments_new[t_from] += t_nodes_new                       # append resolved to segments.
+#for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+# 2)
 if 1 == -1:
+    t_neighbors_next = {}
+    for t in lr_conn_merges_good.values(): # wonky structure
+        for t_conn in t:
+            t_neighbors_next[t_conn] = {}
+            #{tID:{t_from:[] for t_from,t_to in t_edges} for tID, t_edges in lr_conn_merges_good.items()}
+
+    t_nodes_remove  = []
+    t_edges_add     = []
+
+    for t_to,t_conns in lr_conn_merges_good.items():
+        for t_conn in t_conns:
+            t_from, t_to = t_conn
+        
+            t_combs = t_extrapolate_sol_comb[t_conn]
+            if len(t_combs) == 0:                                       # connection with no intermediate nodes. no choices
+                t_neighbors_next[t_conn][t_segments_new[t_from][-1]] =  [t_segments_new[t_to][0]]
+                continue
+            t_node_latest = t_segments_new[t_from][-1]
+            t_nodes_all = []
+            t_nodes_new = []
+            for t_time,t_subIDs in t_combs.items():
+                for t_subID in t_subIDs:                                # single object nodes
+                    t_nodes_all.append((t_time,t_subID))
+                t_nodes_new.append(tuple([t_time] + list(t_subIDs)))    # cluster object nodes
+        
+            t_nodes_all += [t_segments_new[t_from][-1]]
+            t_nodes_remove += t_nodes_all
+        
+            t_neighbors_next[t_conn][t_nodes_new[-1]] =  extractNeighborsNext(G, t_nodes_new[-1],  lambda x: x[0])
+        
+            t_nodes_new_sides = t_segments_new[t_from][-2:] + t_nodes_new 
+
+            pairs = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
+            t_edges_add += pairs
+            t_segments_new[t_from] += t_nodes_new
+
+    G.remove_nodes_from(t_nodes_remove)
+    G.add_edges_from(t_edges_add)
+
+    # remove next neighbor edges from branchs
+    t_branches = {tID:sorted([t_conn[0] for t_conn in t_conns]) for tID,t_conns in lr_conn_merges_good.items()}
+    t_edges_good = []
+    for t_conn, t_edge_d  in t_neighbors_next.items():
+        t_from, t_to = t_conn
+        for t_node_from,t_node_to_all in t_edge_d.items():
+            for t_node_to in t_node_to_all:
+                t_node_not_in_segments = [True if t_node_to not in t_segments_new[tID] else False for tID in t_branches[t_to]]
+                if all(t_node_not_in_segments):
+                    t_edges_good.append((t_node_from,t_node_to))
+
+    G.add_edges_from(t_edges_good)
+a = 1
+#for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+if 1 == 1:
+
     binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
     imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(binarizedMaskArr.shape[0])]
     font = cv2.FONT_HERSHEY_SIMPLEX
     fontScale = 0.7; thickness = 4;
-    for n, case in tqdm(enumerate(segments2)):
+    for n, case in tqdm(enumerate(t_segments_new)):
+        
+        
+        case    = sorted(case, key=lambda x: x[0])
+        t_traj = {t_time:np.zeros(2,int) for t_time,*t in case}
+        for k,subCase in enumerate(case):
+            time,*subIDs = subCase
+            t_hull = cv2.convexHull(np.vstack([g0_contours[time][tID] for tID in subIDs]))
+            t_centroid, t_area = centroid_area(t_hull)
+            t_traj[time] = t_centroid.astype(int)
+
+        for k,subCase in enumerate(case):
+            time,*subIDs = subCase
+            for subID in subIDs:
+                cv2.drawContours(  imgs[time],   g0_contours[time], subID, cyclicColor(n), 2)
+
+            useTimes = [t for t in t_traj.keys() if time >= t >= time - 10] 
+            pts = np.array([t_traj[t] for t in useTimes]).reshape(-1, 1, 2)
+            
+            cv2.polylines(  imgs[time], [pts] ,0, (255,255,255), 3)
+            cv2.polylines(  imgs[time], [pts] ,0, cyclicColor(n), 2)
+            [cv2.circle(    imgs[time], tuple(p), 3, cyclicColor(n), -1) for [p] in pts]
+
+            x,y,w,h = cv2.boundingRect(np.vstack([g0_contours[time][ID] for ID in subIDs]))
+            #x,y,w,h = g0_bigBoundingRect2[time][subCase]
+            #x,y,w,h = g0_bigBoundingRect[time][ID]
+            #cv2.rectangle(imgs[time], (x,y), (x+w,y+h), cyclicColor(n), 1)
+            #x,y= g0_contours[time]
+            [cv2.putText(imgs[time], str(n), (x,y), font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]# connected clusters = same color
+        for k,subCase in enumerate(case):
+            time,*subIDs = subCase
+            for subID in subIDs:
+                startPos2 = g0_contours[time][subID][-30][0] 
+                [cv2.putText(imgs[time], str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
+        
+
+    for k,img in enumerate(imgs):
+        folder = r"./post_tests/testImgs/"
+        fileName = f"{str(k).zfill(4)}.png"
+        cv2.imwrite(os.path.join(folder,fileName) ,img)
+        #cv2.imshow('a',imgs[time])
+a = 1
+if 1 == -1:
+    #usefulPoints = startTime
+
+    #interval    = min(interpolatinIntevalLength,usefulPoints)
+
+    #startPoint  = max(0,startTime-interval) 
+    #endPoint    = min(startTime,startPoint + interval)
+    ##
+    #x,y = trajectory[startPoint:endPoint].T
+    #t0 = np.arange(startPoint,endPoint,1)
+
+    # plot check solutions
+    for t_sol in set(sum(list(t_sols_c.values()) + list(t_sols_c_i.values())  + list(t_sols_a.values()) + list(t_sols_m.values()),[]) ):
+        fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+        t_traj = []
+        for t,t_perms in  enumerate(lr_inspect_permutation_cases[t_conn][t_sol]):
+            t_time  = lr_inspect_permutation_times[t_conn][t]
+            #t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t_subID] for t_subID in t_perms]))
+            #axes.plot(*t_hull.reshape(-1,2).T, '-',  c='black', linewidth = 0.3)
+            #for tID in t_perms:
+            #    axes.plot(*g0_contours[t_time][tID].reshape(-1,2).T, '-',  c=np.array(cyclicColor(t))/255, linewidth = 0.5)
+            t_traj.append(lr_inspect_permutation_centroids_precomputed[t_conn][t_time][t_perms])
+        t_traj = np.array(t_traj)
+        axes.plot(*t_traj.T, '-o')
+        #axes.plot(*t_traj_next.T, '-o',  c='black')
+        #axes.plot(x0,y0, '-o')
+        
+        #axes.plot(*IEpolation, linestyle='dotted', c='orange')
+        axes.set_title(t_sol)
+        axes.set_aspect('equal')
+        fig.show()
+
+    a = 1
+    # ===============================================================================================
+    # ========== INTERPOLATE PATHS BETWEEN SEGMENTS AND COMPARE WITH INTER-SEGMENT SOLUTION =========
+    # ===============================================================================================
+    # REMARK: least path and area devs might not agree, test remaining choices with interpolation
+
+
+
+
+    def interpolateMiddle(t_conn,t_sols_c,t_sols_a,t_segments_121_centroids,t_all_traj, lr_permutation_times, segments2, histLen = 5, s = 15, debug = 0):
+        t_from,t_to = t_conn
+        t_possible_sols = sorted(list(set(t_sols_c[t_conn] + t_sols_a[t_conn])))
+        t_trajectories = {tID:t_all_traj[t_conn][tID] for tID in t_possible_sols}
+        t_hist_prev     = segments2[t_from][-histLen:]
+        t_hist_next     = segments2[t_to][:histLen]
+        t_traj_prev     = np.array([t_segments_121_centroids[t_from][t_node] for t_node in t_hist_prev])
+        t_traj_next     = np.array([t_segments_121_centroids[  t_to][t_node] for t_node in t_hist_next])
+        t_times_prev    = [t_node[0] for t_node in t_hist_prev]
+        t_times_next    = [t_node[0] for t_node in t_hist_next]
+        t_traj_concat   = np.concatenate((t_traj_prev,t_traj_next))
+        t_times         = t_times_prev + t_times_next
+        x, y            = t_traj_concat.T
+        spline, _       = interpolate.splprep([x, y], u=t_times, s=s,k=1)
+
+        t2              = np.arange(t_times[0],t_times[-1],0.1)
+        IEpolation      = np.array(interpolate.splev(t2, spline,ext=0))
+        t_missing       = lr_permutation_times[t_conn][1:-1]
+        t_interp_missing= np.array(interpolate.splev(t_missing, spline,ext=0)).T   # notice transpose sempai :3
+
+        t_sol_diffs     = {}
+        for t_sol, t_traj in t_trajectories.items():
+            t_diffs = t_interp_missing- t_traj[1:-1]
+            t_sol_diffs[t_sol] = [np.linalg.norm(t_diff) for t_diff in t_diffs]
+        
+        if debug:
+            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+            axes.plot(*t_traj_prev.T, '-o', c= 'black')
+            axes.plot(*t_traj_next.T, '-o', c= 'black')
+        
+            axes.plot(*IEpolation, linestyle='dotted', c='orange')
+    
+
+            for t_sol, t_traj in t_trajectories.items():
+                axes.plot(*t_traj.T, '-o', label = t_sol)
+            axes.set_title(t_conn)
+            axes.set_aspect('equal')
+            axes.legend(prop={'size': 6})
+            plt.show()
+        return t_sol_diffs
+
+    # tested this second, first below cssssssssssssss
+    sol = []
+    for t_conn in t_sols_c:#[(18,19)]
+        aa = interpolateMiddle(t_conn,t_sols_c,t_sols_a,t_segments_121_centroids,t_all_traj,lr_permutation_times, segments2, debug = 0)
+        sol.append(aa)
+    a = 1
+    
+
+    for t_conn in t_sols_c:#[(18,19)]
+        t_from,t_to = t_conn
+        t_possible_sols = sorted(list(set(t_sols_c[t_conn] + t_sols_a[t_conn])))
+        t_trajectories = {tID:t_all_traj[t_conn][tID] for tID in t_possible_sols}
+        t_hist_prev     = segments2[t_from][-4:-1]
+        t_hist_next     = segments2[t_to][1:4]
+        t_traj_prev     = np.array([t_segments_121_centroids[t_from][t_node] for t_node in t_hist_prev])
+        t_traj_next     = np.array([t_segments_121_centroids[  t_to][t_node] for t_node in t_hist_next])
+        t_times_prev    = [t_node[0] for t_node in t_hist_prev]
+        t_times_next    = [t_node[0] for t_node in t_hist_next]
+        #t_mean_displ = {tID:np.diff(t_traj,axis = 0)       for tID, t_traj in t_trajectories.items()}
+        t_mean_displ = {tID:np.mean(np.diff(t_traj,axis = 0) ,axis = 0) for tID, t_traj in t_trajectories.items()}
+        for t_sol, t_traj in t_trajectories.items():
+            #t_diag = t_mean_displ[t_sol]
+            #t_diag_inv = 1/t_diag
+            #t_scale_inv = np.diag(t_diag)
+            #t_scale = np.diag(t_diag_inv)
+            #t_traj_scaled = np.dot(t_traj,t_scale)#t_scale @ t_traj.T #np.matmul(t_scale,)
+            #t = np.diff(t_traj_scaled,axis = 0)
+            #t_traj_2 = np.dot(t_traj_scaled,t_scale_inv)
+
+            #x,y = t_traj_scaled.T
+            x0,y0 = t_traj.T
+            t_concat = np.concatenate((t_traj_prev,t_traj,t_traj_next))
+            x,y = t_concat.T
+            t0 = lr_permutation_times[t_conn]
+            t_times = t_times_prev + list(t0) + t_times_next
+            spline, _ = interpolate.splprep([x, y], u=t_times, s=10,k=1)
+
+            #t2 = np.arange(t0[0],t0[-1],0.1)
+            t2 = np.arange(t_times[0],t_times[-1],0.1)
+            IEpolation = np.array(interpolate.splev(t2, spline,ext=0))
+    
+            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
+        
+            for t,t_perms in  enumerate(lr_permutation_cases[t_conn][t_sol]):
+                t_time  = t0[t]
+                t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t_subID] for t_subID in t_perms]))
+                axes.plot(*t_hull.reshape(-1,2).T, '-',  c='black', linewidth = 0.3)
+                for tID in t_perms:
+                    axes.plot(*g0_contours[t_time][tID].reshape(-1,2).T, '-',  c=np.array(cyclicColor(t))/255, linewidth = 0.5)
+            axes.plot(*t_traj_prev.T, '-o',  c='black')
+            axes.plot(*t_traj_next.T, '-o',  c='black')
+            axes.plot(x0,y0, '-o')
+        
+            axes.plot(*IEpolation, linestyle='dotted', c='orange')
+            axes.set_title(t_conn)
+            axes.set_aspect('equal')
+            fig.show()
+        a = 1
+
+
+    for t_conn, test in lr_contour_combs.items():
+        yoo     = {t:[] for t in test}
+        for t,subIDs in test.items():
+            s = sum([list(itertools.combinations(subIDs, r)) for r in range(1,len(subIDs)+1)],[])
+            yoo[t] += s
+            a = 1
+        yoo2 = {t:[] for t in test}
+        for t,permList in yoo.items(): 
+            for perm in permList:
+                hull = cv2.convexHull(np.vstack([g0_contours[t][c] for c in perm]))
+                yoo2[t].append(cv2.contourArea(hull))
+                #yoo2[t].append(cv2.boundingRect(np.vstack([g0_contours[t][c] for c in perm])) )
+
+        #rectAreas = {t:[] for t in test}
+        #maxArea = 0
+        #minArea = 9999999999
+        #for t,rectList in yoo2.items(): 
+        #    for x,y,w,h in rectList:
+        #        area = w*h
+        #        rectAreas[t].append(area)
+        #        maxArea = max(maxArea,area)
+        #        minArea = min(minArea,area)
+        rectAreas = yoo2
+        minTime,maxTime = min(rectAreas), max(rectAreas)
+
+        soloTimes = [a for a,b in rectAreas.items() if len(b) == 1]
+        missingTimes = [a for a,b in rectAreas.items() if len(b) > 1]
+        from scipy.interpolate import splev, splrep
+        x = soloTimes
+        y0 = np.array([b[0] for a,b in  rectAreas.items() if a in soloTimes])
+        minArea,maxArea = min(y0), max(y0)
+        K = maxTime - minTime
+        y = (y0 - minArea) * (K / (maxArea - minArea))
+        spl = splrep(soloTimes, y, k = 1, s = 0.7)
+
+        x2 = np.linspace(min(rectAreas), max(rectAreas), 30)
+        y2 = splev(x2, spl)
+        y2 = y2/(K / (maxArea - minArea)) + minArea
+        y = y/(K / (maxArea - minArea)) + minArea
+        fig = plt.figure()
+        for t in missingTimes:
+            for rA in rectAreas[t]:
+                plt.scatter([t],[rA], c='b')
+        plt.plot(x, y, 'o', x2, y2)
+        fig.suptitle(lr_multi_conn_intr[tID][0])
+        #plt.show()
+
+    a = 1
+    # Draw the graph with constrained x-positions and automatic y-positions
+    #nx.draw(G, pos, with_labels=True)
+
+    ##drawH(G, paths, node_positions)
+
+    # check if extracted intervals are "clean", dont contain merge
+    # clean means there are nodes attached to all available paths
+    # => check neighbors of all nodes in path and see if they are their own neigbors
+    # this test is too strict, but allows to isolate pseudo split-merges 
+    t_sols = []
+    for t_conn in lr_trusted_interval_test_prio:
+        a = lr_paths_segm2[t_conn]
+        t_from,t_to = t_conn
+        t_node_from_last   = segments2[t_from][-1]
+        t_node_to_first    = segments2[t_to][0]
+        t_neighbors_from_next       = extractNeighborsNext(     G, t_node_from_last,    lambda x: x[0])
+        t_neighbors_to_previous     = extractNeighborsPrevious( G, t_node_to_first,     lambda x: x[0])
+
+        t_all_path_nodes = sorted(set(sum(lr_paths_segm[t_conn],[])),key=lambda x: x[0])
+    
+        t_all_path_nodes = t_all_path_nodes
+        t_all_path_neigbors = []
+        for t_node in t_all_path_nodes[1:-1]:
+            t_all_path_neigbors.append(list(G.neighbors(t_node)))
+
+        t_all_path_neigbors.append(t_neighbors_from_next)
+        t_all_path_neigbors.append(t_neighbors_to_previous)
+
+        t_all_path_neigbors = sorted(set(sum(t_all_path_neigbors,[])),key=lambda x: x[0])
+        #t_all_path_neigbors = [t_node for t_node in t_all_path_neigbors if t_node not in [t_node_from_last,t_node_to_first]]
+        if t_all_path_neigbors != t_all_path_nodes: continue
+        t_sols.append(t_conn)
+
+        #t_nodes_all = sum(t_hist_pre.values(),[]) + sum(t_hist_post.values(),[]) +sum(t_paths_choices,[])
+        #t_nodes_all = sorted(set(t_nodes_all))
+        #t_times_all = [a[0] for a in t_nodes_all]
+        #t_times_cIDs = {t:[] for t in t_times_all}
+        #for t,cID in t_nodes_all:
+        #    t_times_cIDs[t].append(cID)
+        #for t in t_times_cIDs:
+        #    t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
+    a = 1
+    #drawH(G, paths, node_positions)
+    # ===============================================================================================
+    # ===============================================================================================
+    # === find split-merge (possibly fake) events; detect split-merges that look like real merges ===
+    # ===============================================================================================
+    # ===============================================================================================
+
+    # since nodes and edges represent spacial overlap of cluster elements at each time paths between two nodes
+    # should (?) contain all elements for permutations for bubble reconstruction from partial reflections
+
+    # !!!!!!!!!!!!!!====================<<<<<<<<<<<<<<<
+    # best case scenario of a path is overlap between single contour bubbles.
+    # in that case solution is shortest trajectory :)
+    # might want to check for area befor and after, in case of merge. overall, i have to do permutations.
+    # elements that begin from nothing are problematic. in case split-merge, i should include them into paths, but in reverse.
+    # same with split-merge that happend 2+ steps. means bubble splits into two segments and is reconstructed.
+    # but also might split into one segment, and other starts from nothing. so merge them in reverse path.
+
+    # 1) check if multiple segments are merged into 1. might be merge, might be split-merge fake or not. area will help.
+    # take endpoints of all paths
+    lr_paths_endpoints = {**{key:a[0][-1] for key,a in lr_paths_segm.items()},
+                          **{key:a[0][-1] for key,a in lr_paths_other.items()}}
+
+    # find common endpoints. inverse dictionary = endpoint:connections
+    rev_multidict = {}
+    for key, value in lr_paths_endpoints.items():
+        rev_multidict.setdefault(value, set()).add(key)
+    # if endpoint is associated with multiple connections, extract these connections
+    lr_multi_conn = [list(a) for a in rev_multidict.values() if len(a)>1]
+    lr_multi_conn_all = sum(lr_multi_conn,[])
+    # decide which merge branch is main. expore every merge path
+    # path length is not correct metric, since it may be continuation via merge
+    lr_multi_conn_win = []
+    for t_merges_options in lr_multi_conn:
+        # grab time at which segments merge
+        t_merge_time = segments2[int(t_merges_options[0][1])][0][0]
+        # initialize times for paths which will be compared for 'path length/age' and if set time is legit or intermediate
+        t_earliest_time     = {t_ID:0 for t_ID in t_merges_options}
+        t_terminated_time   = {t_ID:0 for t_ID in t_merges_options}
+        for t_path in t_merges_options:
+            # t_path is ID in segments2, take its starting node.
+            # lr_paths_other has no history (no prior neighbors)
+            if type(t_path[0]) == str:
+                t_earliest_time[t_path] = t_merge_time - 1
+                t_terminated_time[t_path] = 1
+                continue
+            t_nodes_path    = segments2[t_path[0]]                       
+
+            t_node_first    = t_nodes_path[0]
+            t_node_last     = t_nodes_path[-1]
+            t_prev_neighbors = [node for node in list(G.neighbors(t_node_first)) if node[0] < t_node_first[0]]
+            if len(t_prev_neighbors) == 0:
+                t_earliest_time[t_path] = t_node_first[0]
+                t_terminated_time[t_path] = 1
+        # check if we can drop terminated paths. if path is terminated and time is bigger than any unterminated, drop it.
+        for t_path in t_merges_options:
+            t_other_times = [t for tID,t in t_earliest_time.items() if tID != t_path]
+            if t_terminated_time[t_path] == 1 and t_earliest_time[t_path] > min(t_other_times):
+                t_earliest_time.pop(t_path,None)
+                t_terminated_time.pop(t_path,None)
+
+        t_IDs_left = list(t_earliest_time.keys())
+        if len(t_IDs_left) == 1: lr_multi_conn_win.append(t_IDs_left[0])
+        else: assert 1 == -1, "split-merge. need to develop dominant branch further"
+
+    # ===============================================================================================
+    # ===============================================================================================
+    # == find INTeRmediate interval paths, short PREv and POST history. deal with merge hist after ==
+    # ===============================================================================================
+    # ===============================================================================================
+    lr_multi_conn_pre   = {conn:{} for conn in lr_paths_segm.keys()}
+    lr_multi_conn_intr  = {conn:{} for conn in lr_paths_segm.keys()} 
+    lr_multi_conn_post  = {conn:{} for conn in lr_paths_segm.keys()} 
+    for t_conn, t_paths_nodes in lr_paths_segm.items():
+        tID_from = t_conn[0]
+        tID_to  = t_conn[1]
+        # if multi merge
+        t_is_part_of_merge = True if t_conn in lr_multi_conn_all else False
+        t_is_part_of_merge_and_main = True if t_is_part_of_merge and t_conn in lr_multi_conn_win else False
+        t_is_followed_by_merge = True if tID_to in [a[0] for a in lr_multi_conn_all] else False
+        t_other_paths_nodes = []
+        t_other_path_conn   = []
+        if t_is_part_of_merge_and_main:
+            # extract other (pseudo) merging segments. other paths only.
+            t_other_path_conn = [a for a in lr_multi_conn if t_conn in a]
+            t_other_path_conn = [[a for a in b if a != t_conn] for b in t_other_path_conn]
+            #[t_other_path_conn[k].remove(t_conn) for k in range(len(t_other_path_conn))]
+            t_other_path_conn = sum(t_other_path_conn,[])
+            # preprend prev history of segment before intermediate segment
+            #t_other_path_pre = {ID:[] for ID in t_other_path_conn}
+            #for ID in t_other_path_conn:
+            #    if type(ID[0]) != str:
+            #        t_other_path_pre[ID] += segments2[ID[0]][:-1]
+            # some mumbo-jumbo with string keys to differentiate lr_paths_other from lr_paths_segm
+            t_other_paths_nodes = []
+            for ID in t_other_path_conn:
+                if type(ID[0]) == str:
+                    for t_path in lr_paths_other[ID]:
+                        t_other_paths_nodes.append(t_path)  
+                else:
+                    for t_path in lr_paths_segm[ID]:
+                        t_other_paths_nodes.append(t_path)
+                #if type(ID[0]) == str:
+                #    for t_path in lr_paths_other[ID]:
+                #        t_other_paths_nodes.append(t_other_path_pre[ID]+t_path)  
+                #else:
+                #    for t_path in lr_paths_segm[ID]:
+                #        t_other_paths_nodes.append(t_other_path_pre[ID]+t_path)
+            a = 1            
+            #t_other_paths_nodes = [t_other_path_pre[ID] + lr_paths_other[ID] 
+            #                       if type(ID[0]) == str 
+            #                       else lr_paths_segm[ID] for ID in t_other_path_conn]
+            #t_other_paths_nodes = sum(t_other_paths_nodes,[])
+            #t_join_paths = t_paths_nodes + t_other_paths_nodes
+            # there is no prev history for lr_paths_other, lr_paths_segm has at least 2 nodes
+        elif t_is_part_of_merge:
+            continue
+        else:
+            t_other_paths_nodes = []
+        # app- and pre- pend path segments to intermediate area. 
+        # case where split-merge is folled by disconnected split-merge (on of elements is not connected via overlay)
+        # is problematic. 
+        # >>>>>>>>>>>>>>>>!!!!!!!!!!!!!!!!!!!!!!!!!<<<<<<<<<<<<<<
+        # i should split this code into two. one stablishes intermediate part
+        # and other can relate intermediate parts together, if needed.
+
+        # ====================
+        # store history prior to intermediate segment. solo bubble = 1 contour = last N steps
+        # pseudo merge = multiple branches => include branches and take N steps prior
+        a = 1
+        t_og_max_t =  segments2[tID_from][-1][0]
+        if not t_is_part_of_merge:
+            lr_multi_conn_pre[t_conn][tID_from] = segments2[tID_from][-4:-1]
+        else:
+            # find minimal time from othat branches
+            t_other_min_t = min([a[0] for a in sum(t_other_paths_nodes,[])])
+            # extract OG history only 3 steps prior to first branch (timewise) <<< 3 or so! idk, have to test
+            lr_multi_conn_pre[t_conn][tID_from] = [a for a in segments2[tID_from] if t_og_max_t> a[0] > t_other_min_t - 4]
+            t_other_IDs = [a[0] for a in t_other_path_conn]
+            for tID in t_other_IDs:
+                if type(tID) != str:
+                    lr_multi_conn_pre[t_conn][tID] = segments2[tID]
+        # store history post intermediate segment.     solo bubble = 1 contour = next N steps
+        # if followed by merge, ideally take solo N steps before merge. but this info not avalable yet. do it after
+        if not t_is_followed_by_merge:
+            lr_multi_conn_post[t_conn][tID_to]  = segments2[tID_to][1:4]
+
+        t_join_paths            = t_paths_nodes + t_other_paths_nodes
+        # store all paths in intermediate interval
+        lr_multi_conn_intr[t_conn]   = t_paths_nodes + t_other_paths_nodes 
+        # collect all viable contour IDs from intermediate time
+        #t_all_nodes = sum(t_join_paths,[])
+        #t_all_times = list(sorted(np.unique([a[0] for a in t_all_nodes])))
+        #t_times_cIDs = {t:[] for t in t_all_times}
+        #for t,cID in t_all_nodes:
+        #    t_times_cIDs[t].append(cID)
+        #for t in t_times_cIDs:
+        #    t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
+        #lr_multi_conn_choices[t_conn] = t_times_cIDs
+        # test intermediate contour combinations
+        # 
+    #lr_multi_conn_all and t_conn in lr_multi_conn_win
+
+    # ===============================================================================================
+    # ===============================================================================================
+    # ========================== deal with POST history if its a merge ==============================
+    # ===============================================================================================
+    # ===============================================================================================
+    # isolate easy cases where split-merge has history on both sides
+    t_all_merging = [a[0] for a in lr_multi_conn_win]
+    for t_conn, t_paths_choices in lr_multi_conn_post.items():
+        t_end_ID = t_conn[1]
+        if len(t_paths_choices) == 0 and t_end_ID in t_all_merging:
+            t_next_merge_all = [a for a in lr_multi_conn_win if a[0] == t_end_ID]
+            assert len(t_next_merge_all)<2, "post history-> multi merge. something i did not account for"
+            t_conn_next_merge    = t_next_merge_all[0]
+            t_og_min_t      = segments2[t_end_ID][0][0]
+            # pick min branches time: take all branches except main, extract first node, and extract from it time. pick min
+            t_other_min_t   = min([a[0][0] for ID,a in lr_multi_conn_pre[t_conn_next_merge].items() if ID != t_end_ID])
+
+            # end history at: if there is time before merge take 3 (or so) steps before it.
+            # it its earlier, squeeze interval. if merge is straight after, post history will be zero.
+            t_max_time =  min(t_og_min_t + 4, t_other_min_t )
+            lr_multi_conn_post[t_conn][t_end_ID] = [a for a in segments2[t_end_ID] if t_og_min_t < a[0] < t_max_time]
+    #drawH(G, paths, node_positions)
+    # ===============================================================================================
+    # ===============================================================================================
+    # ============== form combinations of elements from PRE-INTR-Post connectedness data ============
+    # ===============================================================================================
+    # ===============================================================================================
+    lr_multi_conn_choices = {conn:{} for conn in lr_paths_segm.keys()}
+
+    for t_conn, t_paths_choices in lr_multi_conn_intr.items():
+        t_hist_pre  = lr_multi_conn_pre[t_conn]
+        t_hist_post = lr_multi_conn_post[t_conn]
+        t_nodes_all = sum(t_hist_pre.values(),[]) + sum(t_hist_post.values(),[]) +sum(t_paths_choices,[])
+        t_nodes_all = sorted(set(t_nodes_all))
+        t_times_all = [a[0] for a in t_nodes_all]
+        t_times_cIDs = {t:[] for t in t_times_all}
+        for t,cID in t_nodes_all:
+            t_times_cIDs[t].append(cID)
+        for t in t_times_cIDs:
+            t_times_cIDs[t] = list(sorted(np.unique(t_times_cIDs[t])))
+        lr_multi_conn_choices[t_conn] = t_times_cIDs
+
+    for tID,test in lr_multi_conn_choices.items():
+        if len(test)==0: continue
+        #test    = {325: [2], 326: [1], 327: [3], 328: [2], 329: [1, 3], 330: [2], 331: [1], 332: [1], 333: [1]}
+        yoo     = {t:[] for t in test}
+        for t,subIDs in test.items():
+            s = sum([list(itertools.combinations(subIDs, r)) for r in range(1,len(subIDs)+1)],[])
+            yoo[t] += s
+            a = 1
+        yoo2 = {t:[] for t in test}
+        for t,permList in yoo.items(): 
+            for perm in permList:
+                hull = cv2.convexHull(np.vstack([g0_contours[t][c] for c in perm]))
+                yoo2[t].append(cv2.contourArea(hull))
+                #yoo2[t].append(cv2.boundingRect(np.vstack([g0_contours[t][c] for c in perm])) )
+
+        #rectAreas = {t:[] for t in test}
+        #maxArea = 0
+        #minArea = 9999999999
+        #for t,rectList in yoo2.items(): 
+        #    for x,y,w,h in rectList:
+        #        area = w*h
+        #        rectAreas[t].append(area)
+        #        maxArea = max(maxArea,area)
+        #        minArea = min(minArea,area)
+        rectAreas = yoo2
+        minTime,maxTime = min(rectAreas), max(rectAreas)
+
+        soloTimes = [a for a,b in rectAreas.items() if len(b) == 1]
+        missingTimes = [a for a,b in rectAreas.items() if len(b) > 1]
+        from scipy.interpolate import splev, splrep
+        x = soloTimes
+        y0 = np.array([b[0] for a,b in  rectAreas.items() if a in soloTimes])
+        minArea,maxArea = min(y0), max(y0)
+        K = maxTime - minTime
+        y = (y0 - minArea) * (K / (maxArea - minArea))
+        spl = splrep(soloTimes, y, k = 1, s = 0.7)
+
+        x2 = np.linspace(min(rectAreas), max(rectAreas), 30)
+        y2 = splev(x2, spl)
+        y2 = y2/(K / (maxArea - minArea)) + minArea
+        y = y/(K / (maxArea - minArea)) + minArea
+        fig = plt.figure()
+        for t in missingTimes:
+            for rA in rectAreas[t]:
+                plt.scatter([t],[rA], c='b')
+        plt.plot(x, y, 'o', x2, y2)
+        fig.suptitle(lr_multi_conn_intr[tID][0])
+        #plt.show()
+
+    # >>>>>>>>>>>>> !!!!!!!!!!!!!!!!!!!! <<<<<<<<<<<<< CONCLUSIONS
+    # long trends can be trusted: e.g long solo- split-merge - long solo
+    # transition to short segments may be misleading e.g split into two parts perist - area is halfed at split
+    # fast split-merge kind of reduces trust, which is related to segment length. but it should not.
+    # ^ may be longterm trends should be analyzed first. idk what to do about real merges then.
+
+        a = 1
+
+
+
+    # usefulPoints = startTime
+    ## interval gets capped at interpolatinIntevalLength if there are more points
+    #interval    = min(interpolatinIntevalLength,usefulPoints)
+    ## maybe max not needed, since interval is capped
+    #startPoint  = max(0,startTime-interval) 
+    #endPoint    = min(startTime,startPoint + interval) # not sure about interval or interpolatinIntevalLength
+    ##
+    #x,y = trajectory[startPoint:endPoint].T
+    #t0 = np.arange(startPoint,endPoint,1)
+    ## interpolate and exterpolate to t2 this window
+    #spline, _ = interpolate.splprep([x, y], u=t0, s=10000,k=1)
+    #t2 = np.arange(startPoint,endPoint+1,1)
+    #IEpolation = np.array(interpolate.splev(t2, spline,ext=0))
+    # >>>>>>>>> !!!!!!!! <<<<<<< most works. EXCEPT split into isolated node. segment merge into non-isolated nodes
+
+
+    #TODO: do a reconstruction via area (maybe trajectory) of BRs using lr_multi_conn_choices
+
+
+    #drawH(G, paths, node_positions)
+
+    # analyze fake split-merge caused by partial reflections. during period of time bubble is represented by reflections on its opposite side
+    # which might appear as a split. 
+
+    # if bubble is well behavade (good segment), it will be solo contour, then split and merge in 1 or more steps.
+
+    # find end points of rough good segments
+
+    a = 1
+# ======================
+if 1 == -11:
+    binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
+    imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(binarizedMaskArr.shape[0])]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    fontScale = 0.7; thickness = 4;
+    for n, case in tqdm(enumerate(t_segments_new)):
         case    = sorted(case, key=lambda x: x[0])
         for k,subCase in enumerate(case):
             time,*subIDs = subCase
             for subID in subIDs:
                 cv2.drawContours(  imgs[time],   g0_contours[time], subID, cyclicColor(n), 2)
-            #x,y,w,h = cv2.boundingRect(np.vstack([g0_contours[time][ID] for ID in subIDs]))
-            x,y,w,h = lessRoughBRs[time][subCase]
+            x,y,w,h = cv2.boundingRect(np.vstack([g0_contours[time][ID] for ID in subIDs]))
+            #x,y,w,h = lessRoughBRs[time][subCase]
             #x,y,w,h = g0_bigBoundingRect[time][ID]
-            cv2.rectangle(imgs[time], (x,y), (x+w,y+h), cyclicColor(n), 1)
+            #cv2.rectangle(imgs[time], (x,y), (x+w,y+h), cyclicColor(n), 1)
             [cv2.putText(imgs[time], str(n), (x,y), font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]# connected clusters = same color
         for k,subCase in enumerate(case):
             time,*subIDs = subCase

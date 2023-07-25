@@ -1,6 +1,6 @@
 import enum
 from tracemalloc import start
-import numpy as np, itertools, networkx as nx, sys
+import numpy as np, itertools, networkx as nx, sys, time as time_lib
 import cv2, os, glob, datetime, re, pickle#, multiprocessing
 # import glob
 from matplotlib import pyplot as plt
@@ -69,7 +69,7 @@ if 1 == 1:
             x,y,w,h = rectsParamsArr[rects[0]]
             return int(w*h)
     
-    def graph_extract_paths(H,f):
+    def graph_extract_paths_backup_unidir(H,f):
         nodeCopy = list(H.nodes()).copy()
         segments2 = {a:[] for a in nodeCopy}
         resolved = []
@@ -109,6 +109,105 @@ if 1 == 1:
                 if soloPrev2:
                     prevNeighbors = list(H.neighbors(prevNodes[0]))
                     prevNextNodes = [a for a in prevNeighbors if f(a) > f(prevNodes[0])]
+                    if len(prevNextNodes) == 1:
+                        prevNotSplit = True
+
+
+                saveNode = False
+                # test if it is a chain start point:
+                # if prev is a split, implies only one prevNode 
+                if prevNode is None:                # starting node
+                    if len(prevNodes) == 0:         # if no previos node =  possible chain start
+                        if nextNotMerge:            # if it does not change into merge, it is good
+                            saveNode = True
+                        else:
+                            skipped.append(node)
+                            goForward = False
+                    elif not prevNotSplit:
+                        if nextNotMerge:
+                            saveNode = True
+                        else: 
+                            skipped.append(node)
+                            goForward = False
+                    else:
+                        skipped.append(node)
+                        goForward = False
+                else:
+                # check if its an endpoint
+                    # dead end = zero forward neigbors
+                    if len(nextNodes) == 0:
+                        saveNode = True
+                        goForward = False
+                    # end of chain =  merge of forward neigbor
+                    elif not nextNotMerge:
+                        saveNode = True
+                        goForward = False
+                    elif not nextNotSplit:
+                        saveNode = True
+                
+                    # check if it is part of a chain
+                    elif nextNotMerge:
+                        saveNode = True
+
+
+                if saveNode:
+                    segments2[node].append(nextNode)
+                    resolved.append(nextNode)
+                    prevNode = nextNode
+                    if goForward :
+                        nextNode = nextNodes[0]
+
+    
+    
+        return segments2, skipped
+
+    def graph_extract_paths(H,f):
+        nodeCopy = list(H.nodes()).copy()
+        segments2 = {a:[] for a in nodeCopy}
+        resolved = []
+        skipped = []
+        for node in nodeCopy:
+            goForward = True if node not in resolved else False
+            nextNode = node
+            prevNode = None
+            while goForward == True:
+                #neighbors = list(H.neighbors(nextNode))
+                #nextNodes = [a for a in neighbors if f(a) > f(nextNode)]
+                
+                #prevNodes = [a for a in neighbors if f(a) < f(nextNode)]
+                nextNodes = list(H.successors(nextNode))
+                prevNodes = list(H.predecessors(nextNode))
+
+                # find if next node exists and its single
+                soloNext    = True if len(nextNodes) == 1 else False
+                soloPrev    = True if len(prevNodes) == 1 else False # or prevNode is None
+                soloPrev2   = True if soloPrev and (prevNode is None or prevNodes[0] == prevNode) else False
+
+                # if looking one step ahead, starting node can have one back and/or forward connection to split/merge
+                # this would still mean that its a chain and next/prev node will be included.
+                # to fix this, check if next/prev are merges/splits
+                # find if next is not merge:
+                nextNotMerge = False
+                if soloNext:
+                    #nextNeighbors = list(H.neighbors(nextNodes[0]))
+                    #nextPrevNodes = [a for a in nextNeighbors if f(a) < f(nextNodes[0])]
+                    nextPrevNodes = list(H.predecessors(nextNodes[0]))
+                    if len(nextPrevNodes) == 1: 
+                        nextNotMerge = True
+
+                nextNotSplit = False
+                if soloNext:
+                    #nextNeighbors = list(H.neighbors(nextNodes[0]))
+                    #nextNextNodes = [a for a in nextNeighbors if f(a) > f(nextNodes[0])]
+                    nextNextNodes = list(H.successors(nextNodes[0]))
+                    if len(nextNextNodes) <= 1:   # if it ends, it does not split. (len = 0)
+                        nextNotSplit = True
+
+                prevNotSplit = False
+                if soloPrev2:
+                    #prevNeighbors = list(H.neighbors(prevNodes[0]))
+                    #prevNextNodes = [a for a in prevNeighbors if f(a) > f(prevNodes[0])]
+                    prevNextNodes = list(H.successors(prevNodes[0]))
                     if len(prevNextNodes) == 1:
                         prevNotSplit = True
 
@@ -453,9 +552,54 @@ if 1 == 1:
             raise ValueError("wrong input type. list of tuple or single tuple expected")
 
 
+    def getNodePos2(dic0, S = 20):
+        dups, cnts = np.unique([a for a in dic0.values()], return_counts = True)
+        # relate times to 'local IDs', which are also y-positions or y-indexes
+        dic = {a:np.arange(b) for a,b in zip(dups,cnts)} # each time -> arange(numDups)
+        # give duplicates different y-offset 0,1,2,..
+        dic2 = {t:{s:k for s,k in zip(c,[tID for tID, t_time in dic0.items() if t_time == t])} for t,c in dic.items()}
+        node_positions = {}
+        # offset scaled by S
+        #S = 20
+        for t,c in dic.items():
+            # scale and later offset y-pos by mid-value
+            d = c*S
+            meanD = np.mean(d)
+            for c2,key in dic2[t].items():
+                if len(dic2[t]) == 1:
+                    dy = np.random.randint(low=-3, high=3)
+                else: dy = 0
+                # form dict in form key: position. time is x-pos. y is modified by order.
+                node_positions[key] = (t,c2*S-meanD + dy)
+
+        return node_positions
+
+    def getNodePos(test):
+        dups, cnts = np.unique([a[0] for a in test], return_counts = True)
+        # relate times to 'local IDs', which are also y-positions or y-indexes
+        dic = {a:np.arange(b) for a,b in zip(dups,cnts)}
+        # give duplicates different y-offset 0,1,2,..
+        dic2 = {t:{s:k for s,k in zip(c,[a for a in test if a[0] == t])} for t,c in dic.items()}
+        node_positions = {}
+        # offset scaled by S
+        S = 20
+        for t,c in dic.items():
+            # scale and later offset y-pos by mid-value
+            d = c*S
+            meanD = np.mean(d)
+            for c2,key in dic2[t].items():
+                # form dict in form key: position. time is x-pos. y is modified by order.
+                node_positions[key] = (t,c2*S-meanD)
+        return node_positions
 
 
+    def start_timer():
+        global start_time
+        start_time = time_lib.time()
 
+    def stop_timer():
+        elapsed_time = time_lib.time() - start_time
+        return elapsed_time
 # =========== BUILD OUTPUT FOLDERS =============//
 inputOutsideRoot            = 1                                                  # bmp images inside root, then input folder hierarchy will
 mainInputImageFolder        = r'.\inputFolder'                                   # be created with final inputImageFolder, else custom. NOT USED?!?
@@ -831,15 +975,11 @@ if not useIntermediateData:
 
     # form a graph from all IDs and pairwise connections
     H = nx.Graph()
+    #H = nx.DiGraph()
     H.add_nodes_from(allIDs)
     H.add_edges_from(g0_pairConnections)
     connected_components_unique = extract_graph_connected_components(H, sort_function = lambda x: (x[0], x[1]))
-    #connected_components_all = [list(nx.node_connected_component(H, key)) for key in allIDs]
-    #connected_components_all = [sorted(sub, key=lambda x: (x[0], x[1])) for sub in connected_components_all]
-    ## extract connected families
-    #connected_components_unique = []
-    #[connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
-    
+
     if 1 == 1:
         storeDir = os.path.join(stagesFolder, "intermediateData.pickle")
         with open(storeDir, 'wb') as handle:
@@ -898,48 +1038,11 @@ if 1 == -1:
 
 
 # analyze single strand
-doX = 30#20#15#2#1#60#84
+doX = 60#30#20#15#2#1#60#84
 lessRough_all = connected_components_unique.copy()
 test = connected_components_unique[doX]
 # find times where multiple elements are connected (split/merge)
-def getNodePos2(dic0, S = 20):
-    dups, cnts = np.unique([a for a in dic0.values()], return_counts = True)
-    # relate times to 'local IDs', which are also y-positions or y-indexes
-    dic = {a:np.arange(b) for a,b in zip(dups,cnts)} # each time -> arange(numDups)
-    # give duplicates different y-offset 0,1,2,..
-    dic2 = {t:{s:k for s,k in zip(c,[tID for tID, t_time in dic0.items() if t_time == t])} for t,c in dic.items()}
-    node_positions = {}
-    # offset scaled by S
-    #S = 20
-    for t,c in dic.items():
-        # scale and later offset y-pos by mid-value
-        d = c*S
-        meanD = np.mean(d)
-        for c2,key in dic2[t].items():
-            if len(dic2[t]) == 1:
-                dy = np.random.randint(low=-3, high=3)
-            else: dy = 0
-            # form dict in form key: position. time is x-pos. y is modified by order.
-            node_positions[key] = (t,c2*S-meanD + dy)
 
-    return node_positions
-def getNodePos(test):
-    dups, cnts = np.unique([a[0] for a in test], return_counts = True)
-    # relate times to 'local IDs', which are also y-positions or y-indexes
-    dic = {a:np.arange(b) for a,b in zip(dups,cnts)}
-    # give duplicates different y-offset 0,1,2,..
-    dic2 = {t:{s:k for s,k in zip(c,[a for a in test if a[0] == t])} for t,c in dic.items()}
-    node_positions = {}
-    # offset scaled by S
-    S = 20
-    for t,c in dic.items():
-        # scale and later offset y-pos by mid-value
-        d = c*S
-        meanD = np.mean(d)
-        for c2,key in dic2[t].items():
-            # form dict in form key: position. time is x-pos. y is modified by order.
-            node_positions[key] = (t,c2*S-meanD)
-    return node_positions
 
 
 
@@ -958,9 +1061,8 @@ for x in allNodes:
 #ax.set_aspect('equal')
 
 #plt.show()
-f = lambda x : x[0]
-
-segments2, skipped = graph_extract_paths(H,f) # 23/06/23 info in "extract paths from graphs.py"
+H = H.to_directed()
+segments2, skipped = graph_extract_paths(H, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
 
 # Draw extracted segments with bold lines and different color.
 segments2 = [a for _,a in segments2.items() if len(a) > 0]
@@ -1076,14 +1178,22 @@ def extractNeighborsPrevious(graph, node, time_from_node_function):
 
 allIDs = sum([list(a.keys()) for a in lessRoughBRs.values()],[])
 allIDs = sorted(allIDs, key=lambda x: (x[0], x[1]))
-G = nx.Graph()
+#G = nx.Graph()
+#G.add_nodes_from(allIDs)
+#G.add_edges_from(g0_pairConnections2)
+
+G = nx.DiGraph()
 G.add_nodes_from(allIDs)
 G.add_edges_from(g0_pairConnections2)
+for t_node in G.nodes():
+    G.nodes[t_node]["time"] = int(t_node[0])
 node_positions = getNodePos(allIDs)
 
 f = lambda x : x[0]
 
-segments2, skipped = graph_extract_paths(G,f) # 23/06/23 info in "extract paths from graphs.py"
+segments2, skipped = graph_extract_paths(G, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
+
+a = 1
 
 # Draw extracted segments with bold lines and different color.
 segments2 = [a for _,a in segments2.items() if len(a) > 0]
@@ -1128,9 +1238,11 @@ lr_all_end      = np.array([a[1][0] for a in lr_start_end])
 lr_nodes_other = []
 lr_nodes_solo = []
 for node in lr_missingNodes:
-    neighbors = list(G.neighbors(node))
-    oldNeigbors = [n for n in neighbors if n[0] < node[0]]
-    newNeigbors = [n for n in neighbors if n[0] > node[0]]
+    #neighbors = list(G.neighbors(node))
+    #oldNeigbors = [n for n in neighbors if n[0] < node[0]]
+    #newNeigbors = [n for n in neighbors if n[0] > node[0]]
+    oldNeigbors = list(G.predecessors(node))
+    newNeigbors = list(G.successors(node))
     if len(oldNeigbors) == 0 and len(newNeigbors) == 0: lr_nodes_solo.append(node)
     elif len(oldNeigbors) == 0:                         lr_nodes_other.append(node)
 
@@ -1172,10 +1284,13 @@ for startID,endIDs in lr_DTPass_segm.items():
     for endID in endIDs:
         endNode = lr_start_end[endID][0]
         endTime = lr_all_end[endID]
-        activeNodes = [node for node in allIDs if startTime <= node[0] <= endTime]
+        #activeNodes = [node for node in allIDs if startTime <= node[0] <= endTime]
+        activeNodes = [node for node, time_attr in G.nodes(data='time') if startTime <= time_attr <= endTime]
         subgraph = G.subgraph(activeNodes)
+
         try:
             shortest_path = list(nx.all_shortest_paths(subgraph, startNode, endNode))
+            
         except nx.NetworkXNoPath:
             shortest_path = []
         
@@ -1188,7 +1303,8 @@ for startID,endIDs in lr_DTPass_other.items():
     for endID in endIDs:
         endNode = lr_start_end[endID][0]
         endTime = lr_all_end[endID]
-        activeNodes = [node for node in allIDs if startTime <= node[0] <= endTime]
+        #activeNodes = [node for node in allIDs if startTime <= node[0] <= endTime]
+        activeNodes = [node for node, time_attr in G.nodes(data='time') if startTime <= time_attr <= endTime]
         subgraph = G.subgraph(activeNodes)
         try:
             shortest_path = list(nx.all_shortest_paths(subgraph, startNode, endNode))
@@ -1279,6 +1395,7 @@ for g in G2.nodes():
 # ===============================================================================================
 # REMARK: inspecting closest neighbors allows to elliminate cases with segments inbetween 
 # REMARK: connected segments via lr_maxDT. problem is that affects branches of splits/merges
+# EDIT 27/07/24 maybe should redo in directed way. should be shorter and faster
 if 1 == 1:
     t_nodes = sorted(list(G2.nodes()))
     t_neighbor_sol_all_prev = {tID:{} for tID in t_nodes}
@@ -1354,6 +1471,8 @@ for node, t_conn in t_neighbor_sol_all_next.items():
 # ===============================================================================================
 
 #segment_conn_end_start_points((11,20), nodes = 1)
+aa = G.is_directed();print(f'G s directed:{aa}')
+
 if 1 == 1:
     lr_close_segments_simple_paths = {}
     lr_close_segments_simple_paths_inter = {}
@@ -1363,13 +1482,26 @@ if 1 == 1:
             t_from_node_last   = segments2[t_from][-1]
             t_to_node_first      = segments2[t_to][0]
 
+            # for directed graph i can disable cutoff, since paths can progress only forwards
             t_from_node_last_time   = t_from_node_last[0]
             t_to_node_first_time    = t_to_node_first[0]
             t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
+            hasPath = nx.has_path(G, source=t_from_node_last, target=t_to_node_first)
+            # soo.. all_simple_paths method goes into infinite (?) loop when graph is not limited, shortest_simple_paths does not.
+            t_start, t_end = t_from_node_last[0], t_to_node_first[0]
+            activeNodes = [t_node for t_node, t_time in G.nodes(data='time') if t_start <= t_time <= t_end]
+            g_limited = G.subgraph(activeNodes)
+            #t_from_to_paths_simple  = list(nx.shortest_simple_paths(G, t_from_node_last, t_to_node_first)) # , cutoff = t_from_to_max_time_steps
 
-            t_from_to_paths_simple  = list(nx.all_simple_paths(G, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps))
-
-        
+            #if t_to == -1:
+            #    t_short = nx.shortest_path(g_limited, source=t_from_node_last, target=t_to_node_first, weight=None, method='dijkstra')
+            #    t_short_edges = []
+            #    for t_node in t_short[1:-1]:
+            #        t_short_edges += g_limited.predecessors(t_node)
+            #        t_short_edges += g_limited.successors(t_node)
+            #    t_short_edges2 = [t_node for t_node in t_short_edges if t_node not in t_short]
+            #    a = 1
+            t_from_to_paths_simple  = list(nx.all_simple_paths(g_limited, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps)) 
             t_from_to_paths_nodes_all       = sorted(set(sum(t_from_to_paths_simple,[])),key=lambda x: x[0])
             t_from_to_paths_nodes_all_inter = [t_node for t_node in t_from_to_paths_nodes_all if t_node not in [t_from_node_last,t_to_node_first]]
 
@@ -1584,8 +1716,10 @@ for t_conn in t_conn_121_zero_path:
     t_from, t_to    = t_conn
     t_from_node_end = segments2[t_from  ][-1]
     t_to_node_start = segments2[t_to    ][0]
-    t_from_neigbors_next    = extractNeighborsNext(     G, t_from_node_end,  lambda x: x[0])
-    t_to_neigbors_prev      = extractNeighborsPrevious( G, t_to_node_start,  lambda x: x[0])
+    #t_from_neigbors_next    = extractNeighborsNext(     G, t_from_node_end,  lambda x: x[0])
+    #t_to_neigbors_prev      = extractNeighborsPrevious( G, t_to_node_start,  lambda x: x[0])
+    t_from_neigbors_next    = list(G.successors(t_from_node_end))
+    t_to_neigbors_prev      = list(G.predecessors(t_to_node_start))
     t_conn_121_zero_path_nodes[t_conn] = sorted(set(t_from_neigbors_next+t_to_neigbors_prev),key=lambda x: (x[0], x[1]))
     t_times = sorted(set([t_node[0] for t_node in t_conn_121_zero_path_nodes[t_conn]]))
     t_conn_121_zp_contour_combs[t_conn] = {t_time:[] for t_time in t_times}
@@ -1655,14 +1789,10 @@ if 1 == 1:
         t_from_node_last_time   = t_from_node_last[0]
         t_to_node_first_time    = t_to_node_first[0]
         t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
-        #t_from_to_paths_simple = list(nx.all_simple_paths(G, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps))
-        #t_from_to_paths_simple = lr_close_segments_simple_paths[tuple([t_from,t_to])]
-        #t_from_to_paths_nodes_all = sorted(set(sum(t_from_to_paths_simple,[])),key=lambda x: x[0])
-        #t_from_to_paths_nodes_all_inter = [t_node for t_node in t_from_to_paths_nodes_all if t_node not in [t_from_node_last,t_to_node_first]]
         t_from_to_paths_nodes_all_inter = lr_close_segments_simple_paths_inter[   tuple([t_from,t_to])]
         t_all_path_neighbors = []
         for t_node in t_from_to_paths_nodes_all_inter:
-            t_all_path_neighbors.append(list(G.neighbors(t_node)))
+            t_all_path_neighbors.append(list(G.successors(t_node))+ list(G.predecessors(t_node)))
         t_all_path_neighbors_node_all = sorted(set(sum(t_all_path_neighbors,[])),key=lambda x: x[0])
         t_nides_not_in_main_path = [t_node for t_node in t_all_path_neighbors_node_all if t_node not in t_from_to_paths_nodes_all_inter + [t_from_node_last,t_to_node_first]]
         if len(t_nides_not_in_main_path):   t_conn_121_other_isolated_not.append(tuple([t_from,t_to]))
@@ -2058,6 +2188,8 @@ if 1 == 1:
 t_weights = [1,1.5,0,1]
 t_sols = [t_sols_c, t_sols_c_i, t_sols_a, t_sols_m]
 lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems =  lr_weighted_sols(t_weights, t_sols, lr_permutation_cases )
+
+#for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # ===============================================================================================
 # ========== INTEGRATE RESOLVED PATHS INTO GRAPH; REMOVE SECONDARY SOLUTIONS =========
 # ===============================================================================================
@@ -2346,7 +2478,7 @@ for t_conn in lr_conn_121_other_terminated_inspect:
         activeNodes = [node for node in G.nodes() if t_from_time_start <= node[0] <= t_to_from_time_start]
         subgraph = G.subgraph(activeNodes)
 
-        connected_components_unique = extract_graph_connected_components(subgraph, sort_function = lambda x: (x[0], x[1]))
+        connected_components_unique = extract_graph_connected_components(subgraph.to_undirected(), sort_function = lambda x: (x[0], x[1]))
         #connected_components_all = [list(nx.node_connected_component(subgraph, key)) for key in activeNodes]
 
         #connected_components_all = [sorted(sub, key=lambda x: (x[0],x[1])) for sub in connected_components_all] # key=lambda x: (x[0],x[1]))
@@ -2697,7 +2829,7 @@ for t_conn in lr_conn_edges_merges: # [(4,13)] lr_conn_edges_merges segment_conn
 
     subgraph = G.subgraph(activeNodes)
     
-    connected_components_unique = extract_graph_connected_components(subgraph, lambda x: (x[0],x[1]))
+    connected_components_unique = extract_graph_connected_components(subgraph.to_undirected(), lambda x: (x[0],x[1]))
 
     sol = [t_cc for t_cc in connected_components_unique if t_segments_new[t_from][-1] in t_cc]
     assert len(sol) == 1, "lr_conn_121_other_terminated_inspect inspect path relates to multiple clusters, dont expect it ever to occur"
@@ -2841,8 +2973,9 @@ if 1 == 1:
             t_time_end, *t_node_subIDs =  t_nodes_new[-1]               # grab subIDs and reconver solo nodes. i do this because
             t_node_last_solo_IDS = [(t_time_end,t_subID) for t_subID in t_node_subIDs] #  its easy to pick [-1], not lookup last time.
 
-            f = lambda x: x[0]
-            t_node_last_solo_IDS_to = list(set(sum([extractNeighborsNext(G, t_node, f) for t_node in t_node_last_solo_IDS],[])))
+            #f = lambda x: x[0]
+            t_node_last_solo_IDS_to = list(set(sum([list(G.successors(t_node)) for t_node in t_node_last_solo_IDS],[])))
+            #t_node_last_solo_IDS_to = list(set(sum([extractNeighborsNext(G, t_node, f) for t_node in t_node_last_solo_IDS],[])))
 
             t_edges_next_new = [(t_nodes_new[-1] , t_node) for t_node in t_node_last_solo_IDS_to] # composite to old next neighbors
 

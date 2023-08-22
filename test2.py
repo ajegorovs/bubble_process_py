@@ -197,52 +197,89 @@ import numpy as np, pickle
 from collections import deque
 import numpy as np
 
-class TrajectoryBuffer:
-    def __init__(self, max_size):
-        self.max_size = max_size
-        self.buffer = deque(maxlen=max_size)
+#class TrajectoryBuffer:
+#    def __init__(self, max_size):
+#        self.max_size = max_size
+#        self.buffer = deque(maxlen=max_size)
 
-    def append(self, trajectory):
-        if not isinstance(trajectory, np.ndarray) or trajectory.shape != (2,):
-            raise ValueError("Trajectory should be a 1x2 NumPy array.")
+#    def append(self, trajectory):
+#        if not isinstance(trajectory, np.ndarray) or trajectory.shape != (2,):
+#            raise ValueError("Trajectory should be a 1x2 NumPy array.")
         
-        if len(self.buffer) == self.max_size:
-            self.buffer.popleft()
-        self.buffer.append(trajectory)
+#        if len(self.buffer) == self.max_size:
+#            self.buffer.popleft()
+#        self.buffer.append(trajectory)
 
-    def get_data(self):
-        return np.array(self.buffer)
+#    def get_data(self):
+#        return np.array(self.buffer)
 
-    def get_last_trajectory(self):
-        if len(self.buffer) > 0:
-            return self.buffer[-1]
-        else:
-            return None
+#    def get_last_trajectory(self):
+#        if len(self.buffer) > 0:
+#            return self.buffer[-1]
+#        else:
+#            return None
 
-d = deque(maxlen=5)
-d.extend(np.array([[0,0],[1,1],[2,2],[3,3],[4,4]]))
-print(d)
-# deque([1, 2, 3, 4, 5], maxlen=5)
-d.append([5,5])
-print(d)
-# deque([2, 3, 4, 5, 10], maxlen=5)
+#d = deque(maxlen=5)
+#d.extend(np.array([[0,0],[1,1],[2,2],[3,3],[4,4]]))
+#print(d)
+## deque([1, 2, 3, 4, 5], maxlen=5)
+#d.append([5,5])
+#print(d)
+## deque([2, 3, 4, 5, 10], maxlen=5)
 
-# Create the TrajectoryBuffer with a maximum size of 3
-trajectory_buffer = TrajectoryBuffer(max_size=3)
+## Create the TrajectoryBuffer with a maximum size of 3
+#trajectory_buffer = TrajectoryBuffer(max_size=3)
 
-# Append 1x2 arrays to the buffer
-trajectory_buffer.append(np.array([1, 2]))
-trajectory_buffer.append(np.array([3, 4]))
-trajectory_buffer.append(np.array([5, 6]))
+## Append 1x2 arrays to the buffer
+#trajectory_buffer.append(np.array([1, 2]))
+#trajectory_buffer.append(np.array([3, 4]))
+#trajectory_buffer.append(np.array([5, 6]))
 
-# Check the buffer content
-print(trajectory_buffer.get_data())
+## Check the buffer content
+#print(trajectory_buffer.get_data())
 
-# Append a new 1x2 array, which will trigger the shift in the buffer
-trajectory_buffer.append(np.array([7, 8]))
+## Append a new 1x2 array, which will trigger the shift in the buffer
+#trajectory_buffer.append(np.array([7, 8]))
 
-# Check the buffer content after the shift
-print(trajectory_buffer.get_data())
+## Check the buffer content after the shift
+#print(trajectory_buffer.get_data())
+
+import random
+import timeit
+import numpy as np
+import pandas as pd
+from collections import Counter
+
+import timeit
+if 1 == -1:
+    def old():
+        for t_conn in lr_relevant_conns:
+            t_traj = lr_close_segments_simple_paths[t_conn][0]
+            t_min = t_traj[0][0]
+            t_max = t_traj[-1][0]
+            t_nodes = {t:[] for t in np.arange(t_min, t_max + 1, 1)}
+            for t_traj in lr_close_segments_simple_paths[t_conn]:
+                for t_time,*t_subIDs in t_traj:
+                    t_nodes[t_time] += t_subIDs
+            for t_time in t_nodes:
+                t_nodes[t_time] = sorted(list(set(t_nodes[t_time])))
+            return t_nodes
+
+    def new():
+        for t_conn in lr_relevant_conns:
+            t_traj = lr_close_segments_simple_paths[t_conn][0]
+            t_min = t_traj[0][0]
+            t_max = t_traj[-1][0]
+            t_nodes = {t:[] for t in np.arange(t_min, t_max + 1, 1)}
+            M = np.array([t[1] for sublist in lr_close_segments_simple_paths[t_conn] for t in sublist],np.uint8).reshape((-1,len(t_traj)))
+            unique_elements_per_column = [np.unique(sl) for sl in M.T]
+            return {key: sorted(list(value)) for key, value in zip(t_nodes, unique_elements_per_column)}
+    
+    time_method1 = timeit.timeit(old,       number=10000)
+    time_method2 = timeit.timeit(new,   number=10000)
+
+    print("Method 1 execution time:", time_method1)
+    print("Method 2 execution time:", time_method2)
 
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key

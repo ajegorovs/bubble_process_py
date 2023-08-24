@@ -281,6 +281,24 @@ if 1 == -1:
     print("Method 1 execution time:", time_method1)
     print("Method 2 execution time:", time_method2)
 
+def set_elements_at_depth(indices, entry, *nested_lists):
+    current_lists = nested_lists
+    for idx in indices[:-1]:
+        current_lists = [lst[idx] for lst in current_lists]
+    for lst, val in zip(current_lists, entry):
+        lst[indices[-1]] = val
+
+nested_list1 = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+nested_list2 = [[10, 11, 12], [13, 14, 15], [16, 17, 18]]
+
+entry_list = [100, 200]  # Modify first elements at depth [0][0] for both nested lists
+
+set_elements_at_depth([2, 0], entry_list, nested_list1, nested_list2)
+
+print(nested_list1)  # Output: [[100, 2, 3], [4, 5, 6], [7, 8, 9]]
+print(nested_list2)  # Output: [[200, 11, 12], [13, 14, 15], [16, 17, 18]]
+
+
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key
     cv2.destroyAllWindows()

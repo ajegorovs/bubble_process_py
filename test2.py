@@ -355,16 +355,33 @@ if 1 == -1:
                     t_skip = True
         if not t_skip:
             variants_possible.append(t_choice_evol)
+if 1 == -1:
+    from collections import defaultdict
 
-from collections import defaultdict
+    fin_segments_conns_all = [(0, 1), (0, 5), (1, 2), (3, 4)]
 
-fin_segments_conns_all = [(0, 1), (0, 5), (1, 2), (3, 4)]
+    fin_segments_conns_all_dict = defaultdict(dict)
+    for t_from, t_to in fin_segments_conns_all:
+        fin_segments_conns_all_dict[t_from][t_to] = -1
+    a = 1
+    print(1)
 
-fin_segments_conns_all_dict = defaultdict(dict)
-for t_from, t_to in fin_segments_conns_all:
-    fin_segments_conns_all_dict[t_from][t_to] = -1
-a = 1
-print(1)
+def find_subset_around_unknown(T_known, T_unknown, DT):
+    subset = []
+
+    for t in T_known:
+        if abs(t - T_unknown) <= DT/2:
+            subset.append(t)
+
+    return subset
+
+T_known = [1, 2, 4, 5]
+T_unknown = 3
+DT = 2
+
+result = find_subset_around_unknown(T_known, T_unknown, DT)
+print(result)  # Output: [2, 4]
+
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key
     cv2.destroyAllWindows()

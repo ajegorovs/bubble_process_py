@@ -303,24 +303,24 @@ if 1 == -1:
 
 
 import networkx as nx, copy, itertools
+if 1 == -1:
+    options = {
+        'n1': ['c1', 'c2'],
+        'n2': ['c3', 'c4']
+    }
+    variants = []
+    for t,(key,values) in enumerate(options.items()):
+        sd  = list(itertools.product([key],values))
+        variants.append(sd)
+    all_variants = list(itertools.product(*variants))
+    a = 1
+    #permutations = [
+    #    ([(n1, c1)], [(n2, c2)])
+    #    for (n1, c1), (n2, c2) in product(options.items(), repeat=2)
+    #]
 
-options = {
-    'n1': ['c1', 'c2'],
-    'n2': ['c3', 'c4']
-}
-variants = []
-for t,(key,values) in enumerate(options.items()):
-    sd  = list(itertools.product([key],values))
-    variants.append(sd)
-all_variants = list(itertools.product(*variants))
-a = 1
-#permutations = [
-#    ([(n1, c1)], [(n2, c2)])
-#    for (n1, c1), (n2, c2) in product(options.items(), repeat=2)
-#]
-
-#print(permutations)
-a = 1
+    #print(permutations)
+    a = 1
 if 1 == -1:
     t_extrapolate_sol_comb = {
         (0, 3): {483: (3,), 484: (4,), 485: (5,), 486: (6,), 487: (8,), 488: (4,), 489: (2, 6), 490: (7,)},
@@ -365,23 +365,107 @@ if 1 == -1:
         fin_segments_conns_all_dict[t_from][t_to] = -1
     a = 1
     print(1)
+if  1 == -1:
+    def find_subset_around_unknown(T_known, T_unknown, DT):
+        subset = []
 
-def find_subset_around_unknown(T_known, T_unknown, DT):
-    subset = []
+        for t in T_known:
+            if abs(t - T_unknown) <= DT/2:
+                subset.append(t)
 
-    for t in T_known:
-        if abs(t - T_unknown) <= DT/2:
-            subset.append(t)
+        return subset
 
-    return subset
+    T_known = [1, 2, 4, 5]
+    T_unknown = 3
+    DT = 2
 
-T_known = [1, 2, 4, 5]
-T_unknown = 3
-DT = 2
+    result = find_subset_around_unknown(T_known, T_unknown, DT)
+    print(result)  # Output: [2, 4]
 
-result = find_subset_around_unknown(T_known, T_unknown, DT)
-print(result)  # Output: [2, 4]
+if 1 == 1:
+    from collections import defaultdict
 
+    def nested_defaultdict(initialize_value):
+        return defaultdict(lambda: initialize_value)
+
+    aa = nested_defaultdict(1)
+    def lr_init_perm_precomputed(possible_permutation_dict, initialize_value):
+
+        output = defaultdict(tuple)
+
+        for t_conn, t_times_perms in possible_permutation_dict.items():
+            output[t_conn] = defaultdict(defaultdict(int))
+            for t_time, t_perms in t_times_perms.items():
+                for t_perm in t_perms:
+
+                    output[t_conn][t_time] = {t_perm: initialize_value for t_perm in t_perms}
+        
+        return output
+
+    def lr_init_perm_precomputed0(possible_permutation_dict, initialize_value):
+        return {t_conn: {t_time: 
+                                {t_perm:initialize_value for t_perm in t_perms}
+                         for t_time,t_perms in t_times_perms.items()}
+               for t_conn,t_times_perms in possible_permutation_dict.items()}
+
+    #class AutoCreateDict:
+    #    def __init__(self):
+    #        self.data = {}
+
+    #    def __getitem__(self, key):
+    #        if key not in self.data:
+    #            self.data[key] = AutoCreateDict()
+    #        return self.data[key]
+
+    #    def __setitem__(self, key, value):
+    #        self.data[key] = value
+    class AutoCreateDict:
+        def __init__(self):
+            self.data = {}
+
+        def __getitem__(self, key):
+            if key not in self.data:
+                self.data[key] = AutoCreateDict()
+            return self.data[key]
+
+        def __setitem__(self, key, value):
+            self.data[key] = value
+
+        def keys(self):
+            return self.data.keys()
+
+        def values(self):
+            return self.data.values()
+
+        def items(self):
+            return self.data.items()
+
+        def __repr__(self):
+            return repr(self.data)
+
+
+    # Create an instance of AutoCreateDict
+    lr_big121s_perms_areas = AutoCreateDict()
+
+    # Use it to store values
+    lr_big121s_perms_pre = {(2,3):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]},(10,11):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]}}
+    for t_conn, t_dict in lr_big121s_perms_pre.items():
+        for t_time,t_perms in t_dict.items():
+            for t_perm in t_perms:
+                lr_big121s_perms_areas[     t_conn][t_time][t_perm] = 52
+
+    # Access the stored value
+    stored_area = lr_big121s_perms_areas[t_conn][t_time][t_perm]
+    print(stored_area)  # Output: 42
+
+
+    #lr_big121s_perms_pre = {(2,3):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]},(10,11):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]}}
+    #lr_big121s_perms = {t_conn:{t_time:t_perms for t_time,t_perms in t_dict.items()} for t_conn,t_dict in lr_big121s_perms_pre.items()}
+    #lr_big121s_perms_areas0      = lr_init_perm_precomputed0(lr_big121s_perms,0)
+    #lr_big121s_perms_areas      = lr_init_perm_precomputed(lr_big121s_perms,0)
+    #lr_big121s_perms_areas[     t_conn][t_time][t_perm] = t_area
+    #lr_big121s_perms_areas[(5,14)] = {}
+    a = 1
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key
     cv2.destroyAllWindows()

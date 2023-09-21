@@ -382,7 +382,7 @@ if  1 == -1:
     result = find_subset_around_unknown(T_known, T_unknown, DT)
     print(result)  # Output: [2, 4]
 
-if 1 == 1:
+if 1 == -1:
     from collections import defaultdict
 
     def nested_defaultdict(initialize_value):
@@ -466,6 +466,26 @@ if 1 == 1:
     #lr_big121s_perms_areas[     t_conn][t_time][t_perm] = t_area
     #lr_big121s_perms_areas[(5,14)] = {}
     a = 1
+
+
+if 1 == 1:
+    import cv2
+    import numpy as np
+
+    # Define pts as a list of points
+    pts = np.array([[[1070.94817927,  370.86694678]]]).astype(int)
+
+    # Create an image
+    imgs = np.zeros((500, 500, 3), dtype=np.uint8)
+
+    # Draw the polyline
+    cv2.polylines(imgs, [pts], isClosed=False, color=(255, 255, 255), thickness=3)
+
+    # Show the image
+    cv2.imshow("Image", imgs)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key
     cv2.destroyAllWindows()

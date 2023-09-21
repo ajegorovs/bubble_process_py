@@ -2247,6 +2247,15 @@ if 1 == 1:
 
     lr_conn_merges_to_nodes     = sorted(list(set([t_node[1] for t_node in lr_conn_edges_merges])))
     lr_conn_splits_from_nodes   = sorted(list(set([t_node[0] for t_node in lr_conn_edges_splits])))
+
+    # gather successors for mixed m/s in a dict for further trajectory extension 21.09.23
+    lr_conn_splits_merges_mixed_dict = defaultdict(list)
+    for t_from,t_to in  lr_conn_edges_splits_merges_mixed:
+        lr_conn_splits_merges_mixed_dict[t_from].append(t_to)
+
+    for t_from, t in lr_conn_splits_merges_mixed_dict.items():
+        lr_conn_splits_merges_mixed_dict[t_from] = sorted(set(t))
+
     a = 1
 #drawH(G, paths, node_positions)
 #segment_conn_end_start_points(lr_connections_directed)
@@ -2575,9 +2584,6 @@ if 1 == 1:
     # BIG 121S INTERPOLATE COMBINED TRAJECTORIES, GIVEN FULL INFO REDISTRIBUTE FOR DATA FOR EACH CONN
     # -----------------------------------------------------------------------------------------------
     # CALCULATE interpolation of holes in data for big 121s
-    # NOTE: 20.09.23 zero path are not included into process, but there is nothing to interpolate
-    # NOTE: drop segments that are purely ZP by checking len    see t_zero_path_segment_IDs
-    # NOTE: drop "contested" nodes from interpolation data .    see t_temp
     if 1 == 1: # for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         lr_big121s_interpolation = defaultdict(dict)
         lr_big121s_interpolation_big = defaultdict(dict) 
@@ -2764,6 +2770,8 @@ if 1 == 1:
         for t_subID in t_subIDs:
             lr_C0_condensed_connections_relations[t_subID] = min(t_subIDs)
     print('Saving results for restored parts of big 121s')
+    t_last_seg_ID_in_big_121s = [t[-1] for t in t_big121s_edited if t is not None]
+    t_big121s_edited_clean = [t for t in t_big121s_edited if t is not None]
     if  1 == 1:
         t_segments_new = segments2.copy()
         for t_conn in lr_big121s_perms_cases:
@@ -2829,6 +2837,18 @@ if 1 == 1:
             # wipe data from t_to anyway
             set_ith_elements_multilist(t_to, [[],{},{},{}], t_segments_new, t_segments_121_centroids, t_segments_121_areas, t_segments_121_mom_z)
 
+            # modify node view graph. since these are big 121s, eventally first segment will be connected to last
+            # so when t_to is last in t_big121s_edited, you can wipe all in between.
+            if t_to in t_last_seg_ID_in_big_121s:
+                t_index = t_last_seg_ID_in_big_121s.index(t_to) # which big 121 is it
+                t_drop_IDs = t_big121s_edited_clean[t_index][1:]                  # grab all members 
+                t_from_OG = t_big121s_edited_clean[t_index][0]
+                t_successors   = extractNeighborsNext(G2, t_to, lambda x: G2.nodes[x]["t_start"])
+                t_edges = [(t_from_OG,t_succ) for t_succ in t_successors]
+                G2.remove_nodes_from(t_drop_IDs)
+                G2.add_edges_from(t_edges)
+                G2.nodes()[t_from_OG]["t_end"] = segments2[t_from_new][-1][0] # change master node parameter
+                a = 1
             
         # resort data in case of broken order. i think its easier to sort keys and reconstruct with sorted keys 121 data.
         for t in t_condensed_connections_all_nodes:
@@ -2883,104 +2903,171 @@ if 1 == 1:
         # NOTE: everything is held in one dictionary, but keys and contents are different
         print('Generating information for:')
         # for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        t_event_start_end_times = {'merge':{},'split':{}}
+        t_event_start_end_times = {'merge':{},'split':{},'mixed':{}}
 
         func_prev_neighb = lambda x: G2.nodes[x]["t_end"]
         func_next_neighb = lambda x: G2.nodes[x]["t_start"]
 
-         # ------------------------------------- REAL MERGE/SPLIT -------------------------------------
+        # ------------------------------------- REAL MERGE/SPLIT -------------------------------------
         t_state = 'merge'
-        for t_ID in t_merge_real_to_ID:
-            t_predecessors   = extractNeighborsPrevious(G2, t_ID, func_prev_neighb) 
-            t_predecessors_times = {t:G2.nodes[t]["t_end"] for t in t_predecessors}
-            t_end = G2.nodes[t_ID]["t_start"]
-            t_times         = {(t,t_ID):np.arange(t_start, t_end + 1, 1) for t,t_start in t_predecessors_times.items()}
-            t_event_start_end_times[t_state][t_ID] = {'t_start':        t_predecessors_times,
+        for t_to in t_merge_real_to_ID: #t_ID is to merge ID. ID is not changed
+            t_predecessors   = extractNeighborsPrevious(G2, t_to, func_prev_neighb)
+            t_predecessors = [lr_C0_condensed_connections_relations[t] for t in t_predecessors] # update if inherited
+            t_predecessors_times_end = {t:G2.nodes[t]["t_end"] for t in t_predecessors}
+            t_t_to_start = G2.nodes[t_to]["t_start"]
+            t_times         = {t_ID: np.arange(t_t_from_end, t_t_to_start + 1, 1)
+                               for t_ID,t_t_from_end in t_predecessors_times_end.items()}
+
+            t_event_start_end_times[t_state][t_to] = {'t_start':        t_predecessors_times_end,
                                                       'branches':       t_predecessors,
-                                                      't_end':          t_end,
+                                                      't_end':          t_t_to_start,
                                                       't_times':        t_times,
                                                       't_perms':        {}}
 
             # pre-isolate graph segment where all sub-events take place
-            t_time_min = min(t_predecessors_times.values())
-            t_nodes_keep    = [node for node in G.nodes() if t_time_min <= node[0] <= t_end] # < excluded edges
+            t_t_from_min = min(t_predecessors_times_end.values())    # take earliest branch time
+            t_nodes_keep    = [node for node in G.nodes() if t_t_from_min <= node[0] <= t_t_to_start] # < excluded edges
             t_subgraph = G.subgraph(t_nodes_keep)   # big subgraph
             # working with each branch separately
-            for t_from,t_to in t_times:
-                t_ref_ID = lr_C0_condensed_connections_relations[t_from]
-                t_segments_keep = [t_ref_ID, t_to]      # new inherited ID
-                t_start = t_predecessors_times[t_from]  # storage uses old ID
+            for t_from in t_times:
+                #t_ref_ID = lr_C0_condensed_connections_relations[t_from]
+                t_segments_keep = [t_from, t_to]      # new inherited ID
+                t_start = t_predecessors_times_end[t_from]  # storage uses old ID
                 
-                if t_end - t_start > 1:
-                    t_sol = graph_sub_isolate_connected_components(t_subgraph, t_start, t_end, lr_time_active_segments,
-                                                                   t_segments_new, t_segments_keep, ref_node = t_segments_new[t_ref_ID][-1]) 
+                if t_t_to_start - t_start > 1:
+                    t_sol = graph_sub_isolate_connected_components(t_subgraph, t_start, t_t_to_start, lr_time_active_segments,
+                                                                   t_segments_new, t_segments_keep, ref_node = t_segments_new[t_from][-1]) 
                     t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
                     t_values = [sum([list(itertools.combinations(t_subIDs, r)) for r in range(1,len(t_subIDs)+1)],[]) for t_subIDs in t_perms.values()]
                 else: t_values = None
-                t_event_start_end_times[t_state][t_ID]['t_perms'][(t_from,t_to)] = t_values
+                t_event_start_end_times[t_state][t_to]['t_perms'][t_from] = t_values
+
+        #t_state = 'merge'
+        #for t_ID in t_merge_real_to_ID: #t_ID is to merge ID. ID is not changed
+        #    t_predecessors   = extractNeighborsPrevious(G2, t_ID, func_prev_neighb) 
+        #    t_predecessors_times = {t:G2.nodes[t]["t_end"] for t in t_predecessors}
+        #    t_end = G2.nodes[t_ID]["t_start"]
+        #    t_times         = {(t,t_ID):np.arange(t_start, t_end + 1, 1) for t,t_start in t_predecessors_times.items()}
+        #    t_event_start_end_times[t_state][t_ID] = {'t_start':        t_predecessors_times,
+        #                                              'branches':       t_predecessors,
+        #                                              't_end':          t_end,
+        #                                              't_times':        t_times,
+        #                                              't_perms':        {}}
+
+        #    # pre-isolate graph segment where all sub-events take place
+        #    t_time_min = min(t_predecessors_times.values())
+        #    t_nodes_keep    = [node for node in G.nodes() if t_time_min <= node[0] <= t_end] # < excluded edges
+        #    t_subgraph = G.subgraph(t_nodes_keep)   # big subgraph
+        #    # working with each branch separately
+        #    for t_from,t_to in t_times:
+        #        t_ref_ID = lr_C0_condensed_connections_relations[t_from]
+        #        t_segments_keep = [t_ref_ID, t_to]      # new inherited ID
+        #        t_start = t_predecessors_times[t_from]  # storage uses old ID
+                
+        #        if t_end - t_start > 1:
+        #            t_sol = graph_sub_isolate_connected_components(t_subgraph, t_start, t_end, lr_time_active_segments,
+        #                                                           t_segments_new, t_segments_keep, ref_node = t_segments_new[t_ref_ID][-1]) 
+        #            t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
+        #            t_values = [sum([list(itertools.combinations(t_subIDs, r)) for r in range(1,len(t_subIDs)+1)],[]) for t_subIDs in t_perms.values()]
+        #        else: t_values = None
+        #        t_event_start_end_times[t_state][t_ID]['t_perms'][(t_from,t_to)] = t_values
 
         t_state = 'split'
-        for t_ID in t_split_real_from_ID:
+        for t_from in t_split_real_from_ID:
             assert 1 == 1, "never ran t_split_real_from_ID because of lack of data."
-            t_successors   = extractNeighborsNext(G2, t_ID, func_next_neighb) 
-            t_successors_times = {t:G2.nodes[t]["t_start"] for t in t_successors}
-            t_start = G2.nodes[t_ID]["t_end"]
-            t_times         = {(t_ID,t):np.arange(t_start, t_end + 1, 1) for t,t_end in t_successors_times.items()}
-            t_event_start_end_times[t_state][t_ID] = {'t_start' :       t_start,
-                                                      'branches':       t_successors,
+            t_from_new = lr_C0_condensed_connections_relations[t_from]                  # split segment may be inherited.
+            t_from_successors   = extractNeighborsNext(G2, t_from_new, func_next_neighb)     # branches are not
+            t_successors_times = {t_to:G2.nodes[t_to]["t_start"] for t_to in t_from_successors}
+            t_t_start = G2.nodes[t_from_new]["t_end"]
+            t_times         = {t:np.arange(t_t_start, t_t_end + 1, 1) for t,t_t_end in t_successors_times.items()}
+            t_event_start_end_times[t_state][t_from_new] = {'t_start' :       t_t_start,
+                                                      'branches':       t_from_successors,
                                                       't_end'   :       t_successors_times,
                                                       't_times' :       t_times,
                                                       't_perms':        {}}
 
             # pre-isolate graph segment where all sub-events take place
-            t_time_max = max(t_predecessors_times.values())
-            t_nodes_keep    = [node for node in G.nodes() if t_start <= node[0] <= t_time_max]
+            t_t_to_max = max(t_successors_times.values())
+            t_nodes_keep    = [node for node in G.nodes() if t_t_start <= node[0] <= t_t_to_max]
             t_subgraph = G.subgraph(t_nodes_keep)   # big subgraph
             # working with each branch separately
-            for t_from,t_to in t_times:
-                t_ref_ID = lr_C0_condensed_connections_relations[t_from]
-                t_segments_keep = [t_ref_ID, t_to] 
-                t_end = t_successors_times[t_to]
-                if t_end - t_start > 1:
-                    t_sol = graph_sub_isolate_connected_components(t_subgraph, t_start, t_end, lr_time_active_segments,
-                                                                   t_segments_new, t_segments_keep, ref_node = t_segments_new[t_ref_ID][-1])
+            for t_to in t_times:
+                t_segments_keep = [t_from_new, t_to] 
+                t_t_to_end = t_successors_times[t_to]
+                if t_t_to_end - t_t_start > 1:
+                    t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_start, t_t_to_end, lr_time_active_segments,
+                                                                   t_segments_new, t_segments_keep, ref_node = t_segments_new[t_from_new][-1])
                     t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
             
                     t_values = [sum([list(itertools.combinations(t_subIDs, r)) for r in range(1,len(t_subIDs)+1)],[]) for t_subIDs in t_perms.values()]
                 else: t_values = None
-                t_event_start_end_times[t_state][t_ID]['t_perms'][(t_from,t_to)] = t_values
+                t_event_start_end_times[t_state][t_from_new]['t_perms'][t_to] = t_values
         print(f'Real merges({t_merge_real_to_ID})/splits({t_split_real_from_ID})... Done')
+        #t_state = 'split'
+        #for t_ID in t_split_real_from_ID:
+        #    assert 1 == 1, "never ran t_split_real_from_ID because of lack of data."
+        #    t_ID_new = lr_C0_condensed_connections_relations[t_ID]
+        #    t_successors   = extractNeighborsNext(G2, t_ID_new, func_next_neighb) 
+        #    t_successors_times = {t:G2.nodes[t]["t_start"] for t in t_successors}
+        #    t_start = G2.nodes[t_ID_new]["t_end"]
+        #    t_times         = {t:np.arange(t_start, t_end + 1, 1) for t,t_end in t_successors_times.items()}
+        #    t_event_start_end_times[t_state][t_ID] = {'t_start' :       t_start,
+        #                                              'branches':       t_successors,
+        #                                              't_end'   :       t_successors_times,
+        #                                              't_times' :       t_times,
+        #                                              't_perms':        {}}
+
+        #    # pre-isolate graph segment where all sub-events take place
+        #    t_time_max = max(t_successors_times.values())
+        #    t_nodes_keep    = [node for node in G.nodes() if t_start <= node[0] <= t_time_max]
+        #    t_subgraph = G.subgraph(t_nodes_keep)   # big subgraph
+        #    # working with each branch separately
+        #    for t_to in t_times:
+        #        #t_ref_ID = lr_C0_condensed_connections_relations[t_from]
+        #        t_segments_keep = [t_ID_new, t_to] 
+        #        t_end = t_successors_times[t_to]
+        #        if t_end - t_start > 1:
+        #            t_sol = graph_sub_isolate_connected_components(t_subgraph, t_start, t_end, lr_time_active_segments,
+        #                                                           t_segments_new, t_segments_keep, ref_node = t_segments_new[t_ID_new][-1])
+        #            t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
+            
+        #            t_values = [sum([list(itertools.combinations(t_subIDs, r)) for r in range(1,len(t_subIDs)+1)],[]) for t_subIDs in t_perms.values()]
+        #        else: t_values = None
+        #        t_event_start_end_times[t_state][t_ID]['t_perms'][(t_from,t_to)] = t_values
+        #print(f'Real merges({t_merge_real_to_ID})/splits({t_split_real_from_ID})... Done')
+
         # ------------------------------------- FAKE MERGE/SPLIT -------------------------------------
         t_state = 'merge'
-        for t_ID in t_merge_fake_to_ID:
-            t_predecessors   = extractNeighborsPrevious(G2, t_ID, func_prev_neighb) # lambda takes neighbors with lower end time than t_ID. 
-            t_pre_predecessors = []
-            for t_ID_pre in t_predecessors:
-                t_pre_predecessors += extractNeighborsPrevious(G2, t_ID_pre, func_prev_neighb)
+        for t_to in t_merge_fake_to_ID:
+            
+            t_to_predecessors   = extractNeighborsPrevious(G2, t_to, func_prev_neighb)  # should be updated prior
+            t_to_pre_predecessors = []
+            for t_to_pre in t_to_predecessors:
+                t_to_pre_predecessors += extractNeighborsPrevious(G2, t_to_pre, func_prev_neighb)
             # if fake branches should terminate and only 1 OG should be left. check if this is the case
-            assert len(t_pre_predecessors) == 1, "fake branch/es consists of multiple segments, not yet encountered"
-            t_ID_pre_pred = t_pre_predecessors[0]
-            t_start         = G2.nodes[t_ID_pre_pred]["t_end"]
-            t_end           = G2.nodes[t_ID]["t_start"]
-            t_times         = {(t_ID_pre_pred, t_ID):np.arange(t_start, t_end + 1, 1)}
-            t_event_start_end_times[t_state][t_ID] = {'t_start':        t_start,
-                                                      'pre_predecessor':t_ID_pre_pred,
-                                                      'branches':       t_predecessors,
-                                                      't_end':          t_end,
+            assert len(t_to_pre_predecessors) == 1, "fake branch/es consists of multiple segments, not yet encountered"
+            t_to_pre_pre_ID = t_to_pre_predecessors[0]
+            t_t_start         = G2.nodes[t_to_pre_pre_ID]["t_end"]
+            t_t_end           = G2.nodes[t_to]["t_start"]
+            t_times         = {(t_to_pre_pre_ID, t_to):np.arange(t_t_start, t_t_end + 1, 1)}
+            t_event_start_end_times[t_state][t_to] = {'t_start':        t_t_start,
+                                                      'pre_predecessor':t_to_pre_pre_ID,
+                                                      'branches':       t_to_predecessors,
+                                                      't_end':          t_t_end,
                                                       't_times' :       t_times}
 
 
-            t_segments_keep = [t_ID_pre_pred] + t_predecessors + [t_ID]
+            t_segments_keep = [t_to_pre_pre_ID] + t_to_predecessors + [t_to]
             
-            t_ref_ID = lr_C0_condensed_connections_relations[t_ID_pre_pred]
+            t_ref_ID = lr_C0_condensed_connections_relations[t_to_pre_pre_ID]
 
-            t_sol = graph_sub_isolate_connected_components(G, t_start, t_end, lr_time_active_segments,
+            t_sol = graph_sub_isolate_connected_components(G, t_t_start, t_t_end, lr_time_active_segments,
                                                            t_segments_new, t_segments_keep, ref_node = t_segments_new[t_ref_ID][-1])
             t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
-            seqs,t_nodes_pre = perms_with_branches(t_predecessors,t_segments_new,t_perms, return_nodes = True) 
-            t_event_start_end_times[t_state][t_ID]['t_combs'] = seqs
-            t_event_start_end_times[t_state][t_ID]['t_nodes_solo'] = t_sol  
-            t_conn = (lr_C0_condensed_connections_relations[t_ID_pre_pred],t_ID)
+            seqs,t_nodes_pre = perms_with_branches(t_to_predecessors,t_segments_new,t_perms, return_nodes = True) 
+            t_event_start_end_times[t_state][t_to]['t_combs'] = seqs
+            t_event_start_end_times[t_state][t_to]['t_nodes_solo'] = t_sol  
+            t_conn = (lr_C0_condensed_connections_relations[t_to_pre_pre_ID],t_to)
             for t_time, t_perms in t_nodes_pre.items():
                 for t_perm in t_perms:
                     t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_perm]))
@@ -2991,53 +3078,81 @@ if 1 == 1:
                     lr_big121s_perms_centroids[ t_conn][t_time][t_perm] = t_centroid
                     lr_big121s_perms_mom_z[     t_conn][t_time][t_perm] = t_mom_z
 
-            #for t_perms in seqs:
-            #    for t_time,t_perm in zip(t_times[t_conn],t_perms):
-            #        # seqs contains copies, should have provided a list of composite nodes, but just check if calculated. for now.
-            #        if not (t_conn in lr_big121s_perms_areas and t_time in lr_big121s_perms_areas[t_conn] and t_perm in lr_big121s_perms_areas[t_conn]):
+        #t_state = 'merge'
+        #for t_ID in t_merge_fake_to_ID:
+        #    t_predecessors   = extractNeighborsPrevious(G2, lr_C0_condensed_connections_relations[t_ID], func_prev_neighb) # lambda takes neighbors with lower end time than t_ID. 
+        #    t_pre_predecessors = []
+        #    for t_ID_pre in t_predecessors:
+        #        t_pre_predecessors += extractNeighborsPrevious(G2, t_ID_pre, func_prev_neighb)
+        #    # if fake branches should terminate and only 1 OG should be left. check if this is the case
+        #    assert len(t_pre_predecessors) == 1, "fake branch/es consists of multiple segments, not yet encountered"
+        #    t_ID_pre_pred = t_pre_predecessors[0]
+        #    t_start         = G2.nodes[t_ID_pre_pred]["t_end"]
+        #    t_end           = G2.nodes[t_ID]["t_start"]
+        #    t_times         = {(t_ID_pre_pred, t_ID):np.arange(t_start, t_end + 1, 1)}
+        #    t_event_start_end_times[t_state][t_ID] = {'t_start':        t_start,
+        #                                              'pre_predecessor':t_ID_pre_pred,
+        #                                              'branches':       t_predecessors,
+        #                                              't_end':          t_end,
+        #                                              't_times' :       t_times}
 
-            #            t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_perm]))
 
-            #            t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
+        #    t_segments_keep = [t_ID_pre_pred] + t_predecessors + [t_ID]
+            
+        #    t_ref_ID = lr_C0_condensed_connections_relations[t_ID_pre_pred]
 
-            #            lr_big121s_perms_areas[     t_conn][t_time][t_perm] = t_area
-            #            lr_big121s_perms_centroids[ t_conn][t_time][t_perm] = t_centroid
-            #            lr_big121s_perms_mom_z[     t_conn][t_time][t_perm] = t_mom_z
+        #    t_sol = graph_sub_isolate_connected_components(G, t_start, t_end, lr_time_active_segments,
+        #                                                   t_segments_new, t_segments_keep, ref_node = t_segments_new[t_ref_ID][-1])
+        #    t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
+        #    seqs,t_nodes_pre = perms_with_branches(t_predecessors,t_segments_new,t_perms, return_nodes = True) 
+        #    t_event_start_end_times[t_state][t_ID]['t_combs'] = seqs
+        #    t_event_start_end_times[t_state][t_ID]['t_nodes_solo'] = t_sol  
+        #    t_conn = (lr_C0_condensed_connections_relations[t_ID_pre_pred],t_ID)
+        #    for t_time, t_perms in t_nodes_pre.items():
+        #        for t_perm in t_perms:
+        #            t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_perm]))
+
+        #            t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
+
+        #            lr_big121s_perms_areas[     t_conn][t_time][t_perm] = t_area
+        #            lr_big121s_perms_centroids[ t_conn][t_time][t_perm] = t_centroid
+        #            lr_big121s_perms_mom_z[     t_conn][t_time][t_perm] = t_mom_z
             a = 1
 
 
         t_state = 'split'
-        for t_ID in t_split_fake_from_ID:
-            t_successors    = extractNeighborsNext(G2, t_ID, func_next_neighb) 
+        for t_from in t_split_fake_from_ID:
+            t_from_new = lr_C0_condensed_connections_relations[t_from]
+            t_from_successors    = extractNeighborsNext(G2, t_from_new, func_next_neighb) 
             t_post_successors = []
-            for t_ID_pre in t_successors:
+            for t_ID_pre in t_from_successors:
                 t_post_successors += extractNeighborsNext(G2, t_ID_pre, func_next_neighb)
             assert len(t_post_successors), "fake branch/es consists of multiple segments, not yet encountered"
             t_ID_post_succ  = t_post_successors[0]
-            t_start         = G2.nodes[t_ID]["t_end"]
+            t_start         = G2.nodes[t_from_new]["t_end"]
             t_end           = G2.nodes[t_ID_post_succ]["t_start"]
-            t_times         = {(t_ID, t_ID_post_succ):np.arange(t_start, t_end + 1, 1)}
-            t_event_start_end_times[t_state][t_ID] = {'t_start':        t_start,
+            t_times         = {(t_from_new, t_ID_post_succ):np.arange(t_start, t_end + 1, 1)}
+            t_event_start_end_times[t_state][t_from_new] = {'t_start':        t_start,
                                                       'post_successor': t_ID_post_succ,
-                                                      'branches':       t_successors,
+                                                      'branches':       t_from_successors,
                                                       't_end':          t_end,
-                                                      't_times':       t_times}
+                                                      't_times':        t_times}
 
-            t_ref_ID = lr_C0_condensed_connections_relations[t_ID]
-            t_segments_keep = [t_ID] + t_successors + [t_ID_post_succ]
-            t_segments_keep = [lr_C0_condensed_connections_relations[t] for t in t_segments_keep]
+            #t_ref_ID = lr_C0_condensed_connections_relations[t_ID]
+            t_segments_keep = [t_from_new] + t_from_successors + [t_ID_post_succ]
+            #t_segments_keep = [lr_C0_condensed_connections_relations[t] for t in t_segments_keep]
             t_sol = graph_sub_isolate_connected_components(G, t_start, t_end, lr_time_active_segments,
-                                                           t_segments_new, t_segments_keep, ref_node = t_segments_new[t_ref_ID][-1])
+                                                           t_segments_new, t_segments_keep, ref_node = t_segments_new[t_from_new][-1])
             t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
             
-            #seqs = perms_with_branches(t_successors,t_segments_new,t_perms) 
-            seqs,t_nodes_pre = perms_with_branches(t_successors,t_segments_new,t_perms, return_nodes = True) 
+            #seqs = perms_with_branches(t_from_successors,t_segments_new,t_perms) 
+            seqs, t_nodes_pre = perms_with_branches(t_from_successors, t_segments_new, t_perms, return_nodes = True) 
 
-            t_event_start_end_times[t_state][t_ID]['t_combs'] = seqs
+            t_event_start_end_times[t_state][t_from_new]['t_combs'] = seqs
 
-            t_event_start_end_times[t_state][t_ID]['t_nodes_solo'] = t_sol 
+            t_event_start_end_times[t_state][t_from_new]['t_nodes_solo'] = t_sol 
 
-            t_conn = (lr_C0_condensed_connections_relations[t_ID],t_ID_post_succ)
+            t_conn = (t_from_new,t_ID_post_succ)
             for t_time, t_perms in t_nodes_pre.items():
                 for t_perm in t_perms:
                     t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_perm]))
@@ -3047,9 +3162,113 @@ if 1 == 1:
                     lr_big121s_perms_areas[     t_conn][t_time][t_perm] = t_area
                     lr_big121s_perms_centroids[ t_conn][t_time][t_perm] = t_centroid
                     lr_big121s_perms_mom_z[     t_conn][t_time][t_perm] = t_mom_z
+
+        #t_state = 'split'
+        #for t_ID in t_split_fake_from_ID:
+        #    t_successors    = extractNeighborsNext(G2, t_ID, func_next_neighb) 
+        #    t_post_successors = []
+        #    for t_ID_pre in t_successors:
+        #        t_post_successors += extractNeighborsNext(G2, t_ID_pre, func_next_neighb)
+        #    assert len(t_post_successors), "fake branch/es consists of multiple segments, not yet encountered"
+        #    t_ID_post_succ  = t_post_successors[0]
+        #    t_start         = G2.nodes[t_ID]["t_end"]
+        #    t_end           = G2.nodes[t_ID_post_succ]["t_start"]
+        #    t_times         = {(t_ID, t_ID_post_succ):np.arange(t_start, t_end + 1, 1)}
+        #    t_event_start_end_times[t_state][t_ID] = {'t_start':        t_start,
+        #                                              'post_successor': t_ID_post_succ,
+        #                                              'branches':       t_successors,
+        #                                              't_end':          t_end,
+        #                                              't_times':       t_times}
+
+        #    t_ref_ID = lr_C0_condensed_connections_relations[t_ID]
+        #    t_segments_keep = [t_ID] + t_successors + [t_ID_post_succ]
+        #    t_segments_keep = [lr_C0_condensed_connections_relations[t] for t in t_segments_keep]
+        #    t_sol = graph_sub_isolate_connected_components(G, t_start, t_end, lr_time_active_segments,
+        #                                                   t_segments_new, t_segments_keep, ref_node = t_segments_new[t_ref_ID][-1])
+        #    t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
+            
+        #    #seqs = perms_with_branches(t_successors,t_segments_new,t_perms) 
+        #    seqs,t_nodes_pre = perms_with_branches(t_successors,t_segments_new,t_perms, return_nodes = True) 
+
+        #    t_event_start_end_times[t_state][t_ID]['t_combs'] = seqs
+
+        #    t_event_start_end_times[t_state][t_ID]['t_nodes_solo'] = t_sol 
+
+        #    t_conn = (lr_C0_condensed_connections_relations[t_ID],t_ID_post_succ)
+        #    for t_time, t_perms in t_nodes_pre.items():
+        #        for t_perm in t_perms:
+        #            t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_perm]))
+
+        #            t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
+
+        #            lr_big121s_perms_areas[     t_conn][t_time][t_perm] = t_area
+        #            lr_big121s_perms_centroids[ t_conn][t_time][t_perm] = t_centroid
+        #            lr_big121s_perms_mom_z[     t_conn][t_time][t_perm] = t_mom_z
             
         a = 1
-        print(f'Fake merges({t_merge_fake_to_ID})/splits({t_split_fake_from_ID})... Done')
+
+        # ------------------------------------- mixed cases. for path extension -------------------------------------
+        t_state = 'mixed'
+        for t_from,t_successors in lr_conn_splits_merges_mixed_dict.items():
+            t_from_new = lr_C0_condensed_connections_relations[t_from]
+            t_successors_times = {t:G2.nodes[t]["t_start"] for t in t_successors}
+            t_start = G2.nodes[t_from_new]["t_end"]
+            t_start2 = {t_from_new: t_start}
+            t_time_max = max(t_successors_times.values())
+            #t_end2 = {t_from_new: t_time_max}
+            t_times         = {t:np.arange(t_start, t_end + 1, 1) for t,t_end in t_successors_times.items()}
+            t_target_nodes = {t:t_segments_new[t][0] for t in t_successors}
+            t_event_start_end_times[t_state][t_from_new] = {  't_start':        t_start2,
+                                                              'branches':       t_successors,
+                                                              't_end':          t_time_max,
+                                                              't_times':        {},
+                                                              't_perms':        {},
+                                                              't_target_nodes': t_target_nodes}
+
+            # pre-isolate graph segment where all sub-events take place
+            
+            t_nodes_keep    = [node for node in G.nodes() if t_start <= node[0] < t_time_max] # dont take end point and del successors
+            #t_nodes_keep += [t_segments_new[t_from_new][-1]]
+            t_subgraph = G.subgraph(t_nodes_keep)   # big subgraph
+            # gather nodes for all targets together. its not known which is correct target it its not split or merge, but proximity event
+
+            t_segments_keep = [t_from_new] #+  t_successors 
+
+            t_sol = graph_sub_isolate_connected_components(G, t_start, t_time_max, lr_time_active_segments,
+                                                           t_segments_new, t_segments_keep, ref_node = t_segments_new[t_from_new][-1])
+            t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
+            t_values = [sum([list(itertools.combinations(t_subIDs, r)) for r in range(1,len(t_subIDs)+1)],[]) for t_subIDs in t_perms.values()]    
+            t_event_start_end_times[t_state][t_from_new]['t_perms'][t_from_new] = t_values
+            t_event_start_end_times[t_state][t_from_new]['t_times'][t_from_new] = np.arange(t_start, t_time_max , 1)
+
+        #t_state = 'mixed'
+        #for t_from,t_successors in lr_conn_splits_merges_mixed_dict.items():
+        #    t_from_new = lr_C0_condensed_connections_relations[t_from]
+        #    #t_successors   = extractNeighborsPrevious(G2, t_ID, func_prev_neighb) 
+        #    t_successors_times = {t:G2.nodes[t]["t_start"] for t in t_successors}
+        #    t_end = G2.nodes[t_from_new]["t_end"]
+        #    t_times         = {(t_from_new,t):np.arange(t_start, t_end + 1, 1) for t,t_start in t_successors_times.items()}
+        #    t_event_start_end_times[t_state][t_from] = {'t_start':        t_successors_times,
+        #                                              'branches':       t_successors,
+        #                                              't_end':          t_end,
+        #                                              't_times':        t_times,
+        #                                              't_combs':        []}
+
+        #    # pre-isolate graph segment where all sub-events take place
+        #    t_time_max = max(t_successors_times.values())
+        #    t_nodes_keep    = [node for node in G.nodes() if t_end <= node[0] <= t_time_max] 
+        #    t_subgraph = G.subgraph(t_nodes_keep)   # big subgraph
+        #    # gather nodes for all targets together. its not known which is correct target it its not split or merge, but proximity event
+
+        #    t_segments_keep = [t_from_new] +  t_successors 
+
+        #    t_sol = graph_sub_isolate_connected_components(G, t_end, t_time_max, lr_time_active_segments,
+        #                                                   t_segments_new, t_segments_keep, ref_node = t_segments_new[t_from_new][-1])
+        #    t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
+        #    t_values = [sum([list(itertools.combinations(t_subIDs, r)) for r in range(1,len(t_subIDs)+1)],[]) for t_subIDs in t_perms.values()]    
+        #    t_event_start_end_times[t_state][t_ID]['t_combs'] = t_values
+
+        #print(f'Fake merges({t_merge_fake_to_ID})/splits({t_split_fake_from_ID})... Done')
 
     # for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     
@@ -3064,7 +3283,8 @@ t_fake_branches_IDs = []
 for t_ID in t_merge_fake_to_ID:
     t_fake_branches_IDs += t_event_start_end_times['merge'][t_ID]['branches']
 for t_ID in t_split_fake_from_ID:
-    t_fake_branches_IDs += t_event_start_end_times['split'][t_ID]['branches']
+    t = lr_C0_condensed_connections_relations[t_ID]
+    t_fake_branches_IDs += t_event_start_end_times['split'][t]['branches']
 # get segments that have possibly inherited other segments and that are not branches
 t_segments_IDs_relevant = [t_ID for t_ID,t_traj in enumerate(t_segments_new) if len(t_traj)>0 and t_ID not in t_fake_branches_IDs]
 
@@ -3136,7 +3356,7 @@ def get_k_s(t_from_k_s, t_to_k_s, backup = (1,5)):
 t_fake_events_k_s_edge_master = {}
 for t_to in t_merge_fake_to_ID:
     t_from =  t_event_start_end_times['merge'][t_to]['pre_predecessor']
-    t_to    = lr_C0_condensed_connections_relations[t_to]
+    #t_to    = lr_C0_condensed_connections_relations[t_to]
     t_from  = lr_C0_condensed_connections_relations[t_from]
     t_from_k_s  = t_segment_k_s[t_from  ]
     t_to_k_s    = t_segment_k_s[t_to    ]
@@ -3144,9 +3364,9 @@ for t_to in t_merge_fake_to_ID:
     t_fake_events_k_s_edge_master[t_to] = {'state': 'merge', 'edge': (t_from, t_to), 'k_s':t_k_s_out}
         
 for t_from_old in t_split_fake_from_ID:
-    t_to = t_event_start_end_times['split'][t_from_old]['post_successor']
-    t_to    = lr_C0_condensed_connections_relations[t_to]
     t_from  = lr_C0_condensed_connections_relations[t_from_old]
+    t_to = t_event_start_end_times['split'][t_from]['post_successor']
+    #t_to    = lr_C0_condensed_connections_relations[t_to]
     t_from_k_s  = t_segment_k_s[t_from  ]
     t_to_k_s    = t_segment_k_s[t_to    ]
     t_k_s_out = get_k_s(t_from_k_s, t_to_k_s, backup = (1,5))  
@@ -3161,6 +3381,7 @@ for t_ID,t_param_dict in t_fake_events_k_s_edge_master.items():
     t_from, t_to    = t_param_dict['edge'   ]
     k,s             = t_param_dict['k_s'    ]
     t_subIDs = [t_from, t_to]
+    t_ID = lr_C0_condensed_connections_relations[t_ID]
     t_start = t_event_start_end_times[t_state][t_ID]['t_start'  ]
     t_end   = t_event_start_end_times[t_state][t_ID]['t_end'    ]
     if 1 == 1:
@@ -3190,6 +3411,7 @@ if 1 == 1:
     t_temp_times = {}
     
     for t_ID,t_param_dict in t_fake_events_k_s_edge_master.items():
+        t_ID = lr_C0_condensed_connections_relations[t_ID]
         t_state                     = t_param_dict['state'  ] 
         t_conn                      = t_param_dict['edge'   ]
         t_temp_centroids[t_conn]    = lr_big121s_interpolation[t_conn]['centroids']
@@ -3210,7 +3432,8 @@ a = 1 # for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 print('Saving fake event data...')
 if  1 == 1:
         #t_segments_new = segments2.copy()
-        for t_ID,t_param_dict in t_fake_events_k_s_edge_master.items():
+        for t_ID_old,t_param_dict in t_fake_events_k_s_edge_master.items():
+            t_ID = lr_C0_condensed_connections_relations[t_ID_old]
             t_state                     = t_param_dict['state'  ] 
             t_conn                      = t_param_dict['edge'   ]
             t_from, t_to = t_conn                                     
@@ -3273,9 +3496,9 @@ if  1 == 1:
                 set_ith_elements_multilist(t_ID_2, [[],{},{},{}], t_segments_new, t_segments_121_centroids, t_segments_121_areas, t_segments_121_mom_z)
 
             if t_state == 'merge':   
-                lr_conn_merges_to_nodes.remove(t_ID) # its not real, remove
+                lr_conn_merges_to_nodes.remove(t_ID_old) # its not real, remove
             else:
-                lr_conn_splits_from_nodes.remove(t_ID)
+                lr_conn_splits_from_nodes.remove(t_ID_old)
             for t in t_IDs_remove:
                 lr_C0_condensed_connections_relations[t] = t_from_new
 
@@ -3318,13 +3541,21 @@ t_split_real_dict
 t_event_start_end_times[t_state]
 t_segment_k_s_diffs
 t_segment_k_s
+lr_conn_splits_merges_mixed_dict
+t_event_start_end_times['mixed']
 
-t_state = 'merge'
 t_out                   = defaultdict(dict)
 t_extrapolate_sol       = defaultdict(dict)
 t_extrapolate_sol_comb  = defaultdict(dict)
-for t_ID, t_conns in t_merge_real_dict.items():
-    t_branches = t_event_start_end_times[t_state][t_ID]['branches']
+lr_extend_merges_IDs = list(t_merge_real_dict.keys()) + [lr_C1_condensed_connections_relations[t] for t in lr_conn_splits_merges_mixed_dict]
+for t_ID in lr_extend_merges_IDs:
+    if t_ID in t_merge_real_dict:
+        t_state = 'merge'
+        t_branches = t_event_start_end_times[t_state][t_ID]['branches']
+    else:
+        t_state = 'mixed'
+        t_branches = [t_ID] # dont have real branches, molding data to merge case
+    
     for t_branch_ID in t_branches:
         t_conn = (t_branch_ID, t_ID)
         t_t_from    = t_event_start_end_times[t_state][t_ID]['t_start'][t_branch_ID]
@@ -3332,7 +3563,7 @@ for t_ID, t_conns in t_merge_real_dict.items():
         if t_t_to - t_t_from < 2:
             t_out[t_ID][t_branch_ID] = None
             continue
-        t_branch_ID_new = lr_C1_condensed_connections_relations[t_branch_ID]
+        t_branch_ID_new = lr_C1_condensed_connections_relations[t_branch_ID] # probly not needed anymore
         t_nodes = [t_node for t_node in t_segments_new[t_branch_ID_new] if t_node[0] > t_t_from - h_interp_len_max2]
         trajectory = np.array([G.nodes[t]["centroid"] for t in t_nodes])
         time       = np.array([G.nodes[t]["time"    ] for t in t_nodes])
@@ -3357,8 +3588,8 @@ for t_ID, t_conns in t_merge_real_dict.items():
         else:
             t_k,t_s = (1,5)
 
-        t_combs_all = t_event_start_end_times[t_state][t_ID]['t_perms'][t_conn][1:]
-        t_times_all = t_event_start_end_times[t_state][t_ID]['t_times'][t_conn][1:]
+        t_combs_all = t_event_start_end_times[t_state][t_ID]['t_perms'][t_branch_ID][1:]
+        t_times_all = t_event_start_end_times[t_state][t_ID]['t_times'][t_branch_ID][1:]
 
         for t_time, t_permutations in zip(t_times_all,t_combs_all):
             # extrapolate traj
@@ -3405,7 +3636,7 @@ for t_ID, t_conns in t_merge_real_dict.items():
 
 # search for conflict nodes for extended branches
 # for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-lr_conn_merges_good = {tID:[] for tID in lr_conn_merges_to_nodes}
+lr_conn_merges_good = defaultdict(list)#{tID:[] for tID in lr_conn_merges_to_nodes}
 #lr_conn_merges_good2 = {tID:[] for tID in lr_conn_merges_to_nodes}
 if 1 == 1:
     node_properties = defaultdict(list)
@@ -3417,7 +3648,7 @@ if 1 == 1:
     t_duplicates = {t_node: t_branches for t_node,t_branches in node_properties.items() if len(t_branches) > 1}
     t_all_problematic_conns = list(set(sum(list(t_duplicates.values()),[])))
     t_all_problematic_conns_to = [a[1] for a in t_all_problematic_conns]
-    for tID in lr_conn_merges_to_nodes:
+    for tID in lr_extend_merges_IDs:
         if tID not in t_all_problematic_conns_to:
             t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
             lr_conn_merges_good[tID] += t_conns_relevant
@@ -3455,7 +3686,7 @@ if 1 == 1:
             t_conns_relevant = [t_c for t_c in t_extrapolate_sol_comb if t_c[1] == tID]
             lr_conn_merges_good[tID] += t_conns_relevant
             a = 1
-
+        print('branches are resolved without conflict, or conflict resolved by redistribution of nodes')
 # for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # weird saving system. copied from old (this) code.
 if 1 == 1:
@@ -6898,7 +7129,7 @@ if 1 == -1000:
             fileName = f"{str(k).zfill(4)}.png"
             cv2.imwrite(os.path.join(folder,fileName) ,img)
 
-
+# for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 a = 1
 #if useMeanWindow == 1:
 #    meanImage = masksArr[whichMaskInterval(globalCounter,intervalIndecies)]

@@ -468,7 +468,7 @@ if 1 == -1:
     a = 1
 
 
-if 1 == 1:
+if 1 == -1:
     import cv2
     import numpy as np
 
@@ -485,6 +485,109 @@ if 1 == 1:
     cv2.imshow("Image", imgs)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+
+from collections import defaultdict
+import timeit
+
+def find_common_intervals2(data):
+    element_ids = set()
+    for element_list in data.values():
+        element_ids.update(element_list)
+
+    active_times = defaultdict(list)
+    for time, elements in data.items():
+        for element in elements:
+            active_times[element].append(time)
+    element_pairs = list(itertools.combinations(element_ids, 2))
+    common_times_dict = defaultdict(list)
+    for pair in element_pairs:
+        element_1, element_2 = pair
+        active_times_1 = set(active_times[element_1])
+        active_times_2 = set(active_times[element_2])
+        common_times = active_times_1.intersection(active_times_2)
+        if len(common_times) > 0:
+            common_times_dict[pair] = common_times
+
+
+    return common_times_dict
+
+from collections import defaultdict
+
+def find_common_intervals(data):
+    element_ids = set()
+    active_times = defaultdict(set)
+
+    for time, elements in data.items():
+        for element in elements:
+            element_ids.add(element)
+            active_times[element].add(time)
+
+    common_times_dict = defaultdict(list)
+
+    for pair in itertools.combinations(element_ids, 2):
+        element_1, element_2 = pair
+        common_times = active_times[element_1].intersection(active_times[element_2])
+        
+        if common_times:
+            common_times_dict[pair] = list(common_times)
+
+    return common_times_dict
+
+# Sample data
+data = {
+    128: [0],
+    129: [0],
+    130: [0, 1],
+    131: [0, 1],
+    132: [0, 1, 3],
+    133: [0, 1, 3],
+    134: [1, 3],
+    135: [1, 3],
+    136: [3],
+    137: [3],
+    138: [3],
+}
+
+import random
+
+import random
+from collections import defaultdict
+
+import random
+
+def generate_test_data(min_time, max_time, num_elements):
+    data = {t:[] for t in range(min_time, max_time + 1)}
+    
+    for element in range(num_elements):
+        start_time = random.randint(min_time, max_time)
+        end_time = start_time + random.randint(1, max_time - start_time)
+        
+        for time in range(start_time, end_time + 1):
+            data[time].append(element)
+    
+    return dict(data)
+
+test_data = generate_test_data(100, 220, 10)
+print(test_data)
+def test1():
+    return find_common_intervals(test_data)
+
+def test2():
+    return find_common_intervals2(test_data)
+
+time_method1 = timeit.timeit(test1, number=1000)
+time_method2 = timeit.timeit(test2, number=1000)
+
+print("Method 1 execution time:", time_method1)
+print("Method 2 execution time:", time_method2)
+
+# Find common intervals for each element pair
+common_intervals = find_common_intervals(data)
+
+print(f'common_intervals : {common_intervals}')
+
+
+
 
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key

@@ -7,1268 +7,11 @@ import cv2, os, glob, datetime, re, pickle#, multiprocessing
 # import glob
 from matplotlib import pyplot as plt
 from tqdm import tqdm
-from scipy import interpolate
+
 # import from custom sub-folders are defined bit lower
 #from imageFunctionsP2 import (overlappingRotatedRectangles,graphUniqueComponents)
 # functions below
-if 1 == 1:
-    def convertGray2RGB(image):
-        if len(image.shape) == 2:
-            return cv2.cvtColor(image.copy(),cv2.COLOR_GRAY2RGB)
-        else:
-            return image
-    mapXY = (np.load('./mapx.npy'), np.load('./mapy.npy'))
-    def undistort(image):
-        return cv2.remap(image,mapXY[0],mapXY[1],cv2.INTER_LINEAR)
 
-
-    def timeHMS():
-        return datetime.datetime.now().strftime("%H-%M-%S")
-
-    colorList  = np.array(list(itertools.permutations(np.arange(0,255,255/5, dtype= np.uint8), 3)))
-    np.random.seed(2);np.random.shuffle(colorList);np.random.seed()
-
-    def cyclicColor(index):
-        return colorList[index % len(colorList)].tolist()
-
-
-    def modBR(BR,side):
-        x,y,w,h  = BR
-        return [x - int(max((side-w)/2,0)), y - int(max((side-h)/2,0)), max(side,w), max(side,h)]
-
-    def rotRect(rect):
-        x,y,w,h = rect
-        return (tuple((int(x+w/2),int(y+h/2))), tuple((int(w),int(h))), 0)
-
-    def rect2contour(rect):
-        x,y,w,h = rect
-        return np.array([(x,y),(x+w,y),(x+w,y+h),(x,y+h)],int).reshape(-1,1,2)
-
-    def compositeRectArea(rects, rectsParamsArr):
-        if len(rects) > 1:
-            # find region where all rectangles live. working smaller region should be faster.
-            minX, minY = 100000, 100000                 # Initialize big low and work down to small
-            maxX, maxY = 0, 0                           # Initialize small high  and work up to big
-
-            for ID in rects:
-                x,y,w,h = rectsParamsArr[ID]
-                minX = min(minX,x)
-                minY = min(minY,y)
-                maxX = max(maxX,x+w)
-                maxY = max(maxY,y+h)
-
-            width = maxX - minX                         # Get composite width
-            height = maxY - minY                        # Get composite height
-            blank = np.zeros((height,width),np.uint8)   # create a smaller canvas
-            for ID in rects:                            # draw masks with offset to composite edge
-                x,y,w,h = rectsParamsArr[ID]
-                cntr = np.array([(x,y),(x+w,y),(x+w,y+h),(x,y+h)],int).reshape(-1,1,2)
-                cv2.drawContours( blank, [cntr], -1, 255, -1, offset = (-minX,-minY))
-         
-            return int(np.count_nonzero(blank))         # count pixels = area
-
-        else:
-            x,y,w,h = rectsParamsArr[rects[0]]
-            return int(w*h)
-    
-    def graph_extract_paths_backup_unidir(H,f):
-        nodeCopy = list(H.nodes()).copy()
-        segments2 = {a:[] for a in nodeCopy}
-        resolved = []
-        skipped = []
-        for node in nodeCopy:
-            goForward = True if node not in resolved else False
-            nextNode = node
-            prevNode = None
-            while goForward == True:
-                neighbors = list(H.neighbors(nextNode))
-                nextNodes = [a for a in neighbors if f(a) > f(nextNode)]
-                prevNodes = [a for a in neighbors if f(a) < f(nextNode)]
-                # find if next node exists and its single
-                soloNext    = True if len(nextNodes) == 1 else False
-                soloPrev    = True if len(prevNodes) == 1 else False # or prevNode is None
-                soloPrev2   = True if soloPrev and (prevNode is None or prevNodes[0] == prevNode) else False
-
-                # if looking one step ahead, starting node can have one back and/or forward connection to split/merge
-                # this would still mean that its a chain and next/prev node will be included.
-                # to fix this, check if next/prev are merges/splits
-                # find if next is not merge:
-                nextNotMerge = False
-                if soloNext:
-                    nextNeighbors = list(H.neighbors(nextNodes[0]))
-                    nextPrevNodes = [a for a in nextNeighbors if f(a) < f(nextNodes[0])]
-                    if len(nextPrevNodes) == 1: 
-                        nextNotMerge = True
-
-                nextNotSplit = False
-                if soloNext:
-                    nextNeighbors = list(H.neighbors(nextNodes[0]))
-                    nextNextNodes = [a for a in nextNeighbors if f(a) > f(nextNodes[0])]
-                    if len(nextNextNodes) <= 1:   # if it ends, it does not split. (len = 0)
-                        nextNotSplit = True
-
-                prevNotSplit = False
-                if soloPrev2:
-                    prevNeighbors = list(H.neighbors(prevNodes[0]))
-                    prevNextNodes = [a for a in prevNeighbors if f(a) > f(prevNodes[0])]
-                    if len(prevNextNodes) == 1:
-                        prevNotSplit = True
-
-
-                saveNode = False
-                # test if it is a chain start point:
-                # if prev is a split, implies only one prevNode 
-                if prevNode is None:                # starting node
-                    if len(prevNodes) == 0:         # if no previos node =  possible chain start
-                        if nextNotMerge:            # if it does not change into merge, it is good
-                            saveNode = True
-                        else:
-                            skipped.append(node)
-                            goForward = False
-                    elif not prevNotSplit:
-                        if nextNotMerge:
-                            saveNode = True
-                        else: 
-                            skipped.append(node)
-                            goForward = False
-                    else:
-                        skipped.append(node)
-                        goForward = False
-                else:
-                # check if its an endpoint
-                    # dead end = zero forward neigbors
-                    if len(nextNodes) == 0:
-                        saveNode = True
-                        goForward = False
-                    # end of chain =  merge of forward neigbor
-                    elif not nextNotMerge:
-                        saveNode = True
-                        goForward = False
-                    elif not nextNotSplit:
-                        saveNode = True
-                
-                    # check if it is part of a chain
-                    elif nextNotMerge:
-                        saveNode = True
-
-
-                if saveNode:
-                    segments2[node].append(nextNode)
-                    resolved.append(nextNode)
-                    prevNode = nextNode
-                    if goForward :
-                        nextNode = nextNodes[0]
-
-    
-    
-        return segments2, skipped
-
-    def graph_extract_paths(H,f):
-        nodeCopy = list(H.nodes()).copy()
-        segments2 = {a:[] for a in nodeCopy}
-        resolved = []
-        skipped = []
-        for node in nodeCopy:
-            goForward = True if node not in resolved else False
-            nextNode = node
-            prevNode = None
-            while goForward == True:
-                #neighbors = list(H.neighbors(nextNode))
-                #nextNodes = [a for a in neighbors if f(a) > f(nextNode)]
-                
-                #prevNodes = [a for a in neighbors if f(a) < f(nextNode)]
-                nextNodes = list(H.successors(nextNode))
-                prevNodes = list(H.predecessors(nextNode))
-
-                # find if next node exists and its single
-                soloNext    = True if len(nextNodes) == 1 else False
-                soloPrev    = True if len(prevNodes) == 1 else False # or prevNode is None
-                soloPrev2   = True if soloPrev and (prevNode is None or prevNodes[0] == prevNode) else False
-
-                # if looking one step ahead, starting node can have one back and/or forward connection to split/merge
-                # this would still mean that its a chain and next/prev node will be included.
-                # to fix this, check if next/prev are merges/splits
-                # find if next is not merge:
-                nextNotMerge = False
-                if soloNext:
-                    #nextNeighbors = list(H.neighbors(nextNodes[0]))
-                    #nextPrevNodes = [a for a in nextNeighbors if f(a) < f(nextNodes[0])]
-                    nextPrevNodes = list(H.predecessors(nextNodes[0]))
-                    if len(nextPrevNodes) == 1: 
-                        nextNotMerge = True
-
-                nextNotSplit = False
-                if soloNext:
-                    #nextNeighbors = list(H.neighbors(nextNodes[0]))
-                    #nextNextNodes = [a for a in nextNeighbors if f(a) > f(nextNodes[0])]
-                    nextNextNodes = list(H.successors(nextNodes[0]))
-                    if len(nextNextNodes) <= 1:   # if it ends, it does not split. (len = 0)
-                        nextNotSplit = True
-
-                prevNotSplit = False
-                if soloPrev2:
-                    #prevNeighbors = list(H.neighbors(prevNodes[0]))
-                    #prevNextNodes = [a for a in prevNeighbors if f(a) > f(prevNodes[0])]
-                    prevNextNodes = list(H.successors(prevNodes[0]))
-                    if len(prevNextNodes) == 1:
-                        prevNotSplit = True
-
-
-                saveNode = False
-                # test if it is a chain start point:
-                # if prev is a split, implies only one prevNode 
-                if prevNode is None:                # starting node
-                    if len(prevNodes) == 0:         # if no previos node =  possible chain start
-                        if nextNotMerge:            # if it does not change into merge, it is good
-                            saveNode = True
-                        else:
-                            skipped.append(node)
-                            goForward = False
-                    elif not prevNotSplit:
-                        if nextNotMerge:
-                            saveNode = True
-                        else: 
-                            skipped.append(node)
-                            goForward = False
-                    else:
-                        skipped.append(node)
-                        goForward = False
-                else:
-                # check if its an endpoint
-                    # dead end = zero forward neigbors
-                    if len(nextNodes) == 0:
-                        saveNode = True
-                        goForward = False
-                    # end of chain =  merge of forward neigbor
-                    elif not nextNotMerge:
-                        saveNode = True
-                        goForward = False
-                    elif not nextNotSplit:
-                        saveNode = True
-                
-                    # check if it is part of a chain
-                    elif nextNotMerge:
-                        saveNode = True
-
-
-                if saveNode:
-                    segments2[node].append(nextNode)
-                    resolved.append(nextNode)
-                    prevNode = nextNode
-                    if goForward :
-                        nextNode = nextNodes[0]
-
-    
-    
-        return segments2, skipped
-
-    def centroid_area(contour):
-        m = cv2.moments(contour)
-        area = int(m['m00'])
-        cx0, cy0 = m['m10'], m['m01']
-        centroid = np.array([cx0,cy0])/area
-        return  centroid, area
-    
-    # ive tested c_mom_zz in centroid_area_cmomzz. it looks correct from definition m_zz = sum_x,y[r^2] = sum_x,y[(x-x0)^2 + (y-y0)^2]
-    # which is the same as sum_x,y[(x-x0)^2] + sum_x,y[(y-y0)^2] = mu(2,0) + mu(0,2), and from tests on images.
-    def centroid_area_cmomzz(contour):
-        m = cv2.moments(contour)
-        area = int(m['m00'])
-        cx0, cy0 = m['m10'], m['m01']
-        centroid = np.array([cx0,cy0])/area
-        c_mom_xx, c_mom_yy = m['mu20'], m['mu02']
-        c_mom_zz = int((c_mom_xx + c_mom_yy))
-        return  centroid, area, c_mom_zz
-
-    # given list of nodes of tupe (time,*subIDs), gather all subIDs for each unique time and sort
-    def prep_combs_clusters_from_nodes(t_nodes):
-        t_times = sorted(set([t_node[0] for t_node in t_nodes]))
-        t_return = {t_time:[] for t_time in t_times}
-        for t_time,*t_subIDs in t_nodes:
-            t_return[t_time] += [min(t_subIDs)] # <<<<<<<< in case of many IDs inside, take only minimal, as representative >><<< its not really used currently!!!
-        return {t_time:sorted(t_subIDs) for t_time,t_subIDs in t_return.items()}
-
-    def check_overlap(segments):
-        # given list of segments designated as [seg_1, seg_2,..] = [(start_1,end_1),...]
-        # return which seg_ at least partially intsects with other segment, assuming continous space between start and end. otherwise use set intersection.
-        overlaps = []
-        for i in range(len(segments)):
-            for j in range(i+1, len(segments)):
-                seg1 = segments[i]
-                seg2 = segments[j]
-            
-                if seg1[0] <= seg2[1] and seg1[1] >= seg2[0]:
-                    overlaps.append((i, j))
-    
-        return overlaps
-
-    def extract_graph_connected_components(graph, sort_function = lambda x: x): 
-        # extract all conneted component= clusters from graph. to extract unique clusters,
-        # all options have to be sorted to drop identical. sorting can be done by sort_function.
-        # for nodes with names integers, used lambda x: x, for names as tuples use lambda x: (x[0], *x[1:])
-        # where node name is (timeX, A, B, C,..), it will sort  Time first, then by min(A,B,C), etc
-        connected_components_all = [list(nx.node_connected_component(graph, key)) for key in graph.nodes()]
-        connected_components_all = [sorted(sub, key = sort_function) for sub in connected_components_all] 
-        connected_components_unique = []
-        [connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
-        return connected_components_unique
-
-    def order_segment_levels(t_segments, debug = 0):
-        #[needs : check_overlap, cyclicColor, networkx as nx, plt, np]
-
-        # want to draw bunch of segments horizontally, but they overlay and have to be stacked vertically
-        # if generally they overlay locally, then they can be vertically compressed, if one of prev segments has ended
-
-        # SEGMENTS are list of sequences of nodes like paths: [path1, path2, ..] and path = (node1, node2,..)
-        # NODE holds its time in name with other paremeter, such as contour IDS: node = (time, ID1, ID2) = (time,*subIDS)
-        # lambda functions are used to specify which element is time. e.g time = (lambda x: x[0])(time, ID1, ID2) 
-
-        # initialize positions as zeroes
-        t_pos = {t:0 for t in range(len(t_segments))}
-        # transform segments to start-end times
-        start_end = [(seg[0][0],seg[-1][0]) for seg in t_segments]
-        # check which segments overlap any way
-        overlap = check_overlap(start_end)
-        # form a graph to extract overlapping clusters
-        HH = nx.Graph()
-        t_all_nodes = list(range(len(t_segments)))
-        HH.add_nodes_from(t_all_nodes)
-        for g in t_all_nodes:
-            HH.nodes()[g]["t_start"]    = t_segments[g][0][0]
-            HH.nodes()[g]["t_end"]      = t_segments[g][-1][0]
-        HH.add_edges_from(overlap)
-
-        # extract connected components =  chain of overlapping clusters
-        t_cc = extract_graph_connected_components(HH, lambda x: x)
-
-        
-        for t_set in t_cc:
-        
-            # sort by starting position to establish hierarchy, secondary sort by end position
-            t_set = sorted(t_set, key = lambda x: [HH.nodes[x]["t_start"],HH.nodes[x]["t_end"]])
-
-            # initialize odered subcluster positions as ladder. worst case scenaro it stays a ladder
-            for t_k, t_from in enumerate(t_set):
-                t_pos[t_from] = t_k
-
-            
-            
-            # overwrite_nodes contains nodes that gave their position to other segment. so they are out of donor pool.
-            overwrite_nodes = []
-
-            for t_k,t_from in enumerate(t_set):
-                # take all which have start earlier than you:
-
-                    # first all nodes that have started earlier or at same time, except donors
-                t_from_all_prev             = [tID for tID in t_set if HH.nodes[tID]["t_start"] <= HH.nodes[t_from]["t_start"] and tID not in overwrite_nodes]
-
-                    # then check which of them terminate earler than node start
-                t_non_overlapping_all_prev  =  [tID for tID in t_from_all_prev if HH.nodes[tID]["t_end"] < HH.nodes[t_from]["t_start"]]
-
-                # t_non_overlapping_all_prev are available spot donors
-
-                if len(t_non_overlapping_all_prev)>0:
-                    # get their positions and take lowest. lowest crit is viable, but visually not the best
-                    t_places        = {t_node:t_pos[t_node] for t_node in t_non_overlapping_all_prev}
-                    minKey = min(t_places, key = t_places.get)
-
-                    # accept donated position and add donor to exclusion list
-                    t_pos[t_from]   = t_places[minKey]
-                    overwrite_nodes.append(minKey)
-
-        # EDIT NOT SHOWN IN DEBUG: Collapse on uninhabited layers.
-        a = 1
-        vertical_positions = set(t_pos.values()) 
-        empty_positions = set(range(max(vertical_positions) + 1)) - vertical_positions
-
-        position_mapping = {}
-        sorted_IDs = sorted(t_pos,key=t_pos.get)
-        t_pos2 = {ID:t_pos[ID] for ID in sorted_IDs if t_pos[ID] > min(empty_positions)}
-        for i, position in t_pos2.items():
-            if len(empty_positions) > 0 and position > min(empty_positions) and position not in position_mapping:
-                # Find the first available empty position
-                new_position = min(empty_positions)
-                position_mapping[position] = new_position
-                t_pos[i] = new_position
-                empty_positions.remove(new_position)
-
-        if debug:
-
-            fig, axes = plt.subplots(1, 1, figsize=( 10,5), sharex=True, sharey=True)
-
-            for t_from, pos in t_pos.items():
-                t_start = HH.nodes[t_from]["t_start"]
-                t_stop  = HH.nodes[t_from]["t_end"]
-                x   = [t_start,t_stop]
-                y0  = [t_from,t_from]
-                y   = [pos,pos]
-                axes.plot(x, y0 ,'-c',c=np.array(cyclicColor(t_from))/255, label = t_from)
-                plt.plot(x, y, linestyle='dotted', c=np.array(cyclicColor(t_from))/255)
-
-            
-
-        return t_pos
-    
-    def for_graph_plots(G, segs = []):
-        if len(segs) == 0:
-            segments3, skipped = graph_extract_paths(G,lambda x : x[0])
-        else:
-            segments3 = {t:[] for t in G.nodes()}
-            for t_seg in segs:
-                if len(t_seg) > 0:
-                    segments3[t_seg[0]] = t_seg
-
-        # Draw extracted segments with bold lines and different color.
-        segments3 = [a for _,a in segments3.items() if len(a) > 0]
-        segments3 = list(sorted(segments3, key=lambda x: x[0][0]))
-        paths = {i:vals for i,vals in enumerate(segments3)}
-
- 
-        t_pos = order_segment_levels(segments3, debug = 0)
-
-        all_segments_nodes = sorted(sum(segments3,[]), key = lambda x: [x[0],x[1]])
-        all_nodes_pos = {tID:[tID[0],0] for tID in G.nodes()} # initialize all with true horizontal position.
-        #fixed_nodes_pos = {tID:[tID[0],0] for tID in G.nodes()}
-
-        for t_k, t_segment in enumerate(segments3): #modify only path nodes position, rest is default
-            for t_node in t_segment:
-                all_nodes_pos[t_node][1] = 0.28*t_pos[t_k]
-                #all_nodes_pos[t_node] = (t_node[0],0.28*t_pos[t_k])
-
-        not_segment_nodes = [t_node for t_node in G.nodes() if t_node not in all_segments_nodes]
-        # not_segment_nodes contain non-segment nodes, thus they are solo ID nodes: (time,ID)
-        not_segment_nodes_clusters = prep_combs_clusters_from_nodes(not_segment_nodes)
-        for t_time, t_subIDs in not_segment_nodes_clusters.items():
-            for t_k, t_subID in enumerate(t_subIDs):
-                t_node = tuple([t_time,t_subID])
-                all_nodes_pos[t_node][1] = 0.28*(t_k - 0.5)
-        G = G.to_undirected()
-        drawH(G, paths, all_nodes_pos)
-        #drawH(G, paths, all_nodes_pos, fixed_nodes = all_segments_nodes)
-        #drawH(G, paths, node_positions = all_nodes_pos, fixed_nodes = all_segments_nodes)
-
-        return None
-
-    def interpolate_trajectory(trajectory, time_parameters, which_times, s = 10, k = 1, debug = 0, axes = 0, title = 'title', aspect = 'equal'):
-    
-        spline_object, _ = interpolate.splprep([*trajectory.T] , u=time_parameters, s=s,k=k) 
-        interpolation_values = np.array(interpolate.splev(which_times, spline_object,ext=0))
-    
-        if debug == 1:
-            newPlot = False
-            if axes == 0:
-                newPlot = True
-                fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
-                axes.plot(*trajectory.T , '-o')
-            if min(which_times)> max(time_parameters):     # extrapolation
-                t_min = max(time_parameters); t_max = max(which_times)
-            else:
-                t_min, t_max = min(time_parameters), max(time_parameters)
-            #t_min, t_max = min(time_parameters), max(max(which_times), max(time_parameters)) # if which_times in  time_parameters, plot across time_parameters, else from min(time_parameters) to max(which_times)
-            interpolation_values_d = np.array(interpolate.splev(np.arange(t_min, t_max + 0.1, 0.1), spline_object,ext=0))
-            axes.plot(*interpolation_values_d, linestyle='dotted', c='orange')
-            axes.scatter(*interpolation_values, c='red',s = 100)
-
-            if newPlot:
-                axes.set_aspect(aspect)
-                axes.set_title(title)
-                plt.show()
-        return interpolation_values.T
-
-
-    from collections import deque
-
-    class CircularBuffer:
-        def __init__(self, size, initial_data=None):
-            self.size   = size
-            self.buffer = deque(maxlen=size)
-            if initial_data is not None:
-                self.extend(initial_data)
-
-        def append(self, element):
-            if isinstance(element, list):
-                for item in element:
-                    self.buffer.append(item)
-            else:
-                self.buffer.append(element)
-
-        def extend(self, list):
-            self.buffer.extend(list)
-
-        def get_data(self):
-            return np.array(self.buffer)
-
-    def interpolate_find_k_s(trajectory, time, params_k, params_s, report_on = False, report = [], num_sub_iterations = 3, part_points_drop = 0.2):
-        # WHAT: find proper k and s parameters for interpolating holes in data
-        # HOW: can do this by dropping random number of points and testing interpolation mechanisms using different params
-        # NOTE: all k,s combs are tested num_sub_iterations times. each has associated list of fake holes
-        # NOTE: this enables code to break early when smoothing parameter stops having an impact.
-        traj_length = trajectory.shape[0]
-        num_points_drop = int(np.ceil( (traj_length-2) * part_points_drop)) # keep end points
-        drop_indicies = [np.random.choice(np.arange(1,traj_length - 1, 1), num_points_drop, replace=False) for _ in range(num_sub_iterations)]   # take random indices from mid
-        temp_diffs_all  = defaultdict(float)
-        temp_diffs_all[(1,5)] = 6666666                                     # in case everything fails (1,5) will remain
-        for k in params_k:                                                  # iterate though polynom orders
-            last_error_k = -1.0                                             # initialize prev result
-                    
-            if traj_length - num_points_drop <= k: continue
-            for s in params_s:
-                temp_diffs = [0]*num_sub_iterations
-                for t in range(num_sub_iterations):
-                    
-                    traj_subset = np.delete(trajectory  , drop_indicies[t], axis = 0)                                      # returns a copy
-                    time_subset = np.delete(time        , drop_indicies[t])
-                    times_find  = time[         drop_indicies[t]]
-                    traj_find   = trajectory[   drop_indicies[t]]
-                    t_sol = interpolate_trajectory(traj_subset, time_subset, which_times = times_find ,s = s, k = k, debug = 0 ,axes = 0, title = 'title', aspect = 'equal')
-                    diffs_missing = np.linalg.norm(t_sol - traj_find, axis = 1) # calc diffs between known sols and interp
-                    temp_diffs[t] = np.mean(diffs_missing)
-
-                k_s_error = np.round(np.mean(temp_diffs),3)                     # round up so its easier to compare
-
-                if k_s_error != last_error_k:                                   # high s = too relaxed, begin to produce similar results
-                    last_error_k = k_s_error
-                    temp_diffs_all[(k,s)] = k_s_error
-                else:                                                           # if result is same as previously, skip s iterations
-                    if report_on: report.append((k,s))                          # for debugging
-                    break
-
-
-        return temp_diffs_all
-
-
-
-         
-
-    def extrapolate_find_k_s(trajectory, time, t_k_s_combs, k_s_buffer_len_max, k_s_start_at_index = 0, debug = 0, debug_show_num_best = 3):
-        trajectory_length   = trajectory.shape[0]
-
-        do_work_next_n          = trajectory_length - k_s_buffer_len_max 
-
-        errors_tot_all  = {}
-        errors_sol_all   = {}
-        errors_sol_diff_norms_all   = {}
-        # track previous error value for each k and track wheter iterator for set k should skip rest s.
-        t_last_error_k  = {k:0.0 for k in k_all}
-        t_stop_k        = {k:0 for k in k_all}
-        # MAYBE redo so same trajectory part is ran with different k and s parameters instead of change parts for one comb of k,s
-        # EDIT, it does not let you break early if no change is detected. trade off? idk
-        for t_comb in t_k_s_combs:
-            k  = t_comb[0]; s = t_comb[1]
-            if t_stop_k[k] == 1: continue 
-            t_errors        = {}
-            t_sols          = {}
-        
-            t_traj_buff     = CircularBuffer(k_s_buffer_len_max,  trajectory[k_s_start_at_index:k_s_start_at_index + k_s_buffer_len_max])
-            t_time_buff     = CircularBuffer(k_s_buffer_len_max,  time[      k_s_start_at_index:k_s_start_at_index + k_s_buffer_len_max])
-        
-            t_indicies = np.arange(k_s_start_at_index, k_s_start_at_index + do_work_next_n , 1)
-            for t_start_index in t_indicies:# 
-                h_num_points_available = min(k_s_buffer_len_max, trajectory.shape[0] - t_start_index)           # but past start, there are only total-start available
-                if t_start_index + h_num_points_available == trajectory_length: break
-                t_predict_index = t_start_index + h_num_points_available                                  # some mumbo jumbo with indicies, but its correct
-
-                t_real_val      = [trajectory[   t_predict_index]]
-                t_predict_time  = [time[         t_predict_index]]
-
-                t_sol = interpolate_trajectory(t_traj_buff.get_data(), t_time_buff.get_data(), which_times = t_predict_time ,s = s, k = k, debug = 0 ,axes = 0, title = 'title', aspect = 'equal')
-                t_sols[t_predict_index]         = t_sol[0]
-                t_errors[t_predict_index]       = np.linalg.norm(np.diff(np.concatenate((t_sol,t_real_val)), axis = 0), axis = 1)[0] 
-
-                t_traj_buff.append(trajectory[  t_predict_index])
-                t_time_buff.append(time[        t_predict_index])
-
-            if len(t_indicies)>0:                   # short trajectory passes without iterations, so skip block inside
-                t_errors_tot                        = round(np.sum(list(t_errors.values()))/len(t_errors), 3)
-                errors_sol_all[t_comb]              = t_sols
-                errors_sol_diff_norms_all[t_comb]   = t_errors
-    
-                if t_last_error_k[k] == t_errors_tot:
-                    t_stop_k[k] = 1;#print(f'stop: k = {k} at s = {s}, err = {t_errors_tot}')
-                else:
-                    t_last_error_k[k] = t_errors_tot
-                    errors_tot_all[t_comb] = t_errors_tot
-            else:
-                errors_tot_all[t_comb] = -1
-                errors_sol_diff_norms_all[t_comb] = {}
-
-        t_OG_comb_sol = min(errors_tot_all, key=errors_tot_all.get)
-
-        if debug:
-            (fig_k_s, axes) = plt.subplots(debug_show_num_best, 1, figsize=(12, 8), sharex=True, sharey=True)
-            if debug_show_num_best == 1: axes = [axes]
-
-            t_temp = errors_tot_all.copy()
-            for ax in axes:
-
-                t_comb_sol = min(t_temp, key=t_temp.get)
-                t_traj_sol = np.array(list(errors_sol_all[t_comb_sol].values()))
-
-                ax.plot(*trajectory.T , '-o', c='black')
-                ax.scatter(*t_traj_sol.T , c='red')
-
-                ax.set_title(f's = {t_comb_sol[1]}; k = {t_comb_sol[0]}; error= {errors_tot_all[t_comb_sol]:.2f}')
-                ax.set_aspect('equal')
-                t_temp.pop(t_comb_sol,None)
-
-            plt.figure(fig_k_s.number)
-            plt.show()
-        return t_OG_comb_sol, errors_sol_diff_norms_all
-
-
-    def lr_reindex_masters(relations, connections, remove_solo_ID = 0):
-        output = None
-        if type(connections) == list:
-            output = [tuple(sorted([relations[fr], relations[to]])) for fr,to in connections]
-            if remove_solo_ID:
-                return [(a,b) for a,b in output if a != b]
-            else: 
-                return output
-        elif type(connections) == tuple:
-            return tuple(sorted([relations[connections[0]], relations[connections[1]]]))
-        else: 
-            raise ValueError("wrong input type. list of tuple or single tuple expected")
-
-
-    def getNodePos2(dic0, S = 20):
-        dups, cnts = np.unique([a for a in dic0.values()], return_counts = True)
-        # relate times to 'local IDs', which are also y-positions or y-indexes
-        dic = {a:np.arange(b) for a,b in zip(dups,cnts)} # each time -> arange(numDups)
-        # give duplicates different y-offset 0,1,2,..
-        dic2 = {t:{s:k for s,k in zip(c,[tID for tID, t_time in dic0.items() if t_time == t])} for t,c in dic.items()}
-        node_positions = {}
-        # offset scaled by S
-        #S = 20
-        for t,c in dic.items():
-            # scale and later offset y-pos by mid-value
-            d = c*S
-            meanD = np.mean(d)
-            for c2,key in dic2[t].items():
-                if len(dic2[t]) == 1:
-                    dy = np.random.randint(low=-3, high=3)
-                else: dy = 0
-                # form dict in form key: position. time is x-pos. y is modified by order.
-                node_positions[key] = (t,c2*S-meanD + dy)
-
-        return node_positions
-
-    def getNodePos(test):
-        dups, cnts = np.unique([a[0] for a in test], return_counts = True)
-        # relate times to 'local IDs', which are also y-positions or y-indexes
-        dic = {a:np.arange(b) for a,b in zip(dups,cnts)}
-        # give duplicates different y-offset 0,1,2,..
-        dic2 = {t:{s:k for s,k in zip(c,[a for a in test if a[0] == t])} for t,c in dic.items()}
-        node_positions = {}
-        # offset scaled by S
-        S = 20
-        for t,c in dic.items():
-            # scale and later offset y-pos by mid-value
-            d = c*S
-            meanD = np.mean(d)
-            for c2,key in dic2[t].items():
-                # form dict in form key: position. time is x-pos. y is modified by order.
-                node_positions[key] = (t,c2*S-meanD)
-        return node_positions
-
-
-    def start_timer():
-        global start_time
-        start_time = time_lib.time()
-
-    def stop_timer():
-        elapsed_time = time_lib.time() - start_time
-        return elapsed_time
-
-    #def custom_spring_layout():
-
-    #    1) get all nodes that are not fixed
-    #    2) for each node create a dictionary D that holds nodes neighbors
-    #    3) during iteration go though node and their neighbors:
-    #        3.1) calculate force based on distance and direction from main node to each t_neighbors_time_next
-    #        3.2) summ up the forces from neighbors. 
-    #    4) apply displacement in the end of iteration for all free nodes
-            
-    def custom_spring_layout(G, pos, fixed=None, k=0.1, iterations=50, seed=None):
-        """
-        Custom spring layout that considers only edge attractive forces (no repulsive forces between nodes).
-
-        Parameters:
-        - G: NetworkX graph
-        - fixed: Dictionary of fixed nodes and their positions (default: None)
-        - k: Optimal distance between nodes
-        - iterations: Number of iterations for the spring layout algorithm
-        - seed: Random seed for reproducibility (default: None)
-
-        Returns:
-        - pos: Dictionary of node positions
-        """
-        if fixed is None:
-            fixed = {}
-
-        #pos = nx.random_layout(G, seed=seed)
-
-        for _ in range(iterations):
-            free_nodes = [node for node in G.nodes() if node not in fixed]
-
-            # Step 1: Get all nodes that are not fixed
-            for node in free_nodes:
-                # Step 2: Create a dictionary D that holds node neighbors
-                neighbors = {neighbor: np.array(pos[neighbor]) for neighbor in G.neighbors(node)}
-
-                # Initialize displacement vector
-                displacement = np.array([0.0, 0.0])
-
-                # Step 3: Calculate forces
-                for neighbor, neighbor_position in neighbors.items():
-                    delta = neighbor_position - pos[node]
-                    length = max(np.linalg.norm(delta), 0.01)  # Avoid division by zero
-                    force = (k * length) * delta / length
-                    displacement += force
-
-                # Step 4: Apply displacement
-                pos[node] += displacement
-
-        return pos
-
-    def drawH(H, paths, node_positions, fixed_nodes = []):
-        colors = {i:np.array(cyclicColor(i))/255 for i in paths}
-        colors = {i:np.array([R,G,B]) for i,[B,G,R] in colors.items()}
-        colors_edges2 = {}
-        width2 = {}
-        # set colors to different chains. iteratively sets default color until finds match. slow but whatever
-        for u, v in H.edges():
-            for i, path in paths.items():
-                if u in path and v in path:
-
-                    colors_edges2[(u,v)] = colors[i]
-                    width2[(u,v)] = 3
-                    break
-                else:
-
-                    colors_edges2[(u,v)] = np.array((0.5,0.5,0.5))
-                    width2[(u,v)] = 1
-
-        nx.set_node_attributes(H, node_positions, 'pos')
-
-        pos         = nx.get_node_attributes(H, 'pos')
-        weight = {t_edge:0 for t_edge in H.edges()}
-        #pos = custom_spring_layout(H, pos=node_positions, fixed=fixed_nodes)
-        label_offset= 0.05
-        lable_pos   = {k: (v[0], v[1] + (-1)**(k[0]%2) * label_offset) for k, v in pos.items()}
-        labels      = {node: f"{node}" for node in H.nodes()}
-
-        fig, ax = plt.subplots(figsize=( 10,5))
-
-        nx.draw_networkx_edges( H, pos, alpha=0.7, width = list(width2.values()), edge_color = list(colors_edges2.values()))
-        nx.draw_networkx_nodes( H, pos, node_size = 30, node_color='lightblue', alpha=1)
-        #label_options = {"ec": "k", "fc": "white", "alpha": 0.3}
-        nx.draw_networkx_labels(H, pos = lable_pos, labels=labels, font_size=7)#, bbox=label_options
-    
-    
-        #nx.draw(H, pos, with_labels=False, node_size=50, node_color='lightblue',font_size=6,
-        #        font_color='black', edge_color=list(colors_edges2.values()), width = list(width2.values()))
-        plt.show()
-        a = 1
-
-    #drawH(H, paths, node_positions)
-
-    def extractNeighborsNext(graph, node, time_from_node_function):
-        neighbors = list(graph.neighbors(node))
-        return [n for n in neighbors if time_from_node_function(n) > time_from_node_function(node)]
-
-    def extractNeighborsPrevious(graph, node, time_from_node_function):
-        neighbors = list(graph.neighbors(node))
-        return [n for n in neighbors if time_from_node_function(n) < time_from_node_function(node)]
-
-    def closest_point(point, array):
-        diff = array- point
-        distance = np.einsum('ij,ij->i', diff, diff)
-        return np.argmin(distance), distance
-
-
-    # https://stackoverflow.com/questions/72109163/how-to-find-nearest-points-between-two-contours-in-opencv 
-    def closes_point_contours(c1,c2, step = 2):
-        # initialize some variables
-        min_dist = 4294967294
-        chosen_point_c2 = None
-        chosen_point_c1 = None
-        # iterate through each point in contour c1
-        for point in c1[::step]:
-            t = point[0][0], point[0][1] 
-            index, dist = closest_point(t, c2[:,0]) 
-            if dist[index] < min_dist :
-                min_dist = dist[index]
-                chosen_point_c2 = c2[index]
-                chosen_point_c1 = t
-        d_vec = tuple(np.diff((chosen_point_c1,chosen_point_c2[0]),axis=0)[0])
-        d_mag = np.int32(np.sqrt(min_dist))
-        return d_vec, d_mag , tuple(chosen_point_c1), tuple(chosen_point_c2[0])
-        # # draw the two points and save
-        # cv2.circle(img,(chosen_point_c1), 4, (0,255,255), -1)
-        # cv2.circle(img,tuple(chosen_point_c2[0]), 4, (0,255,255), -1)
-    segments2 = []
-    def segment_conn_end_start_points(connections, segment_list = segments2, nodes = 0):
-        if connections is not None:
-            if type(connections) == tuple:
-                start,end = connections
-                if nodes == 1:
-                    return (segment_list[start][-1],    segment_list[end][0])
-                else:
-                    return (segment_list[start][-1][0], segment_list[end][0][0])
-            if type(connections) == list:
-                if nodes == 1:
-                    return [(segment_list[start][-1],   segment_list[end][0]) for start,end in connections]
-                else:
-                    return [(segment_list[start][-1][0],segment_list[end][0][0]) for start,end in connections]
-            else:
-                return None
-
-    def interpolateMiddle2D(t_times_prev,t_times_next,t_traj_prev, t_traj_next, t_inter_times, s = 15, debug = 0, aspect = 'equal', title = "title"):
-
-        t_traj_concat   = np.concatenate((t_traj_prev,t_traj_next))
-        t_times         = t_times_prev + t_times_next
-        x, y            = t_traj_concat.T
-        spline, _       = interpolate.splprep([x, y], u=t_times, s=s,k=1)
-        IEpolation      = np.array(interpolate.splev(t_inter_times, spline,ext=0))
-        if debug:
-            t2D              = np.arange(t_times[0],t_times[-1], 0.1)
-            IEpolationD      = np.array(interpolate.splev(t2D, spline,ext=0))
-            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
-            axes.plot(*t_traj_prev.T, '-o', c= 'black')
-            axes.plot(*t_traj_next.T, '-o', c= 'black')
-            axes.plot(*IEpolationD, linestyle='dotted', c='orange')
-            axes.plot(*IEpolation, 'o', c= 'red')
-            axes.set_title(title)
-            axes.set_aspect(aspect)
-            axes.legend(prop={'size': 6})
-            plt.show()
-        return IEpolation.T
-    def interpolateMiddle2D_2(t_times,t_traj_concat,t_inter_times, s = 15, k = 1, debug = 0, aspect = 'equal', title = "title"):
-
-        #t_traj_concat   = np.concatenate((t_traj_prev,t_traj_next)) # Nx2 array
-        #t_times         = t_times_prev + t_times_next               # list of N integers
-        x, y            = t_traj_concat.T                           # two N lists
-        spline, _       = interpolate.splprep([x, y], u=t_times, s=s,k=k)
-        IEpolation      = np.array(interpolate.splev(t_inter_times, spline,ext=0)) # t_inter_times list of M elements
-        if debug:
-            t2D              = np.arange(t_times[0],t_times[-1], 0.1)
-            IEpolationD      = np.array(interpolate.splev(t2D, spline,ext=0))
-            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
-            axes.scatter(*t_traj_concat.T, c= 'black')
-            axes.plot(*IEpolationD, linestyle='dotted', c='orange')
-            axes.plot(*IEpolation, 'o', c= 'red')
-            axes.set_title(title)
-            axes.set_aspect(aspect)
-            axes.legend(prop={'size': 6})
-            plt.show()
-        return IEpolation.T                                          # IEpolation 2xM array, _.T Mx2 array
-
-    #def interpolateMiddle1D(t_conn, t_property_dict, segments2, t_inter_times, rescale = True, histLen = 5, s = 15, debug = 0, aspect = 'equal'):
-    def interpolateMiddle1D(t_times_prev,t_times_next,t_traj_prev, t_traj_next, t_inter_times, rescale = True, s = 15, debug = 0, aspect = 'equal', title = "title"):
-
-        t_traj_concat   = np.concatenate((t_traj_prev,t_traj_next))
-        t_times         = t_times_prev + t_times_next
-
-        if rescale:
-            minVal, maxVal = min(t_traj_concat), max(t_traj_concat)
-            K = max(t_times) - min(t_times)
-            # scale so min-max values are same width as min-max time width
-            t_traj_concat_rescaled = (t_traj_concat - minVal) * (K / (maxVal - minVal))
-            spl = interpolate.splrep(t_times, t_traj_concat_rescaled, k = 1, s = s)
-            IEpolation = interpolate.splev(t_inter_times, spl)
-            # scale back result
-            IEpolation = IEpolation / K * (maxVal - minVal) + minVal
-
-            if debug:
-                t2D              = np.arange(t_times[0],t_times[-1], 0.1)
-                IEpolationD      = interpolate.splev(t2D, spl)
-                IEpolationD      = IEpolationD / K * (maxVal - minVal) + minVal 
-
-        else:
-            spl = interpolate.splrep(t_times, t_traj_concat, k = 1, s = s)
-            IEpolation = interpolate.splev(t_inter_times, spl)
-
-        if debug:
-            if not rescale:
-                t2D              = np.arange(t_times[0],t_times[-1], 0.1)
-                IEpolationD      = interpolate.splev(t2D, spl)
-            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
-            axes.plot(t_times_prev, t_traj_prev, '-o', c= 'black')
-            axes.plot(t_times_next, t_traj_next, '-o', c= 'black')
-            axes.plot(t2D, IEpolationD, linestyle='dotted', c='orange')
-            axes.plot(t_inter_times, IEpolation, 'o', c= 'red')
-            axes.set_title(title)
-            axes.set_aspect(aspect)
-            axes.legend(prop={'size': 6})
-            plt.show()
-        return IEpolation.T
-
-    def interpolateMiddle1D_2(t_times,t_traj_concat, t_inter_times, rescale = True, s = 15, k = 1, debug = 0, aspect = 'equal', title = "title"):
-
-        if rescale:
-            minVal, maxVal = min(t_traj_concat), max(t_traj_concat)
-            K = max(t_times) - min(t_times)
-            # scale so min-max values are same width as min-max time width
-            t_traj_concat_rescaled = (t_traj_concat - minVal) * (K / (maxVal - minVal))
-            spl = interpolate.splrep(t_times, t_traj_concat_rescaled, k = k, s = s)
-            IEpolation = interpolate.splev(t_inter_times, spl)
-            # scale back result
-            IEpolation = IEpolation / K * (maxVal - minVal) + minVal
-
-            if debug:   # not really correct. wrote it for OG version with one data hole.
-                t2D              = np.arange(t_times[0],t_times[-1], 0.1)
-                IEpolationD      = interpolate.splev(t2D, spl)
-                IEpolationD      = IEpolationD / K * (maxVal - minVal) + minVal 
-
-        else:
-            spl = interpolate.splrep(t_times, t_traj_concat, k = k, s = s)
-            IEpolation = interpolate.splev(t_inter_times, spl)
-
-        if debug:
-            if not rescale:
-                t2D              = np.arange(t_times[0],t_times[-1], 0.1)
-                IEpolationD      = interpolate.splev(t2D, spl)
-            fig, axes = plt.subplots(1, 1, figsize=( 1*5,5), sharex=True, sharey=True)
-            axes.scatter(t_times, t_traj_concat, c= 'black')
-            axes.plot(t2D, IEpolationD, linestyle='dotted', c='orange')
-            axes.plot(t_inter_times, IEpolation, 'o', c= 'red')
-            axes.set_title(title)
-            axes.set_aspect(aspect)
-            axes.legend(prop={'size': 6})
-            plt.show()
-        return IEpolation.T
-
-
-
-
-    def lr_evel_perm_interp_data(lr_permutation_cases,lr_121_interpolation_centroids,lr_permutation_times,
-            lr_permutation_centroids_precomputed,lr_permutation_areas_precomputed,lr_permutation_mom_z_precomputed):
-        
-        t_all_traj      = {t_conn:[] for t_conn in lr_permutation_cases}
-        t_all_areas     = {t_conn:[] for t_conn in lr_permutation_cases}
-        t_all_moms      = {t_conn:[] for t_conn in lr_permutation_cases}
-        t_sols_c        = {t_conn:[] for t_conn in lr_permutation_cases}
-        t_sols_c_i      = {t_conn:[] for t_conn in lr_permutation_cases}
-        t_sols_a        = {t_conn:[] for t_conn in lr_permutation_cases}
-        t_sols_m        = {t_conn:[] for t_conn in lr_permutation_cases}
-
-        for t_conn in lr_permutation_cases:
-            t_c_interp = lr_121_interpolation_centroids[t_conn]
-            for t,t_perms in enumerate(lr_permutation_cases[t_conn]):
-                # dump sequences of areas and centroids for each possible trajectory
-                t_temp_c = []
-                t_temp_a = []     
-                t_temp_m = [] 
-                for t_time,t_perm in zip(lr_permutation_times[t_conn],t_perms):
-                    t_temp_c.append(lr_permutation_centroids_precomputed[t_conn][t_time][t_perm])
-                    t_temp_a.append(lr_permutation_areas_precomputed[t_conn][t_time][t_perm])
-                    t_temp_m.append(lr_permutation_mom_z_precomputed[t_conn][t_time][t_perm])
-                t_all_traj[t_conn].append(np.array(t_temp_c).reshape(-1,2))
-                t_all_areas[t_conn].append(np.array(t_temp_a))
-                t_all_moms[t_conn].append(np.array(t_temp_m))
-
-            #
-            t_c_inter_traj =  [t[1:-1]       for t in t_all_traj[t_conn]]
-            t_c_inter_traj_diff =  [t - t_c_interp      for t in t_c_inter_traj]
-            t_c_inter_traj_diff_norms = [np.linalg.norm(t, axis=1)  for t in t_c_inter_traj_diff]
-            t_c_i_traj_d_norms_means  = [np.mean(t) for t in t_c_inter_traj_diff_norms]
-            t_c_i_mean_min            = np.argmin(t_c_i_traj_d_norms_means)
-
-            # check displacement norms, norm means and stdevs
-            t_c_diffs = [np.diff(t,axis = 0)        for t in t_all_traj[t_conn]]
-            t_c_norms = [np.linalg.norm(t, axis=1)  for t in t_c_diffs]
-            t_c_means = np.mean(t_c_norms, axis=1)
-            t_c_stdevs= np.std( t_c_norms, axis=1)
-
-            t_c_mean_min    = np.argmin(t_c_means)
-            t_c_stdevs_min  = np.argmin(t_c_stdevs)
-
-
-            # same with areas
-            t_areas = np.array(t_all_areas[t_conn])
-            t_a_diffs = np.diff(t_areas, axis=1)
-            t_a_d_abs = np.array([np.abs(t) for t in t_a_diffs])
-            t_a_d_a_sum = np.sum(t_a_d_abs, axis = 1)
-            t_a_means = np.mean(t_a_d_abs, axis=1)
-            t_a_stdevs= np.std( t_a_d_abs, axis=1)
-
-            t_a_mean_min    = np.argmin(t_a_means)
-            t_a_stdevs_min  = np.argmin(t_a_stdevs)
-
-            # same with moments
-            t_moments = np.array(t_all_moms[t_conn])
-            t_m_diffs = np.diff(t_moments, axis=1)
-            t_m_d_abs = np.array([np.abs(t) for t in t_m_diffs])
-            t_m_d_a_sum = np.sum(t_m_d_abs, axis = 1)
-            t_m_means = np.mean(t_m_d_abs, axis=1)
-            t_m_stdevs= np.std( t_m_d_abs, axis=1)
-
-            t_m_mean_min    = np.argmin(t_m_means)
-            t_m_stdevs_min  = np.argmin(t_m_stdevs)
-
-            # save cases with least mean and stdev
-            t_sols_c[t_conn] += [t_c_mean_min,t_c_stdevs_min]
-            t_sols_c_i[t_conn] += [t_c_i_mean_min]
-            t_sols_a[t_conn] += [t_a_mean_min,t_a_stdevs_min]
-            t_sols_m[t_conn] += [t_m_mean_min,t_m_stdevs_min]
-        return t_sols_c, t_sols_c_i, t_sols_a, t_sols_m
-
-
-    def itertools_product_length(choices):
-        # product takes L = [[a1], [a2, b2], [a3]] and produces [[a1,a2,a3],[a1,b2,a3]]
-        # number of sequences is their individual choice product 1*2*1 = 2
-        sequences_length = 1
-        for sublist in choices:
-            sequences_length *= len(sublist)
-        return sequences_length
-
-    def combs_different_lengths(elements_list):
-        return sum([list(itertools.combinations(elements_list, r)) for r in range(1,len(elements_list)+1)],[])
-
-    def set_ith_elements_multilist(index, entries, *lists):
-        for lst, entry in zip(lists, entries):
-            lst[index] = entry
-        return
-
-
-    def set_ith_elements_multilist_at_depth(indices, entry, *nested_lists):
-        # The function set_elements_at_depth allows you to modify elements in
-        # nested lists at a specific depth using provided indices.
-        # DOES the following- from:
-        # t_segments_121_centroids[t_from_new][t_node]   = t_centroid
-        # t_segments_121_areas[    t_from_new][t_node]   = t_area
-        # t_segments_121_mom_z[    t_from_new][t_node]   = t_mom_z
-        # to:
-        # set_ith_elements_multilist_at_depth([t_from_new,t_node], [t_centroid,t_area,t_mom_z], t_segments_121_centroids,t_segments_121_areas,t_segments_121_mom_z)
-        
-        current_lists = nested_lists
-        for idx in indices[:-1]:
-            current_lists = [lst[idx] for lst in current_lists]
-        for lst, val in zip(current_lists, entry):
-            lst[indices[-1]] = val
-        return
-
-    def combine_dictionaries_multi(t_from_new, t_to, *dictionaries):
-        # DOES the following- from:
-        #t_segments_121_centroids[   t_from_new] = {**t_segments_121_centroids[   t_from_new],  **t_segments_121_centroids[   t_to]}
-        #t_segments_121_areas[       t_from_new] = {**t_segments_121_areas[       t_from_new],  **t_segments_121_areas[       t_to]}
-        #t_segments_121_mom_z[       t_from_new] = {**t_segments_121_mom_z[       t_from_new],  **t_segments_121_mom_z[       t_to]}
-        # to
-        #combine_dictionaries_multi(t_from_new,t_to,t_segments_121_centroids,t_segments_121_areas,t_segments_121_mom_z)
-        for dictionary in dictionaries:
-            dictionary[t_from_new] = {**dictionary[t_from_new], **dictionary[t_to]}
-        return
-
-    def lr_init_perm_precomputed(possible_permutation_dict, initialize_value):
-        return {t_conn: {t_time: 
-                                {t_perm:initialize_value for t_perm in t_perms}
-                         for t_time,t_perms in t_times_perms.items()}
-               for t_conn,t_times_perms in possible_permutation_dict.items()}
-
-    class AutoCreateDict:
-        # lr_init_perm_precomputed remake, so dict does not need initialization.
-        def __init__(self):
-            self.data = {}
-
-        def __getitem__(self, key):
-            if key not in self.data:
-                self.data[key] = AutoCreateDict()
-            return self.data[key]
-
-        def __setitem__(self, key, value):
-            self.data[key] = value
-        
-        def __contains__(self, key):
-            return key in self.data
-
-        def keys(self):
-            return self.data.keys()
-
-        def values(self):
-            return self.data.values()
-
-        def items(self):
-            return self.data.items()
-
-        def __repr__(self):
-            return repr(self.data)
-
-    def lr_weighted_sols(weights, t_sols, lr_permutation_cases):
-        lr_weighted_solutions = {t_conn:{} for t_conn in lr_permutation_cases}
-        lr_weight_c, lr_weight_c_i,lr_weight_a, lr_weight_m = weights
-        # set normalized weights for methods
-        lr_weights = np.array(weights)
-        lr_weight_c, lr_weight_c_i,lr_weight_a, lr_weight_m = lr_weights / np.sum(lr_weights)
-
-        t_sols_c, t_sols_c_i, t_sols_a, t_sols_m = t_sols
-        for t_conn in lr_permutation_cases:  # gather all best solutions
-            t_all_sols = []
-            t_all_sols += t_sols_c[t_conn]
-            t_all_sols += t_sols_c_i[t_conn]
-            t_all_sols += t_sols_a[t_conn]
-            t_all_sols += t_sols_m[t_conn]
-
-            t_all_sols_unique = sorted(list(set(t_sols_c[t_conn] + t_sols_c_i[t_conn] + t_sols_a[t_conn] + t_sols_m[t_conn])))  # take unique
-     
-            lr_weighted_solutions[t_conn] = {tID:0 for tID in t_all_sols_unique}
-            for tID in t_all_sols_unique:                       # go though solutions if unique ID is present there, add bonus reward
-                if tID in t_sols_c[   t_conn]:                  # if unique ID is in all sols, it will have a max reward of 1
-                    lr_weighted_solutions[t_conn][tID] += lr_weight_c
-                if tID in t_sols_c_i[   t_conn]:
-                    lr_weighted_solutions[t_conn][tID] += lr_weight_c_i
-                if tID in t_sols_a[   t_conn]:
-                    lr_weighted_solutions[t_conn][tID] += lr_weight_a
-                if tID in t_sols_m[   t_conn]:
-                    lr_weighted_solutions[t_conn][tID] += lr_weight_m
-            # normalize weights for IDs
-            r_total = np.sum([t_weight for t_weight in lr_weighted_solutions[t_conn].values()])
-            lr_weighted_solutions[t_conn] = {tID:round(t_val/r_total,3) for tID,t_val in lr_weighted_solutions[t_conn].items()}
-
- 
-    
-        lr_weighted_solutions_max = {t_conn:0 for t_conn in lr_permutation_cases}
-        lr_weighted_solutions_accumulate_problems = {}
-        for t_conn in lr_permutation_cases:                     # determing winning solution by max reward
-            t_weight_max = max(lr_weighted_solutions[t_conn].values())
-            t_keys_max = [tID for tID, t_weight in lr_weighted_solutions[t_conn].items() if t_weight == t_weight_max]
-            if len(t_keys_max) == 1:                            # only one has max
-                lr_weighted_solutions_max[t_conn] = t_keys_max[0]
-            else:                                               # multiple have even max reward.
-                # >>>>>>>>>>VERY CUSTOM: take sol with max elements in total <<<<<<<<<<<<<<
-                t_combs = [lr_permutation_cases[t_conn][tID] for tID in t_keys_max]
-                t_combs_lens = [np.sum([len(t_perm) for t_perm in t_path]) for t_path in t_combs]
-                t_sol = np.argmax(t_combs_lens) # picks first if there are same lengths
-                lr_weighted_solutions_max[t_conn] = t_keys_max[t_sol]
-                t_count = t_combs_lens.count(max(t_combs_lens))
-                if t_count > 1: lr_weighted_solutions_accumulate_problems[t_conn] = t_combs_lens # holds poistion of t_keys_max, != all keys
-                a = 1
-        return lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems
-
-    def unique_sort_list(arg, sort_function = lambda x: x):
-        return sorted(list(set(arg)), key = sort_function)
-
-    def perms_with_branches(t_to_branches,t_segments_new,t_times_contours, return_nodes = False):
-        # if branch segments are present their sequences will be continuous and present fully
-        # means soolution will consist of combination of branches + other free nodes.
-            
-        # take combination of branches
-        t_branches_perms = combs_different_lengths(t_to_branches)
-        #t_branches_perms = sum([list(itertools.combinations(t_to_branches, r)) for r in range(1,len(t_to_branches)+1)],[])
-
-        #t_values_drop = t_values.copy()
-        t_times_contours_drop = copy.deepcopy(t_times_contours)
-        t_contour_combs_perms = {}
-        t_branch_comb_variants = []
-        # drop all branches from choices. i will construct more different pools of contour combinations, where branches are frozen
-        for tID in t_to_branches: 
-            for t, (t_time, *t_subIDs) in enumerate(t_segments_new[tID]):
-                for t_subID in t_subIDs:
-                    t_times_contours_drop[t_time].remove(t_subID)
-        # pre compute non-frozen node combinations
-        for t_time,t_contours in t_times_contours_drop.items():
-            t_perms = combs_different_lengths(t_contours)
-            #t_perms = sum([list(itertools.combinations(t_contours, r)) for r in range(1,len(t_contours)+1)],[])
-            t_contour_combs_perms[t_time] = t_perms
-        # prepare combination of branches. intermediate combinations should be gathered and frozen
-        t_branch_nodes = defaultdict(list) # for return_nodes
-        for t, t_branch_IDs in enumerate(t_branches_perms):
-            t_branch_comb_variants.append(copy.deepcopy(t_contour_combs_perms))    # copy a primer.
-            t_temp = {}                                                            # this buffer will gather multiple branches and their ID together
-            for t_branch_ID in t_branch_IDs:
-                for t_time, *t_subIDs in t_segments_new[t_branch_ID]:
-                    if t_time not in t_temp: t_temp[t_time] = []
-                    t_temp[t_time] += list(t_subIDs)                              # fill buffer
-            for t_time, t_subIDs in t_temp.items():
-                t_branch_comb_variants[t][t_time] += [tuple(t_subIDs)]            # walk buffer and add frozen combs to primer
-                t_branch_nodes[t_time].append(tuple(t_subIDs))
-
-        #aa2 = [itertools_product_length(t_choices.values()) for t_choices in t_branch_comb_variants]
-        # do N different variants and combine them together. it should be much shorter, tested on case where 138k combinations with 2 branches were reduced to 2.8k combinations
-        out = sum([list(itertools.product(*t_choices.values())) for t_choices in t_branch_comb_variants],[])
-        if return_nodes:
-            out2 = {t_time:[] for t_time in t_times_contours.keys()}
-            for t_time, t_combs in t_contour_combs_perms.items():
-                if len(t_combs) > 0:
-                    for t_comb in t_combs:
-                        out2[t_time].append(t_comb)
-            for t_time, t_combs in t_branch_nodes.items():
-                for t_comb in t_combs:
-                    out2[t_time].append(t_comb)
-            return out, out2
-        else:
-            return out
-
-    def disperse_nodes_to_times(nodes):
-        t_perms = defaultdict(list)
-        for t, *t_subIDs in nodes:
-            t_perms[t].extend(t_subIDs)
-        return dict(t_perms) 
-
-    def graph_sub_isolate_connected_components(G, t_start, t_end, lr_time_active_segments, t_segments_new, t_segments_keep, ref_node = None):
-        # segments active during time period of interest
-        t_segments_active_all = set(sum([vals for t,vals in lr_time_active_segments.items() if t_start <= t <= t_end],[])) 
-        # which segments (and their nodes) to drop from subgraph
-        t_segments_drop = [t for t in t_segments_active_all if t not in t_segments_keep]
-
-        t_nodes_drop    = sum([t_segments_new[tID] for tID in t_segments_drop],[])
-        t_nodes_keep    = [node for node in G.nodes() if t_start <= node[0] <= t_end and node not in t_nodes_drop]
-            
-        t_subgraph = G.subgraph(t_nodes_keep)
-        connected_components_unique = extract_graph_connected_components(t_subgraph.to_undirected(),  lambda x: (x[0], *x[1:]))
-        if ref_node == None:
-            return connected_components_unique
-        else:
-            sol = [t_cc for t_cc in connected_components_unique if ref_node in t_cc] # merge first node
-            assert len(sol) == 1, "inspect path relates to multiple clusters, did not expect it ever to occur"
-            return sol[0]
-
-    def set_custom_node_parameters(graph, contour_data, nodes_list, calc_hull = 1):
-        # set params for graph nodes. if calc_hull = 0, then contour_data is hull dict
-        # otherwise contour_data is contour dict
-        for node in nodes_list:
-            
-            if calc_hull:
-                t_time, *t_subIDs = node
-                t_hull  = cv2.convexHull(np.vstack([contour_data[t_time][subID] for subID in t_subIDs]))
-            else:
-                t_time, t_ID      = node
-                t_hull = contour_data[t_time][t_ID]
-
-            t_centroid, t_area, t_mom_z     = centroid_area_cmomzz(t_hull)
-
-            graph.nodes[node]["time"]       = int(t_time)
-            graph.nodes[node]["centroid"]   = t_centroid
-            graph.nodes[node]["area"]       = t_area
-            graph.nodes[node]["moment_z"]   = t_mom_z
-        return 
-
-    def find_key_by_value(my_dict, value_to_find):
-        for key, value in my_dict.items():
-            if value == value_to_find:
-                return key
-        # If the value is not found, you can return a default value or raise an exception.
-        # In this example, I'm returning None.
-        return None
-    
-    def find_common_intervals(data):
-        element_ids = set()
-        active_times = defaultdict(set)
-
-        for time, elements in data.items():
-            for element in elements:
-                element_ids.add(element)
-                active_times[element].add(time)
-
-        common_times_dict = defaultdict(list)
-
-        for pair in itertools.combinations(element_ids, 2):
-            element_1, element_2 = pair
-            common_times = active_times[element_1].intersection(active_times[element_2])
-        
-            if common_times:
-                common_times_dict[pair] = list(common_times)
-
-        return common_times_dict
 # =========== BUILD OUTPUT FOLDERS =============//
 inputOutsideRoot            = 1                                                  # bmp images inside root, then input folder hierarchy will
 mainInputImageFolder        = r'.\inputFolder'                                   # be created with final inputImageFolder, else custom. NOT USED?!?
@@ -1279,9 +22,23 @@ if not os.path.exists(mainOutputFolder): os.mkdir(mainOutputFolder)
 sys.path.append( os.path.join(mainOutputFolder,'modules'))
 #from post_tests.modules.cropGUI import cropGUI
 from cropGUI import cropGUI
+
 from graphs_brects import (overlappingRotatedRectangles, graphUniqueComponents)
+
 from graph_visualisation_01 import (draw_graph_with_height)
 
+from image_processing import (convertGray2RGB, undistort)
+
+from bubble_params import (centroid_area_cmomzz, centroid_area)
+
+from graphs_general import (extractNeighborsNext, extractNeighborsPrevious, graph_extract_paths, extract_graph_connected_components,
+                            find_segment_connectivity_isolated, for_graph_plots, graph_sub_isolate_connected_components, set_custom_node_parameters)
+
+from interpolation import (interpolate_trajectory, interpolate_find_k_s, extrapolate_find_k_s, interpolateMiddle2D_2, interpolateMiddle1D_2)
+
+from misc import (cyclicColor, closes_point_contours, timeHMS, modBR, rect2contour, combs_different_lengths, unique_sort_list, disperse_nodes_to_times, 
+                  find_key_by_value, CircularBuffer, AutoCreateDict, find_common_intervals, unique_active_segments, lr_reindex_masters, getNodePos,
+                  getNodePos2, segment_conn_end_start_points, lr_evel_perm_interp_data, lr_weighted_sols, perms_with_branches)
 
 mainOutputSubFolders =  ['HFS 200 mT Series 4','sccm100-meanFix', "00001-05000"]
 for folderName in mainOutputSubFolders:     
@@ -1371,7 +128,8 @@ if exportArchive == 1:
         # === draw crop rectangle using gui. module only works with img link. so i save it on disk
         # open via GUI, get crop rectangle corners and draw red mask on top and save it. ===
         print(f"No crop mask in {mainOutputFolder} folder!, creating mask : {cropMaskName}.png")
-        cv2.imwrite(cropMaskPath, convertGray2RGB(undistort(cv2.imread(imageLinks[0],0))))
+        mapXY = (np.load('./mapx.npy'), np.load('./mapy.npy'))
+        cv2.imwrite(cropMaskPath, convertGray2RGB(undistort(cv2.imread(imageLinks[0],0), mapXY)))
         p1,p2 = cropGUI(cropMaskPath)
         cropMask = cv2.imread(cropMaskPath,1)
         cv2.rectangle(cropMask, p1, p2,[0,0,255],-1)
@@ -1397,14 +155,15 @@ if exportArchive == 1:
     # ---------------------------------------------------------------------------------------------------
     print(f"{timeHMS()}: Processing and saving archive data on drive...")
 
-    numImages = min(dataNum,len(imageLinks)-startFrom)
+    numImages   = min(dataNum,len(imageLinks)-startFrom)
     if rotateImageBy % 2 == 0 and rotateImageBy != -1: W,H = H,W                       # for cv2.XXX rotation commands
     dataArchive = np.zeros((numImages,H,W),np.uint8)
+    mapXY       = (np.load('./mapx.npy'), np.load('./mapy.npy'))
     for i,j in tqdm(enumerate(range(startFrom-1, numImages))):
         if rotateImageBy != -1:
-            dataArchive[i]    = cv2.rotate(undistort(cv2.imread (imageLinks[j],0))[Y:Y+H, X:X+W],rotateImageBy)
+            dataArchive[i]    = cv2.rotate(undistort(cv2.imread (imageLinks[j],0), mapXY)[Y:Y+H, X:X+W],rotateImageBy)
         else:
-            dataArchive[i]    = undistort(cv2.imread (imageLinks[j],0))[Y:Y+H, X:X+W]
+            dataArchive[i]    = undistort(cv2.imread (imageLinks[j],0), mapXY)[Y:Y+H, X:X+W]
     print(f"{timeHMS()}: Processing and saving archive data on drive...saving compressed")
     np.savez_compressed(archivePath,dataArchive)
     #with open(archivePath, 'wb') as handle: 
@@ -1899,7 +658,7 @@ G.add_nodes_from(allIDs)
 G.add_edges_from(g0_pairConnections2)
 
 
-set_custom_node_parameters(G, g0_contours_hulls, G.nodes(), calc_hull = 0)
+set_custom_node_parameters(G, g0_contours_hulls, G.nodes(), None, calc_hull = 0) # pre define params and init owner to None 
 
 for t_edge in g0_edges_merge_strong:                                          # assign previously acquired 2 bubble merge 
     G[t_edge[0]][t_edge[1]]['edge_merge_strong'] = True                       # edge of high of high likelihood
@@ -1963,7 +722,11 @@ a = 1
 # Draw extracted segments with bold lines and different color.
 segments2 = [a for _,a in segments2.items() if len(a) > 0]
 segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
-paths = {i:vals for i,vals in enumerate(segments2)}
+#paths = {i:vals for i,vals in enumerate(segments2)}
+
+for t,t_segment in enumerate(segments2): # assign owners params
+    for t_node in t_segment:
+        G.nodes[t_node]["owner"] = t
 
 lr_allNodesSegm = sum(segments2,[])
 lr_missingNodes = [node for node in allIDs if node not in lr_allNodesSegm] # !! may be same as &skipped !!
@@ -2489,7 +1252,7 @@ a = 1
 # join segments into one.
 lr_zp_redirect = {tID: tID for tID in range(len(segments2))}
 for t_conn,t_dict in t_conn_121_zp_contour_combs.items():
-    t_from, t_to        = t_conn
+    t_from, t_to        = t_conn                                                    # no inheritance is yet needed
     t_times             = [t for t,t_subIDs in t_dict.items() if len(t_subIDs) > 1]
     assert len(t_times) == 1, "unexpected case. multiple times, need to insert nodes in correct order"
     t_nodes_composite   = [tuple([t] + t_dict[t]) for t in t_times]                 # join into one node (composit)
@@ -2503,14 +1266,19 @@ for t_conn,t_dict in t_conn_121_zp_contour_combs.items():
     t_nodes_next        =   [t_node for t_node in segments2[t_to] if t_node not in t_nodes_solo]
     t_edges             +=  [(t_nodes_composite[0]  , t_nodes_next[0])      ]
     segments2[t_from]   +=  t_nodes_next
-    segments2[t_to]     = []
+    
 
     # modify graph: remove solo IDs, add new composite nodes. add parameters to new nodes
     G.remove_nodes_from(t_nodes_solo) 
     G.add_edges_from(t_edges)
 
-    set_custom_node_parameters(G, g0_contours, t_nodes_composite, calc_hull = 1)
-    
+    set_custom_node_parameters(G, g0_contours, t_nodes_composite, t_from, calc_hull = 1)
+
+    for t_node in t_nodes_next: # t_nodes_prev + 
+            G.nodes[t_node]["owner"] =  t_from
+
+    segments2[t_to]     = []
+
     # modify segment view graph.
     t_successors   = extractNeighborsNext(G2, t_to, lambda x: G2.nodes[x]["t_start"])
     
@@ -2927,10 +1695,13 @@ if 1 == 1:
             t_segments_new[t_from_new] += t_nodes_intermediate
             t_segments_new[t_from_new] += segments2[t_to]
 
+
     
             # fill centroid, area and momement of innertia zz missing for intermediate segment
-            set_custom_node_parameters(G, g0_contours, t_nodes_intermediate, calc_hull = 1)
-    
+            set_custom_node_parameters(G, g0_contours, t_nodes_intermediate, t_from_new, calc_hull = 1)
+
+            for t_node in segments2[t_to]:
+                G.nodes[t_node]["owner"] = t_from_new
             # wipe data if t_from is inherited
             if t_from_new != t_from:
                 t_segments_new[t_from] = []
@@ -3237,7 +2008,7 @@ for t_ID in t_segments_IDs_relevant:
         h_interp_len_max2 = trajectory.shape[0]                     # traj is very small
 
     if t_do_k_s_anal:                                               # test differet k and s combinations and gather inerpolation history.
-        t_comb_sol, errors_sol_diff_norms_all = extrapolate_find_k_s(trajectory, time, t_k_s_combs, h_interp_len_max2, h_start_point_index2, debug = 0, debug_show_num_best = 2)
+        t_comb_sol, errors_sol_diff_norms_all = extrapolate_find_k_s(trajectory, time, t_k_s_combs, k_all, h_interp_len_max2, h_start_point_index2, debug = 0, debug_show_num_best = 2)
         t_segment_k_s_diffs[t_ID] = errors_sol_diff_norms_all[t_comb_sol]
         t_segment_k_s[      t_ID] = t_comb_sol
     else:                                                           
@@ -3383,11 +2154,12 @@ if  1 == 1:
             t_nodes_intermediate = list(sorted(t_nodes_new, key = lambda x: x[0]))[1:-1]
             t_segments_new[t_from_new] += t_nodes_intermediate
             t_segments_new[t_from_new] += t_segments_new[t_to]
-
     
             # fill centroid, area and momement of innertia zz missing for intermediate segment
-            set_custom_node_parameters(G, g0_contours, t_nodes_intermediate, calc_hull = 1)
+            set_custom_node_parameters(G, g0_contours, t_nodes_intermediate, t_from_new, calc_hull = 1)
     
+            for t_node in t_segments_new[t_to]:
+                G.nodes[t_node]["owner"] = t_from_new
             # copy data from inherited
     
             # wipe data if t_from is inherited
@@ -3630,6 +2402,7 @@ if 1 == 1:
         
                 t_nodes_all += [t_segments_new[t_from_new][-1]]                 # (*) last old may have multiple connections not
                                                                             # covered by best choices in sol-n, so they are will stay.
+                t_nodes_new_sides = t_segments_new[t_from_new][-2:] + t_nodes_new#  take nodes from -2 to end of segment, why -2 see (*)
                 # find end edges to reconnect into graph
                 # if last node is composite of solo nodes, each might have its edges
                 t_time_end, *t_node_subIDs =  t_nodes_new[-1]               # grab subIDs and recover solo nodes. i do this because
@@ -3641,18 +2414,23 @@ if 1 == 1:
 
                 t_edges_next_new = [(t_nodes_new[-1] , t_node) for t_node in t_node_last_solo_IDS_to] # composite to old next neighbors
 
+                t_common_nodes = set(t_nodes_all).intersection(set(t_nodes_new_sides))
+                # store their parameters
+                t_node_params = {t:dict(G.nodes[t]) for t in t_common_nodes}
+
                 G.remove_nodes_from(t_nodes_all)                            # remove all solo nodes and replace them with composite
             
-                t_nodes_new_sides = t_segments_new[t_from_new][-2:] + t_nodes_new#  take nodes from -2 to end of segment, why -2 see (*)
-
                 t_edges_sequence = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
             
                 G.add_edges_from(t_edges_sequence)                          # from sequence of nodes create edges -> auto nodes
                 G.add_edges_from(t_edges_next_new)                          # add future edges to solo nodes.
 
+                for t,t_params in t_node_params.items():
+                    G.add_node(t, **t_params)
+
                 t_segments_new[t_from_new] += t_nodes_new                       # append resolved to segments.
 
-                set_custom_node_parameters(G, g0_contours, t_nodes_new, calc_hull = 1)
+                set_custom_node_parameters(G, g0_contours, t_nodes_new, t_from_new, calc_hull = 1)
                 
                 G2.nodes()[t_from_new]["t_end"] = t_segments_new[t_from_new][-1][0]
 
@@ -3687,6 +2465,7 @@ if 1 == 1:
                 # restore deleted parameters
                 for t,t_params in t_node_params.items():
                     G.add_node(t, **t_params)
+
                 # determine t_from masters index, send that segment intermediate nodes and second segment
                 # if t_from is its own master, it still works, check it with simple ((0,1),(1,2)) and {0:0,1:0,2:0}
                 
@@ -3695,7 +2474,11 @@ if 1 == 1:
                 t_segments_new[t_from_new] += t_segments_new[t_to]
     
                 # fill centroid, area and momement of innertia zz missing for intermediate segment
-                set_custom_node_parameters(G, g0_contours, t_nodes_intermediate, calc_hull = 1)
+                set_custom_node_parameters(G, g0_contours, t_nodes_intermediate, t_from_new, calc_hull = 1)
+
+                for t_node in t_segments_new[t_to]:
+                    G.nodes[t_node]["owner"] = t_from_new
+
                 # wipe data from t_to anyway
                 t_segments_new[t_to] = []
 
@@ -3707,12 +2490,14 @@ if 1 == 1:
 
                 lr_C1_condensed_connections_relations[t_to] = t_from_new
                 a = 1
-
+aaa = defaultdict(set)
+for t, t_segment in enumerate(t_segments_new):
+    for t_node in t_segment:
+        aaa[t].add(G.nodes[t_node]["owner"])
 tt = []
 for t_node in G.nodes():
     if "time" not in G.nodes[t_node]:
-        set_custom_node_parameters(G, g0_contours, [t_node], calc_hull = 1)
-        
+        set_custom_node_parameters(G, g0_contours, [t_node], None, calc_hull = 1)
         tt.append(t_node)
 print(f'were missing: {tt}')
 #for_graph_plots(G, segs = t_segments_new)
@@ -3758,7 +2543,7 @@ for t_ID in t_unresolved_new:      # add new segments to end of old storage
     G2.add_node(t_new_ID)
     G2.nodes()[t_new_ID]["t_start"] = t_segments_new[t_new_ID][0][0]
     G2.nodes()[t_new_ID]["t_end"]   = t_segments_new[t_new_ID][-1][0]
-    set_custom_node_parameters(G, g0_contours_hulls, t_segments_fin[t_ID], calc_hull = 0) # straight hulls since solo nodes 
+    set_custom_node_parameters(G, g0_contours_hulls, t_segments_fin[t_ID], t_new_ID, calc_hull = 0) # straight hulls since solo nodes 
     #for t_time, *t_subIDs in  t_segments_fin[t_ID]:
     #    lr_time_active_segments[t_time].append(t_new_ID)
 
@@ -3769,39 +2554,42 @@ for k,t_segment in enumerate(t_segments_new):
     for t in t_times:
         lr_time_active_segments[t].append(k)
 
-for t,t_segment in enumerate(t_segments_new):
-    for t_node in t_segment:
-        G.nodes[t_node]["owner"] = t
-for t_node in G.nodes():
-    if "owner" not in G.nodes[t_node]: G.nodes[t_node]["owner"] = None
+#for t,t_segment in enumerate(t_segments_new):
+#    for t_node in t_segment:
+#        G.nodes[t_node]["owner"] = t
+#for t_node in G.nodes():
+#    if "owner" not in G.nodes[t_node]: G.nodes[t_node]["owner"] = None
 # update connectivity between segments
-# for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # for_graph_plots(G, segs = t_segments_fin)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-for t_ID in fin_additional_segments_IDs:
-    t_DT = 20
-    #t_t_min = G2.nodes[t]["t_start" ] - 20
-    t_t_max = G2.nodes[t_ID]["t_end"   ] 
-    t_start = t_t_max + 1                # start
+
+
+
+
+for t_ID in fin_additional_segments_IDs: # check left and right connected neighbors. path only though free nodes.
+    t_DT = 20                            # first subgraph contains nodes up to, but not including source (*)
+                                         # as to drop segments that end in same time, so connections are not made in reverse. 
+    t_t_min = G2.nodes[t_ID]["t_start" ]
+    t_start = t_t_min - t_DT                
+    t_end   = t_t_min - 1
+    t_add_custom_nodes = t_segments_new[t_ID][:1]    # one source node is added to compensate (*)
+    t_node_from = t_add_custom_nodes[0]
+    t_segments_active_all = unique_active_segments(t_start, t_end, lr_time_active_segments) # put outside function
+    
+    t_conns_left = find_segment_connectivity_isolated(G, t_start, t_end, t_add_custom_nodes, t_segments_active_all, t_ID, source_node = t_node_from, target_nodes = None)
+    
+    t_t_max = G2.nodes[t_ID]["t_end"] 
+    t_start = t_t_max + 1                
     t_end   = t_t_max + t_DT
     t_add_custom_nodes = t_segments_new[t_ID][-1:]
     t_node_from = t_add_custom_nodes[0]
-    # segments active during time period of interest
-    t_segments_active_all = set(sum([vals for t,vals in lr_time_active_segments.items() if t_start <= t <= t_end],[]))  # put outside function
+    t_segments_active_all = unique_active_segments(t_start, t_end, lr_time_active_segments)  # put outside function
     
-    t_nodes_keep    =   [node for node in G.nodes() if t_start <= G.nodes[node]["time"] <= t_end]
-    t_nodes_keep    +=  t_add_custom_nodes
-    t_subgraph_all  =   G.subgraph(t_nodes_keep)   # big subgraph, holds all nodes inside limited interval of time.
-    for t_ID_test in t_segments_active_all - {t_ID}:
-        t_nodes_keep    = [node for node in t_subgraph_all.nodes() if G.nodes[t_node]["owner"] in t_segments_keep or G.nodes[t_node]["owner"] == None]
-        t_subgraph = G.subgraph(t_nodes_keep)
-        t_node_to = t_segments_new[t_ID_test][0]
-        hasPath = nx.has_path(G.to_undirected(), source=t_node_from, target=t_node_to)
-        if hasPath:
-            G2.add_edge(t_ID,t_ID_test)
+    t_conns_right = find_segment_connectivity_isolated(G, t_start, t_end, t_add_custom_nodes, t_segments_active_all, t_ID, source_node = t_node_from, target_nodes = None)
 
-
-            a = 1
+    G2.add_edges_from(t_conns_left + t_conns_right)
+    a = 1
 
 # ===============================================================================================
 # ============== Final passes. Find k and s params for interpolating holes ======================
@@ -3993,7 +2781,7 @@ for t_time,*t_subIDs in t_stray_node_replace_dict.values():
         t_nodes_remove.append((t_time,t_subID))
 
 G.remove_nodes_from(t_nodes_remove) 
-set_custom_node_parameters(G, g0_contours, t_stray_node_replace_dict.values(), calc_hull = 1)
+set_custom_node_parameters(G, g0_contours, t_stray_node_replace_dict.values(), None, calc_hull = 1)
 
 print(f'modified following stray nodes (old-new): {t_stray_node_replace_dict}')
 a = 1

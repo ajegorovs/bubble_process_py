@@ -510,7 +510,7 @@ if 1 == -1:
 
 
         return common_times_dict
-
+if 1 == 1:
     from collections import defaultdict
 
     def find_common_intervals(data):
@@ -548,9 +548,7 @@ if 1 == -1:
         138: [3],
     }
 
-    import random
 
-    import random
     from collections import defaultdict
 
     import random
@@ -568,34 +566,69 @@ if 1 == -1:
         return dict(data)
 
     test_data = generate_test_data(100, 220, 10)
-    print(test_data)
-    def test1():
-        return find_common_intervals(test_data)
+    if 1 == -1:
+        print(test_data)
+        def test1():
+            return find_common_intervals(test_data)
 
-    def test2():
-        return find_common_intervals2(test_data)
+        def test2():
+            return find_common_intervals2(test_data)
 
-    time_method1 = timeit.timeit(test1, number=1000)
-    time_method2 = timeit.timeit(test2, number=1000)
+        time_method1 = timeit.timeit(test1, number=1000)
+        time_method2 = timeit.timeit(test2, number=1000)
 
-    print("Method 1 execution time:", time_method1)
-    print("Method 2 execution time:", time_method2)
+        print("Method 1 execution time:", time_method1)
+        print("Method 2 execution time:", time_method2)
 
-    # Find common intervals for each element pair
-    common_intervals = find_common_intervals(data)
+        # Find common intervals for each element pair
+        common_intervals = find_common_intervals(data)
 
-    print(f'common_intervals : {common_intervals}')
+        print(f'common_intervals : {common_intervals}')
 
-import numpy as np
+    if 1 == 1:
+        def get_active_segments_at_time_interval(start, end, segments_active_dict):
 
-arr = np.array([2, 5, 1, 5, 7, 1, 3])
+            result = set(sum([vals for t,vals in segments_active_dict.items() if start <= t <= end],[]))
+            return result
 
-# Find the indices of the smallest elements
-indices = np.where(arr == arr.min())[0]
+        def get_active_segments_at_time_interval2(start, end, segments_active_dict):
+            store = []
+            for t, vals in segments_active_dict.items():
+                if start <= t <= end:
+                    store += vals
+            result = set(store)
+            return result
 
-print(indices)
+        def get_active_segments_at_time_interval3(start, end, segments_active_dict):
+            result = set()
+            for t, vals in segments_active_dict.items():
+                if start <= t <= end:
+                    result.update(vals)
+            return result
+            #result = np.unique(sum([vals for t,vals in segments_active_dict.items() if start <= t <= end],[]))
+            #result = set(val for t, vals in segments_active_dict.items() if start <= t <= end for val in vals)
 
+            #result = set()
+            #for t, vals in segments_active_dict.items():
+            #    if start <= t <= end:
+            #        result.update(vals)
+            return result
+        
+        def test1():
+            return get_active_segments_at_time_interval(50, 160, test_data)
 
+        def test2():
+            return get_active_segments_at_time_interval2(50, 160, test_data)
+        def test3():
+            return get_active_segments_at_time_interval3(50, 160, test_data)
+
+        time_method1 = timeit.timeit(test1, number=10000)
+        time_method2 = timeit.timeit(test2, number=10000)
+        time_method3 = timeit.timeit(test3, number=10000)
+
+        print("Method 1 execution time:", time_method1)
+        print("Method 2 execution time:", time_method2)
+        print("Method 3 execution time:", time_method3)
 
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key

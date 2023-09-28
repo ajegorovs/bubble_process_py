@@ -10,7 +10,6 @@ from tqdm import tqdm
 
 # import from custom sub-folders are defined bit lower
 #from imageFunctionsP2 import (overlappingRotatedRectangles,graphUniqueComponents)
-# functions below
 
 # =========== BUILD OUTPUT FOLDERS =============//
 inputOutsideRoot            = 1                                                  # bmp images inside root, then input folder hierarchy will
@@ -25,7 +24,7 @@ from cropGUI import cropGUI
 
 from graphs_brects import (overlappingRotatedRectangles, graphUniqueComponents)
 
-from graph_visualisation_01 import (draw_graph_with_height)
+#from graph_visualisation_01 import (draw_graph_with_height)
 
 from image_processing import (convertGray2RGB, undistort)
 
@@ -492,7 +491,7 @@ if 1 == -1:
     # Add labels and title
     plt.xlabel('Height')
     plt.ylabel('Frequency')
-    plt.title('Histogram of Animal Heights')
+    plt.title('Histogram of Animal Heights')      # LOL
 
     # Show the plot
    #plt.show()
@@ -501,7 +500,7 @@ if 1 == -1:
 a = 1
 
 # analyze single strand
-doX = 60#56#20#18#2#84#30#60#30#20#15#2#1#60#84
+doX = 30#60#56#20#18#2#84#30#60#30#20#15#2#1#60#84
 lessRough_all = connected_components_unique.copy()
 test = connected_components_unique[doX]
 # find times where multiple elements are connected (split/merge)
@@ -2503,7 +2502,7 @@ print(f'were missing: {tt}')
 #for_graph_plots(G, segs = t_segments_new)
 
 # ===============================================================================================
-# ============== Final passes. finding new straing segments after refinement ====================
+# ============== Final passes. finding new straight segments after refinement ====================
 # ===============================================================================================
 # WHY: after merge extension and mixed extension there may be branches left over in interaction area
 # HOW: analyze recent graph for straight segments and determine which segments are different from old
@@ -2554,18 +2553,12 @@ for k,t_segment in enumerate(t_segments_new):
     for t in t_times:
         lr_time_active_segments[t].append(k)
 
-#for t,t_segment in enumerate(t_segments_new):
-#    for t_node in t_segment:
-#        G.nodes[t_node]["owner"] = t
-#for t_node in G.nodes():
-#    if "owner" not in G.nodes[t_node]: G.nodes[t_node]["owner"] = None
-# update connectivity between segments
-for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+# for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # for_graph_plots(G, segs = t_segments_fin)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-
-
-
+# ===============================================================================================
+# ============== Final passes. new straight. update connectivity ====================
+# ===============================================================================================
 
 for t_ID in fin_additional_segments_IDs: # check left and right connected neighbors. path only though free nodes.
     t_DT = 20                            # first subgraph contains nodes up to, but not including source (*)
@@ -2786,7 +2779,92 @@ set_custom_node_parameters(G, g0_contours, t_stray_node_replace_dict.values(), N
 print(f'modified following stray nodes (old-new): {t_stray_node_replace_dict}')
 a = 1
 
-for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+# for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+
+# ===============================================================================================
+# ===============================================================================================
+# ================================ Final passes. recompute split/merge/mixed info ===============================
+# ===============================================================================================
+
+# create new directed graph so its easier to analyze events. add dist parameter, which will be useful 
+# to decide whether to extend segment
+
+G2_dir = nx.DiGraph()
+
+fin_seg_conns_forward = defaultdict(dict)
+fin_seg_conns_backward = defaultdict(dict)
+for t_node in G2.nodes():
+    G2_dir.add_node(t_node, **dict(G2.nodes[t_node]))
+    for t_targ in G2.neighbors(t_node):
+        if G2.nodes[t_node]["t_start"] > G2.nodes[t_targ]["t_end"]:
+            t_attr = {'dist': G2.nodes[t_node]["t_start"] - G2.nodes[t_targ]["t_end"]}
+            G2_dir.add_edge(t_targ, t_node,  **t_attr)
+        else:
+            t_attr = {'dist': G2.nodes[t_targ]["t_start"] - G2.nodes[t_node]["t_end"]}
+            G2_dir.add_edge(t_node, t_targ,  **t_attr)
+    a = 1
+
+# analyze state of each segments start & end. info is one-sided, does not represent true events
+for t_node in G2_dir.nodes():
+    t_succ = list(G2_dir.successors(t_node))
+    if len(t_succ) == 0 :
+        G2_dir.nodes[t_node]["to_state"] = 'end'
+    elif len(t_succ) == 1: 
+        G2_dir.nodes[t_node]["to_state"] = 'solo'
+    else:
+        G2_dir.nodes[t_node]["to_state"] = 'split'
+
+    t_pred = list(G2_dir.predecessors(t_node))
+    if len(t_pred) == 0 :
+        G2_dir.nodes[t_node]["from_state"] = 'start'
+    elif len(t_pred) == 1: 
+        G2_dir.nodes[t_node]["from_state"] = 'solo'
+    else:
+        G2_dir.nodes[t_node]["from_state"] = 'merge'
+
+
+# now we consider edges as parts of proper events. compare two ends and their view of events. still not competely true
+for t_conn in G2_dir.edges():
+    t_from, t_to = t_conn
+    if G2_dir.nodes[t_from]["to_state"] == 'solo':
+        if G2_dir.nodes[t_to]["from_state"] == 'solo':
+            G2_dir.edges[t_conn]['event'] = 'solo'
+        elif G2_dir.nodes[t_to]["from_state"] == 'merge':
+            G2_dir.edges[t_conn]['event'] = 'merge'
+        else: assert 1 == -1, 'not encountered'
+    elif G2_dir.nodes[t_from]["to_state"] == 'split':
+        if G2_dir.nodes[t_to]["from_state"] == 'solo':
+            G2_dir.edges[t_conn]['event'] = 'split'
+        elif G2_dir.nodes[t_to]["from_state"] == 'merge':
+            G2_dir.edges[t_conn]['event'] = 'mixed'
+        else: assert 1 == -1, 'not encountered'
+
+# if one edge in event is mixed split-merge, all edges in event should be marked as mixed
+t_events_mixed = [t_conn for t_conn in G2_dir.edges() if G2_dir.edges[t_conn]['event'] == 'mixed']
+assert len(t_events_mixed) == 0, 'havent yet dealt with mixed events at this stage'
+for t_conn in t_events_mixed:
+    t_from, t_to = t_conn
+    t_successors = list(G2_dir.successors(t_from))
+    t_predecessors = list(G2_dir.predecessors(t_to))
+    for t_succ in t_successors:
+        G2_dir.edges[(t_from, t_succ)]['event'] = 'mixed'
+    for t_pred in t_predecessors:
+        G2_dir.edges[(t_pred, t_to  )]['event'] = 'mixed'
+
+fin_events_dict = defaultdict(dict)
+
+
+a = 1
+
+
+# for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+
+
+
+
+
 
 if 1 == 1:
     binarizedMaskArr = np.load(binarizedArrPath)['arr_0']

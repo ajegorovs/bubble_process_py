@@ -1,8 +1,12 @@
 TODO:
-27.09.23 implement final pass / extension of segment start/end 
-27.09.23 extension of split branches havent been done yet. no test data
+27.09.23 (major) implement final pass / extension of segment start/end 
+
+28.09.23 (minor)	not sure if "rudamentary split/merge analysis based on nearest neighbor connectedness symmetry" is needed. might anaylze unidirected graph degrees instead
+					although to differentiate splits and merges, have to understand time directions
+
+29.09.23 (major) (# search for conflict nodes for extended branches) method needs testing. currently its on trigger.
+29.09.23 (# search for conflict nodes for extended branches) method needs further develpment in cases of multiple solutions.
 
 
-28.09.23	not sure if "rudamentary split/merge analysis based on nearest neighbor connectedness symmetry" is needed. might anaylze unidirected graph degrees instead
-			although to differentiate splits and merges, have to understand time directions
 DONE:
+29.09.23 - 27.09.23 extension of split branches havent been done yet. no test data

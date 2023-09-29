@@ -90,6 +90,13 @@ def disperse_nodes_to_times(nodes):
         t_perms[t].extend(t_subIDs)
     return dict(t_perms)
 
+def disperse_composite_nodes_into_solo_nodes(composite_node_list):
+    output = set()
+    for time, *subIDs in composite_node_list:
+        output.update([(time,subID) for subID in subIDs])
+    return output
+
+
 def find_key_by_value(my_dict, value_to_find):
     for key, value in my_dict.items():
         if value == value_to_find:
@@ -114,6 +121,27 @@ class CircularBuffer:
 
     def extend(self, list):
         self.buffer.extend(list)
+
+    def get_data(self):
+        return np.array(self.buffer)
+
+class CircularBufferReverse:
+    def __init__(self, size, initial_data=None):
+        self.size = size
+        self.buffer = deque(maxlen=size)
+        if initial_data is not None:
+            self.extend(initial_data)
+
+    def append(self, element):
+        if isinstance(element, list):
+            for item in element:
+                self.buffer.appendleft(item)
+        else:
+            self.buffer.appendleft(element)
+
+    def extend(self, lst):
+        for item in reversed(lst):
+            self.buffer.appendleft(item)
 
     def get_data(self):
         return np.array(self.buffer)

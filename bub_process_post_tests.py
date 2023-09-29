@@ -30,13 +30,13 @@ from image_processing import (convertGray2RGB, undistort)
 
 from bubble_params import (centroid_area_cmomzz, centroid_area)
 
-from graphs_general import (extractNeighborsNext, extractNeighborsPrevious, graph_extract_paths, extract_graph_connected_components,
-                            find_segment_connectivity_isolated, for_graph_plots, graph_sub_isolate_connected_components, set_custom_node_parameters)
+from graphs_general import (extractNeighborsNext, extractNeighborsPrevious, graph_extract_paths, for_graph_plots, extract_graph_connected_components,
+                            find_segment_connectivity_isolated,  graph_sub_isolate_connected_components, set_custom_node_parameters)
 
 from interpolation import (interpolate_trajectory, interpolate_find_k_s, extrapolate_find_k_s, interpolateMiddle2D_2, interpolateMiddle1D_2)
 
-from misc import (cyclicColor, closes_point_contours, timeHMS, modBR, rect2contour, combs_different_lengths, unique_sort_list, disperse_nodes_to_times, 
-                  find_key_by_value, CircularBuffer, AutoCreateDict, find_common_intervals, unique_active_segments, lr_reindex_masters, getNodePos,
+from misc import (cyclicColor, closes_point_contours, timeHMS, modBR, rect2contour, combs_different_lengths, unique_sort_list, disperse_nodes_to_times, disperse_composite_nodes_into_solo_nodes,
+                  find_key_by_value, CircularBuffer, CircularBufferReverse, AutoCreateDict, find_common_intervals, unique_active_segments, lr_reindex_masters, getNodePos,
                   getNodePos2, segment_conn_end_start_points, lr_evel_perm_interp_data, lr_weighted_sols, perms_with_branches)
 
 mainOutputSubFolders =  ['HFS 200 mT Series 4','sccm100-meanFix', "00001-05000"]
@@ -895,11 +895,6 @@ for (node1, node2), weight in lr_intervals_lengths.items():
 for g in G2.nodes():
       G2.nodes()[g]["t_start"] = segments2[g][0][0]
       G2.nodes()[g]["t_end"] = segments2[g][-1][0]
-#pos = nx.spring_layout(G2)
-#edge_widths = [data['weight'] for _, _, data in G2.edges(data=True)]
-#nx.draw(G2, pos, with_labels=True, width=edge_widths)
-
-#plt.show()
 
 # ===============================================================================================
 # ===============================================================================================
@@ -1019,8 +1014,6 @@ if 1 == 1:
 
             lr_close_segments_simple_paths[         tuple([t_from,t_to])]  = t_from_to_paths_simple
             lr_close_segments_simple_paths_inter[   tuple([t_from,t_to])]  = t_from_to_paths_nodes_all_inter
-        
-
 
     node_positions2 = {}
     t_segments_times = {}
@@ -1031,16 +1024,6 @@ if 1 == 1:
         labels[t] = f'{t}_{segment[0]}'
     node_positions2 = getNodePos2(t_segments_times, S = 1)
 
-
-    #for g in G2.nodes():
-    #  G2.nodes()[g]["height"] = node_positions2[g][0]
-    #draw_graph_with_height(G2,figsize=(5,5), labels=labels)
-
-
-    #pos = nx.spring_layout(G2, pos = node_positions2, k = 1, iterations = 10)
-
-    #nx.draw(G2, pos=node_positions2, labels=labels)
-    #plt.show()
     
 # ===============================================================================================
 # ====== rudamentary split/merge analysis based on nearest neighbor connectedness symmetry ======
@@ -1185,9 +1168,6 @@ if 1 == 1:
         lr_conn_splits_merges_mixed_dict[t_from] = sorted(set(t))
 
     a = 1
-#drawH(G, paths, node_positions)
-#segment_conn_end_start_points(lr_connections_directed)
-#segment_conn_end_start_points(lr_connections_unidirectional)
 
 # ===============================================================================================
 # ===============================================================================================
@@ -1199,8 +1179,6 @@ if 1 == 1:
 # REMARK: so non split/merge connection is refinement of unidir connection list with info of merge/split
 
 t_conn_121 = [t_conn for t_conn in lr_connections_unidirectional if t_conn not in t_merge_split_culprit_edges_all]
-#aa0  = sorted(   segment_conn_end_start_points(t_conn_121, segment_list = segments2, nodes = 1),   key = lambda x: x[0])
-
 
 # ===============================================================================================
 # separate 121 paths with zero inter length
@@ -1266,7 +1244,6 @@ for t_conn,t_dict in t_conn_121_zp_contour_combs.items():
     t_edges             +=  [(t_nodes_composite[0]  , t_nodes_next[0])      ]
     segments2[t_from]   +=  t_nodes_next
     
-
     # modify graph: remove solo IDs, add new composite nodes. add parameters to new nodes
     G.remove_nodes_from(t_nodes_solo) 
     G.add_edges_from(t_edges)
@@ -1289,8 +1266,6 @@ for t_conn,t_dict in t_conn_121_zp_contour_combs.items():
     # create dict to re-connect previously obtained edges.
     lr_zp_redirect[t_to] = t_from
     
- 
-
 lr_conn_edges_merges    = lr_reindex_masters(lr_zp_redirect, lr_conn_edges_merges   )
 lr_conn_edges_splits    = lr_reindex_masters(lr_zp_redirect, lr_conn_edges_splits   )
 lr_conn_edges_splits_merges_mixed = lr_reindex_masters(lr_zp_redirect, lr_conn_edges_splits_merges_mixed   )
@@ -1467,7 +1442,6 @@ if 1 == 1:
                 t_big121s_edited[t] = t_subIDs_cut
             #else:
             #    assert 1 == 0, "check out case t_subIDs_cut of len <= 1"
-            
 
         # side segments may have been dropped. drop according graph edges.
         lr_big121s_conn_121 = []
@@ -1558,13 +1532,11 @@ if 1 == 1:
     # ===============================================================================================
     # REMARK: grab different combinations of elements in clusters
     print('Computing contour element permutations for each time step...')
-    #lr_contour_combs_perms = {t_conn:{t_time:[] for t_time in t_dict} for t_conn,t_dict in lr_contour_combs.items()}
     if 1 == 1:
         lr_big121s_perms = {t_conn:{t_time:[] for t_time in t_dict} for t_conn,t_dict in lr_big121s_perms_pre.items()}
         for t_conn, t_times_contours in lr_big121s_perms_pre.items():
             for t_time,t_contours in t_times_contours.items():
                 t_perms = combs_different_lengths(t_contours)
-                #t_perms = sum([list(itertools.combinations(t_contours, r)) for r in range(1,len(t_contours)+1)],[])
                 lr_big121s_perms[t_conn][t_time] = t_perms
 
 
@@ -1578,10 +1550,6 @@ if 1 == 1:
         lr_big121s_perms_areas      = AutoCreateDict()# lr_init_perm_precomputed(lr_big121s_perms,0)
         lr_big121s_perms_centroids  = AutoCreateDict()# lr_init_perm_precomputed(lr_big121s_perms,[0,0])
         lr_big121s_perms_mom_z      = AutoCreateDict()# lr_init_perm_precomputed(lr_big121s_perms,0)
-
-        #lr_permutation_areas_precomputed        = lr_init_perm_precomputed(lr_contour_combs_perms,0)
-        #lr_permutation_centroids_precomputed    = lr_init_perm_precomputed(lr_contour_combs_perms,[0,0])
-        #lr_permutation_mom_z_precomputed        = lr_init_perm_precomputed(lr_contour_combs_perms,0)
 
         for t_conn, t_times_perms in lr_big121s_perms.items():
             for t_time,t_perms in t_times_perms.items():
@@ -1604,8 +1572,6 @@ if 1 == 1:
     if 1 == 1:
         lr_big121s_perms_cases = {t_conn:[] for t_conn in lr_big121s_perms_pre}
         lr_big121s_perms_times = {t_conn:[] for t_conn in lr_big121s_perms_pre}
-        #lr_permutation_cases = {t_conn:[] for t_conn in lr_contour_combs}
-        #lr_permutation_times = {t_conn:[] for t_conn in lr_contour_combs}
         for t_conn, t_times_perms in lr_big121s_perms.items():
     
             t_values = list(t_times_perms.values())
@@ -1615,8 +1581,6 @@ if 1 == 1:
 
             lr_big121s_perms_cases[t_conn] = sequences
             lr_big121s_perms_times[t_conn] = t_times
-            #lr_permutation_cases[t_conn] = sequences
-            #lr_permutation_times[t_conn] = t_times
 
     # ===============================================================================================
     # ==== EVALUATE HULL CENTROIDS AND AREAS FOR EACH EVOLUTION, FIND CASES WITH LEAST DEVIATIONS====
@@ -2114,7 +2078,6 @@ a = 1 # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<
 # ----------------- Save recovered fake event paths -------------------------
 print('Saving fake event data...')
 if  1 == 1:
-        #t_segments_new = segments2.copy()
         for t_ID_old,t_param_dict in t_fake_events_k_s_edge_master.items():
             t_ID = lr_C0_condensed_connections_relations[t_ID_old]
             t_state                     = t_param_dict['state'  ] 
@@ -2183,7 +2146,6 @@ if  1 == 1:
             G2.add_edges_from(t_edges)
             G2.nodes()[t_from_new]["t_end"] = t_segments_new[t_from_new][-1][0]
 
-
 G_seg_view_2 = nx.Graph()
 G_seg_view_2.add_edges_from([(x,y) for y,x in lr_C0_condensed_connections_relations.items()])
 
@@ -2205,15 +2167,19 @@ print('Analyzing real merge/split events. extending branches...')
 t_out                   = defaultdict(dict)
 t_extrapolate_sol       = defaultdict(dict)
 t_extrapolate_sol_comb  = defaultdict(dict)
-lr_extend_merges_IDs = list(t_merge_real_dict.keys()) + [lr_C1_condensed_connections_relations[t] for t in lr_conn_splits_merges_mixed_dict]
+lr_extend_merges_IDs =  [(t,'merge') for t in t_merge_real_dict.keys()] 
+lr_extend_merges_IDs += [(lr_C1_condensed_connections_relations[t],'split') for t in t_split_real_dict.keys()]
+lr_extend_merges_IDs += [(lr_C1_condensed_connections_relations[t],'mixed') for t in lr_conn_splits_merges_mixed_dict]
+#lr_extend_merges_IDs = list() + list(t_split_real_dict.keys()) + [lr_C1_condensed_connections_relations[t] for t in lr_conn_splits_merges_mixed_dict]
 lr_mixed_completed      = {'full': defaultdict(dict),'partial': defaultdict(dict)} #AutoCreateDict()#
-for t_ID in lr_extend_merges_IDs:
-    if t_ID in t_merge_real_dict:
-        t_state = 'merge'
+for t_ID, t_state in lr_extend_merges_IDs:
+    if t_state == 'merge':
+        t_branches = t_event_start_end_times[t_state][t_ID]['branches']
+        t_times_target = []
+    elif t_state == 'split':
         t_branches = t_event_start_end_times[t_state][t_ID]['branches']
         t_times_target = []
     else:
-        t_state = 'mixed'
         t_branches = [t_ID] # dont have real branches, molding data to merge case
         t_nodes_target = t_event_start_end_times[t_state][t_ID]['t_target_nodes']
         t_times_target = [t[0] for t in t_nodes_target.values()]
@@ -2222,48 +2188,73 @@ for t_ID in lr_extend_merges_IDs:
             t_subIDs_target[t_time] += t_subIDs
 
     for t_branch_ID in t_branches:
-        t_conn = (t_branch_ID, t_ID)
-        t_t_from    = t_event_start_end_times[t_state][t_ID]['t_start'][t_branch_ID] # last of branch
-        t_t_to      = t_event_start_end_times[t_state][t_ID]['t_end']                # first of target
-        if t_t_to - t_t_from < 2:
+        if t_state in ('merge','mixed'):
+            t_conn = (t_branch_ID, t_ID)
+            t_t_from    = t_event_start_end_times[t_state][t_ID]['t_start'][t_branch_ID] # last of branch
+            t_t_to      = t_event_start_end_times[t_state][t_ID]['t_end']                # first of target
+            t_node_from = t_segments_new[t_branch_ID][-1]
+            t_node_to   = t_segments_new[t_ID][0]
+        else:
+            t_conn = (t_ID, t_branch_ID)
+            t_t_from    = t_event_start_end_times[t_state][t_ID]['t_start'] # last of branch
+            t_t_to      = t_event_start_end_times[t_state][t_ID]['t_end'][t_branch_ID]                # first of target
+            t_node_from = t_segments_new[t_ID][-1]
+            t_node_to   = t_segments_new[t_branch_ID][0]
+        if np.abs(t_t_to - t_t_from) < 2:
             t_out[t_ID][t_branch_ID] = None
             continue
         t_branch_ID_new = lr_C1_condensed_connections_relations[t_branch_ID] # probly not needed anymore
-        t_nodes = [t_node for t_node in t_segments_new[t_branch_ID_new] if t_node[0] > t_t_from - h_interp_len_max2]
+
+        if t_state in ('merge','mixed'):
+            t_nodes = [t_node for t_node in t_segments_new[t_branch_ID_new] if t_node[0] > t_t_from - h_interp_len_max2]
+        else:
+            t_nodes = [t_node for t_node in t_segments_new[t_branch_ID_new] if t_node[0] < t_t_to + h_interp_len_max2]
+
         trajectory = np.array([G.nodes[t]["centroid"] for t in t_nodes])
         time       = np.array([G.nodes[t]["time"    ] for t in t_nodes])
-        
+            
         N = 5       # errors_sol_diff_norms_all might be smaller than N, no fake numbers are initialized inside
         if t_segment_k_s_diffs[t_branch_ID_new] is not None:
-            t_last_deltas   = list(t_segment_k_s_diffs[t_branch_ID_new].values())[-N:]
+            t_last_deltas   = list(t_segment_k_s_diffs[t_branch_ID_new].values())[-N:]  # not changing for splits
         else:
             t_last_deltas = np.linalg.norm(np.diff(trajectory, axis=0), axis=1)[-N:]*0.5
 
-        t_norm_buffer   = CircularBuffer(N,                 t_last_deltas                    )
-        t_traj_buff     = CircularBuffer(h_interp_len_max2, trajectory[  -h_interp_len_max2:])
-        t_time_buff     = CircularBuffer(h_interp_len_max2, time[        -h_interp_len_max2:])
-        t_time_next     = t_t_from + 1
-        t_extrapolate_sol[t_conn] = {}
-        t_extrapolate_sol_comb[t_conn] = {}
-        t_times_accumulate_resolved = []
+        t_norm_buffer   = CircularBuffer(N, t_last_deltas)
+
+        if t_state in ('merge','mixed'):
+            t_traj_buff     = CircularBuffer(h_interp_len_max2, trajectory) # added element to buffer is deployed 
+            t_time_buff     = CircularBuffer(h_interp_len_max2, time)       # in the end, first removed
+            t_time_next     = t_t_from    + 1                               # [        -h_interp_len_max2:]
+        else: 
+            t_traj_buff     = CircularBufferReverse(h_interp_len_max2, trajectory) # added element to buffer is deployed 
+            t_time_buff     = CircularBufferReverse(h_interp_len_max2, time)       # in the start, last removed
+            t_time_next     = t_t_to      - 1
+
+        t_extrapolate_sol[      t_conn] = {}
+        t_extrapolate_sol_comb[ t_conn] = {}
+        t_times_accumulate_resolved     = []
+
         if t_segment_k_s[t_branch_ID_new] is not None:
             t_k,t_s = t_segment_k_s[t_branch_ID_new]
         else:
             t_k,t_s = (1,5)
+        
+        t_combs_all = t_event_start_end_times[t_state][t_ID]['t_perms'][t_branch_ID]
+        t_times_all = t_event_start_end_times[t_state][t_ID]['t_times'][t_branch_ID] 
 
-        t_combs_all = t_event_start_end_times[t_state][t_ID]['t_perms'][t_branch_ID][1:]
-        t_times_all = t_event_start_end_times[t_state][t_ID]['t_times'][t_branch_ID][1:] # middle + target first
-        if t_state != 'mixed':
-            t_combs_all = t_combs_all[:-1]
-            t_times_all = t_times_all[:-1]
+        if t_state == 'merge':
+            t_combs_all = t_combs_all[1:-1]
+            t_times_all = t_times_all[1:-1]
+        elif t_state == 'split':
+            t_combs_all = t_combs_all[-2::-1]
+            t_times_all = t_times_all[-2::-1]
+        else:
+            t_combs_all = t_combs_all[1:]               # last element is being dropped during saving. should examine if needed.
+            t_times_all = t_times_all[1:]
 
         for t_time, t_permutations in zip(t_times_all,t_combs_all):
-            # extrapolate traj
             t_extrap = interpolate_trajectory(t_traj_buff.get_data(), t_time_buff.get_data(), which_times = [t_time_next] ,s = t_s, k = t_k, debug = 0 ,axes = 0, title = 'title', aspect = 'equal')[0]
 
-            # get possible permutations
-            a = 1
-            #t_permutations = sum([list(itertools.combinations(t_comb, r)) for r in range(1,len(t_comb)+1)],[])
             t_centroids = []
             t_areas     = []
             for t_permutation in t_permutations:
@@ -2289,16 +2280,8 @@ for t_ID in lr_extend_merges_IDs:
                 #print(f"inter!:c{t_permutations[t_where_min]}, m{t_mean}, s{t_std}, df{t_diff_norms[t_where_min]}")
                 t_times_accumulate_resolved.append(t_time)
             else:
-
-                a = 1
-                #print(f"stdev too much!:c{t_permutations[t_where_min]}, m{t_mean}, s{t_std}, df{t_diff_norms[t_where_min]}")
-                if len(t_times_accumulate_resolved) > 0:
-                    print(f'recovery of t:{t_time_next} has failed, segment {t_branch_ID_new}->{t_ID} (end: {t_segments_new[t_branch_ID_new][-1]}) extended trajectory to times: {t_times_accumulate_resolved[0]}...{t_times_accumulate_resolved[-1]}')
                 break
 
-            if t_time == t_t_to - 1 and len(t_times_accumulate_resolved) > 0:
-                print(f'recovering t:{t_time_next}, segment {t_branch_ID_new}->{t_ID} (end: {t_segments_new[t_branch_ID_new][-1]}) extended trajectory to times: {t_times_accumulate_resolved[0]}...{t_times_accumulate_resolved[-1]}. Recovered whole inter-segment!')
-            
             if t_state == 'mixed':
                 if t_time in t_times_target:
                     t_nodes_sol_subIDs = list(t_permutations[t_where_min])
@@ -2318,16 +2301,22 @@ for t_ID in lr_extend_merges_IDs:
                             lr_mixed_completed['partial'][t_ID]['solution'] = t_nodes_sol_subIDs
                             #if 'targets' not in lr_mixed_completed['partial'][t_ID]: lr_mixed_completed['partial'][t_ID]['targets'] = []
                             #lr_mixed_completed['partial'][t_ID]['targets'].append(t_target_ID)
-
-                #if t_time == t_times_all[-1]:
-
-
             t_time_next  += 1
+
+        if len(t_times_accumulate_resolved) > 0:
+            if 1 <= len(t_times_accumulate_resolved)<= 3:
+                t =f'{t_times_accumulate_resolved}'
+            else:
+                t = f'{t_times_accumulate_resolved[0]}->{t_times_accumulate_resolved[-1]}'
+
+            print(f' {t_state}:edge :({t_branch_ID_new},{t_ID})= {t_node_from}->{t_node_to}  time: {t}')
+        else:
+            print(f'!{t_state}:edge :({t_branch_ID_new},{t_ID})= {t_node_from}->{t_node_to} failed, no times')
 
 
 # search for conflict nodes for extended branches
 # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-lr_conn_merges_good = defaultdict(list)#{tID:[] for tID in lr_conn_merges_to_nodes}
+lr_conn_merges_good = defaultdict(set)#{tID:[] for tID in lr_conn_merges_to_nodes}
 #lr_conn_merges_good2 = {tID:[] for tID in lr_conn_merges_to_nodes}
 if 1 == 1:
     node_properties = defaultdict(list)
@@ -2337,12 +2326,19 @@ if 1 == 1:
         for t_node in t_nodes:
             node_properties[t_node].extend([key])
     t_duplicates = {t_node: t_branches for t_node,t_branches in node_properties.items() if len(t_branches) > 1}
+    assert len(t_duplicates) == 0, 'havent tested after addition of split and mixed extension code 28.09.23'
     t_all_problematic_conns = list(set(sum(list(t_duplicates.values()),[])))
     t_all_problematic_conns_to = [a[1] for a in t_all_problematic_conns]
-    for tID in lr_extend_merges_IDs:
+    for tID,t_state in lr_extend_merges_IDs: # here lies problem with splits, and possibly with mixed cases!!!! <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         if tID not in t_all_problematic_conns_to:
-            t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
-            lr_conn_merges_good[tID] += t_conns_relevant
+            if t_state == 'merge':
+                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
+            elif t_state == 'split':
+                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[0] == tID]
+            else:
+                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
+            lr_conn_merges_good[(tID,t_state)].update(t_conns_relevant)
+            #lr_conn_merges_good.update((tID,t_state))
 
     variants_possible = []
     if len(t_duplicates) > 0:
@@ -2375,120 +2371,127 @@ if 1 == 1:
                 t_temp = [t for t in t_temp if t not in t_subIDs]
                 t_extrapolate_sol_comb[t_delete_conn][t_time] = t_temp
             t_conns_relevant = [t_c for t_c in t_extrapolate_sol_comb if t_c[1] == tID]
-            lr_conn_merges_good[tID] += t_conns_relevant
+            lr_conn_merges_good.update(t_conns_relevant) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< not correct anymore
             a = 1
         print('branches are resolved without conflict, or conflict resolved by redistribution of nodes')
 # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-# weird saving system. copied from old (this) code.
-if 1 == 1:
-    for t_to,t_conns in lr_conn_merges_good.items():
-        for t_conn in t_conns:
 
-            t_from, t_to = t_conn
-            t_from_new = lr_C1_condensed_connections_relations[t_from]
-            t_combs = t_extrapolate_sol_comb[t_conn]
+for (t_ID,t_state), t_conns in lr_conn_merges_good.items():
+    # modifying graphs and storage based on recovered path though solo node space (web) between segments (see (6))
+    # path consists of composite nodes. they are disperesed back to solo nodes and deleted from graph. new comp nodes are added
+    # if path is extended partially, special treatment of edges is needed (see (3))
+    for t_conn in t_conns:
+        t_from, t_to = t_conn
+        t_from_new = lr_C1_condensed_connections_relations[t_from]
+        t_combs = t_extrapolate_sol_comb[t_conn]
 
-            if len(t_combs) == 0: continue                              # no extension, skip.
+        if len(t_combs) == 0: continue                              # no extension, skip.
 
-            t_nodes_all = []                                            # solo nodes will be deleted
-            t_nodes_new = []                                            # new composite nodes are formed
-            if t_from not in lr_mixed_completed['full']:
+        t_nodes_solo,t_nodes_composite = [],[]                                          
+                                                   
+        # from COMBS regenerate composite nodes, if there are, but also disperse into original solo nodes, which are a part of event space (node paths between segments)
+        for t_time,t_subIDs in t_combs.items():                     
+            for t_subID in t_subIDs:                                
+                t_nodes_solo.append((t_time,t_subID))                
+            t_nodes_composite.append(tuple([t_time] + list(t_subIDs)))  
+            
+        # difference in split and merge extension is simply choice of start or end of
+        # recovered combs and whether you use successors of predecessors during process
 
-                for t_time,t_subIDs in t_combs.items():
-                    for t_subID in t_subIDs:                                # single object nodes
-                        t_nodes_all.append((t_time,t_subID))
-                    t_nodes_new.append(tuple([t_time] + list(t_subIDs)))    # cluster object nodes
+        # (1) drop all edges from last known node going into intermediate solution.
+        # (2) same as (1), but with other side
+        # (3) in case when extension (merge for example) is stopped earlier, and last intermediate node is 
+        # (3) composite, this node has to inherit forward edges of each solo node it consists of
+        # (4) reconstruct path using chain of nodes
+        # (5) i have to drop disperesed nodes so edges are also dropped. but also parameters will be dropped
+        # (5) if resolved combs may stay solo. their parameters should be copied on top of clean nodes
+        # (6) drop disperse nodes (this way unwanted edges are also dropped) and reconstruct only useful edges
+        # 
+        if t_state in ('merge', 'mixed') and t_from not in lr_mixed_completed['full']:
+            
+            t_from_node_last = t_segments_new[t_from_new][-1]                                       # (1)
+            t_from_successors = list(G.successors(t_from_node_last))                                # (1)
+            t_from_successors_edges = [(t_from_node_last, t_node) for t_node in  t_from_successors] # (1)
+            G.remove_edges_from(t_from_successors_edges)                                            # (1)
+            
+            t_comb_node_last = t_nodes_composite[-1]                                                # (3)
+            t_comb_disp_nodes = disperse_composite_nodes_into_solo_nodes([t_comb_node_last])        # (3)
+            t_comb_last_edges = set()                                                               # (3)
+            for t_node in t_comb_disp_nodes:                                                        # (3)
+                t_comb_last_edges.update([(t_comb_node_last,t) for t in G.successors(t_node)])      # (3)
+            
+            t_node_chain = [t_from_node_last] + t_nodes_composite                                   # (4)
+            t_edges_sequence = [(x, y) for x, y in zip(t_node_chain[:-1], t_node_chain[1:])]        # (4)
+            t_edges_sequence += list(t_comb_last_edges)                                             # (4)
+
+            t_segments_new[t_from_new] += t_nodes_composite                       
+                
+            G2.nodes()[t_from_new]["t_end"] = t_segments_new[t_from_new][-1][0]
+
+        elif t_state == 'split':
+            t_to_node_first = t_segments_new[t_to][0]                                               # (2)
+            t_to_predecessors = list(G.predecessors(t_to_node_first))                               # (2)
+            t_to_predecessors_edges = [(t_node, t_to_node_first) for t_node in  t_to_predecessors]  # (2)
+            G.remove_edges_from(t_to_predecessors_edges)                                            # (2)
+
+            t_comb_node_first = t_nodes_composite[0]                                                # (3)
+            t_comb_disp_nodes = disperse_composite_nodes_into_solo_nodes([t_comb_node_first])       # (3)
+            t_comb_first_edges = set()                                                              # (3)
+            for t_node in t_comb_disp_nodes:                                                        # (3)
+                t_comb_first_edges.update([(t,t_comb_node_first) for t in G.predecessors(t_node)])  # (3)
+                
+            t_node_chain = t_nodes_composite + [t_to_node_first]                                    # (4)
+            t_edges_sequence = [(x, y) for x, y in zip(t_node_chain[:-1], t_node_chain[1:])]        # (4)
+            t_edges_sequence += list(t_comb_first_edges)                                            # (4)
+
+            t_segments_new[t_to] =  t_nodes_composite  + t_segments_new[t_to]
+
+            G2.nodes()[t_to]["t_start"] = t_nodes_composite[0][0]
+
+        else:
+            t_to = lr_mixed_completed['full'][t_from]['targets'][0]
+                                                                                                    
+            t_from_node_last = t_segments_new[t_from_new][-1]                                       # (1)
+            t_from_successors = list(G.successors(t_from_node_last))                                # (1)
+            t_from_successors_edges = [(t_from_node_last, t_node) for t_node in  t_from_successors] # (1)
+            G.remove_edges_from(t_from_successors_edges)                                            # (1)
+
+            t_to_node_first = t_segments_new[t_to][0]                                               # (2)
+            t_to_predecessors = list(G.predecessors(t_to_node_first))                               # (2)
+            t_to_predecessors_edges = [(t_node, t_to_node_first) for t_node in  t_to_predecessors]  # (2)
+            G.remove_edges_from(t_to_predecessors_edges)                                            # (2)
+                                                                                                    
+            t_nodes_solo = [t_node for t_node in t_nodes_solo if t_node[0] < t_to_node_first[0]]
+            t_nodes_composite = [t_node for t_node in t_nodes_composite if t_node[0] < t_to_node_first[0]]
+
+            t_node_chain = [t_from_node_last] + t_nodes_composite + [t_to_node_first]               # (4)
+            t_edges_sequence = [(x, y) for x, y in zip(t_node_chain[:-1], t_node_chain[1:])]        # (4)
+
+            for t_node in t_segments_new[t_to]:
+                G.nodes[t_node]["owner"] = t_from_new
+
+            t_segments_new[t_from_new] += t_nodes_composite
+            t_segments_new[t_from_new] += t_segments_new[t_to]
+            t_segments_new[t_to] = []
+
+            t_successors   = extractNeighborsNext(G2, t_to, lambda x: G2.nodes[x]["t_start"])
+            t_edges = [(t_from_new,t_succ) for t_succ in t_successors]
+            G2.remove_nodes_from([t_to])
+            G2.add_edges_from(t_edges)
+            G2.nodes()[t_from_new]["t_end"] = t_segments_new[t_from_new][-1][0] 
+            lr_C1_condensed_connections_relations[t_to] = t_from_new
+
+        t_common_nodes = set(t_nodes_solo).intersection(set(t_nodes_composite))                     # (5)
+        t_composite_nodes = set(t_nodes_composite) - set(t_nodes_solo)                              # (5)
+        t_node_params = {t:dict(G.nodes[t]) for t in t_common_nodes}                                # (5)
         
-                t_nodes_all += [t_segments_new[t_from_new][-1]]                 # (*) last old may have multiple connections not
-                                                                            # covered by best choices in sol-n, so they are will stay.
-                t_nodes_new_sides = t_segments_new[t_from_new][-2:] + t_nodes_new#  take nodes from -2 to end of segment, why -2 see (*)
-                # find end edges to reconnect into graph
-                # if last node is composite of solo nodes, each might have its edges
-                t_time_end, *t_node_subIDs =  t_nodes_new[-1]               # grab subIDs and recover solo nodes. i do this because
-                t_node_last_solo_IDS = [(t_time_end,t_subID) for t_subID in t_node_subIDs] #  its easy to pick [-1], not lookup last time.
+        G.remove_nodes_from(t_nodes_solo)                                                           # (6)
+        G.add_edges_from(t_edges_sequence)                                                          # (6)
 
-                #f = lambda x: x[0]
-                t_node_last_solo_IDS_to = list(set(sum([list(G.successors(t_node)) for t_node in t_node_last_solo_IDS],[])))
-                #t_node_last_solo_IDS_to = list(set(sum([extractNeighborsNext(G, t_node, f) for t_node in t_node_last_solo_IDS],[])))
+        for t,t_params in t_node_params.items():    
+                G.add_node(t, **t_params)
 
-                t_edges_next_new = [(t_nodes_new[-1] , t_node) for t_node in t_node_last_solo_IDS_to] # composite to old next neighbors
-
-                t_common_nodes = set(t_nodes_all).intersection(set(t_nodes_new_sides))
-                # store their parameters
-                t_node_params = {t:dict(G.nodes[t]) for t in t_common_nodes}
-
-                G.remove_nodes_from(t_nodes_all)                            # remove all solo nodes and replace them with composite
-            
-                t_edges_sequence = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
-            
-                G.add_edges_from(t_edges_sequence)                          # from sequence of nodes create edges -> auto nodes
-                G.add_edges_from(t_edges_next_new)                          # add future edges to solo nodes.
-
-                for t,t_params in t_node_params.items():
-                    G.add_node(t, **t_params)
-
-                t_segments_new[t_from_new] += t_nodes_new                       # append resolved to segments.
-
-                set_custom_node_parameters(G, g0_contours, t_nodes_new, t_from_new, calc_hull = 1)
-                
-                G2.nodes()[t_from_new]["t_end"] = t_segments_new[t_from_new][-1][0]
-
-            else:
-                assert len(lr_mixed_completed['full'][t_from]['targets']) == 1, 'proximity pseudo merge passes multiple nodes, not resolved/encountered'
-                t_to = lr_mixed_completed['full'][t_from]['targets'][0]
-                t_node_start_last = t_segments_new[t_from_new][-1]
-                t_times_relevant = t_event_start_end_times['mixed'][t_from]['t_times'][t_from]
-                t_combs[t_node_start_last[0]] = tuple(t_node_start_last[1:])
-                t_combs = {t:t_combs[t] for t in t_times_relevant}
-
-                for t_time,t_subIDs in t_combs.items():
-
-                    for t_subID in t_subIDs:                                # single object nodes
-                        t_nodes_all.append((t_time,t_subID))
-
-                    t_nodes_new.append(tuple([t_time] + list(t_subIDs)))    # cluster object nodes
-
-                # basically in order to correctly reconnectd sides of inter-segment i have to also delete old edges from side nodes
-                # this can be done by deleting them and adding back
-                t_nodes_new_sides = [t_segments_new[t_from_new][-2]] + t_nodes_new + [t_segments_new[t_to][1]]
-                # find element which will be deleted, but will be readded later
-                t_common_nodes = set(t_nodes_all).intersection(set(t_nodes_new_sides))
-                # store their parameters
-                t_node_params = {t:dict(G.nodes[t]) for t in t_common_nodes}
-            
-                G.remove_nodes_from(t_nodes_all)                          # edges will be also dropped
-
-                t_pairs = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
-    
-                G.add_edges_from(t_pairs)
-                # restore deleted parameters
-                for t,t_params in t_node_params.items():
-                    G.add_node(t, **t_params)
-
-                # determine t_from masters index, send that segment intermediate nodes and second segment
-                # if t_from is its own master, it still works, check it with simple ((0,1),(1,2)) and {0:0,1:0,2:0}
-                
-                t_nodes_intermediate = list(sorted(t_nodes_new, key = lambda x: x[0]))[1:-1]
-                t_segments_new[t_from_new] += t_nodes_intermediate
-                t_segments_new[t_from_new] += t_segments_new[t_to]
-    
-                # fill centroid, area and momement of innertia zz missing for intermediate segment
-                set_custom_node_parameters(G, g0_contours, t_nodes_intermediate, t_from_new, calc_hull = 1)
-
-                for t_node in t_segments_new[t_to]:
-                    G.nodes[t_node]["owner"] = t_from_new
-
-                # wipe data from t_to anyway
-                t_segments_new[t_to] = []
-
-                t_successors   = extractNeighborsNext(G2, t_to, lambda x: G2.nodes[x]["t_start"])
-                t_edges = [(t_from_new,t_succ) for t_succ in t_successors]
-                G2.remove_nodes_from([t_to])
-                G2.add_edges_from(t_edges)
-                G2.nodes()[t_from_new]["t_end"] = t_segments_new[t_from_new][-1][0] # change master node parameter
-
-                lr_C1_condensed_connections_relations[t_to] = t_from_new
-                a = 1
+        set_custom_node_parameters(G, g0_contours, t_composite_nodes, t_from_new, calc_hull = 1)
 aaa = defaultdict(set)
 for t, t_segment in enumerate(t_segments_new):
     for t_node in t_segment:

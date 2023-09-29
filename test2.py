@@ -585,7 +585,7 @@ if 1 == 1:
 
         print(f'common_intervals : {common_intervals}')
 
-    if 1 == 1:
+    if 1 == -11:
         def get_active_segments_at_time_interval(start, end, segments_active_dict):
 
             result = set(sum([vals for t,vals in segments_active_dict.items() if start <= t <= end],[]))
@@ -629,6 +629,36 @@ if 1 == 1:
         print("Method 1 execution time:", time_method1)
         print("Method 2 execution time:", time_method2)
         print("Method 3 execution time:", time_method3)
+
+
+
+from collections import deque
+import numpy as np
+
+class CircularBufferReverse:
+    def __init__(self, size, initial_data=None):
+        self.size = size
+        self.buffer = deque(maxlen=size)
+        if initial_data is not None:
+            self.extend(initial_data)
+
+    def append(self, element):
+        if isinstance(element, list):
+            for item in element:
+                self.buffer.appendleft(item)
+        else:
+            self.buffer.appendleft(element)
+
+    def extend(self, lst):
+        for item in reversed(lst):
+            self.buffer.appendleft(item)
+
+    def get_data(self):
+        return np.array(self.buffer)
+
+aa = CircularBufferReverse(3, [3,4,5])
+aa.append(2)
+print(aa.get_data())
 
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key

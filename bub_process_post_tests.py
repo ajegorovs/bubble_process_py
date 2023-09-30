@@ -37,7 +37,7 @@ from interpolation import (interpolate_trajectory, interpolate_find_k_s, extrapo
 
 from misc import (cyclicColor, closes_point_contours, timeHMS, modBR, rect2contour, combs_different_lengths, unique_sort_list, disperse_nodes_to_times, disperse_composite_nodes_into_solo_nodes,
                   find_key_by_value, CircularBuffer, CircularBufferReverse, AutoCreateDict, find_common_intervals, unique_active_segments, lr_reindex_masters, getNodePos,
-                  getNodePos2, segment_conn_end_start_points, lr_evel_perm_interp_data, lr_weighted_sols, perms_with_branches)
+                  getNodePos2, segment_conn_end_start_points, lr_evel_perm_interp_data, lr_weighted_sols, perms_with_branches, save_connections_two_ways, save_connections_merges, save_connections_splits)
 
 mainOutputSubFolders =  ['HFS 200 mT Series 4','sccm100-meanFix', "00001-05000"]
 for folderName in mainOutputSubFolders:     
@@ -500,7 +500,7 @@ if 1 == -1:
 a = 1
 
 # analyze single strand
-doX = 30#60#56#20#18#2#84#30#60#30#20#15#2#1#60#84
+doX = 60#30#60#56#20#18#2#84#30#60#30#20#15#2#1#60#84
 lessRough_all = connected_components_unique.copy()
 test = connected_components_unique[doX]
 # find times where multiple elements are connected (split/merge)
@@ -966,10 +966,10 @@ if 1 == 1:
 G2.remove_edges_from(list(G2.edges()))
 for node, t_conn in t_neighbor_sol_all_prev.items():
     for node2, weight in t_conn.items():
-        G2.add_edge(node, node2, weight=1/np.abs(weight))
+        G2.add_edge(node, node2)
 for node, t_conn in t_neighbor_sol_all_next.items():
     for node2, weight in t_conn.items():
-        G2.add_edge(node, node2, weight=1/weight)
+        G2.add_edge(node, node2)
 #for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # ===============================================================================================
 # ===============================================================================================
@@ -1600,89 +1600,35 @@ if 1 == 1:
 
 
 
-    # for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-    C0 = nx.Graph()
-    C0.add_edges_from(list(lr_big121s_perms_cases.keys()))
+    #C0 = nx.Graph()
+    #C0.add_edges_from(list(lr_big121s_perms_cases.keys()))
     
-    lr_C0_condensed_connections = extract_graph_connected_components(C0, lambda x: x)
+    #lr_C0_condensed_connections = extract_graph_connected_components(C0, lambda x: x)
 
-    # lets condense all sub-segments into one with smallest index. EDIT: give each segment index its master. since number of segments will shrink anyway
-    t_condensed_connections_all_nodes = sorted(sum(lr_C0_condensed_connections,[])) # neext next
-    lr_C0_condensed_connections_relations = lr_zp_redirect.copy() #t_condensed_connections_all_nodes
-    for t_subIDs in lr_C0_condensed_connections:
-        for t_subID in t_subIDs:
-            lr_C0_condensed_connections_relations[t_subID] = min(t_subIDs)
+    ## lets condense all sub-segments into one with smallest index. EDIT: give each segment index its master. since number of segments will shrink anyway
+    #t_condensed_connections_all_nodes = sorted(sum(lr_C0_condensed_connections,[])) # neext next
+    #lr_C0_condensed_connections_relations = lr_zp_redirect.copy() #t_condensed_connections_all_nodes
+    #for t_subIDs in lr_C0_condensed_connections:
+    #    for t_subID in t_subIDs:
+    #        lr_C0_condensed_connections_relations[t_subID] = min(t_subIDs)
+
+    lr_C0_condensed_connections_relations = lr_zp_redirect.copy()
     print('Saving results for restored parts of big 121s')
-    t_last_seg_ID_in_big_121s = [t[-1] for t in t_big121s_edited if t is not None]
-    t_big121s_edited_clean = [t for t in t_big121s_edited if t is not None]
-    if  1 == 1:
-        t_segments_new = segments2.copy()
-        for t_conn in lr_big121s_perms_cases:
-            t_from, t_to = t_conn                                     
-            t_sol   = lr_weighted_solutions_max[t_conn]               # pick evolution index that won (most likely)
-            t_path  = lr_big121s_perms_cases[t_conn][t_sol]             # t_path contains start-end points of segments !!!
-            t_times = lr_big121s_perms_times[t_conn]                    # get inter-segment times
-            t_nodes_new = []
-            for t_time,t_comb in zip(t_times,t_path):                 # create composite nodes
-                #for tID in t_comb:
-                #    t_nodes_old.append(tuple([t_time, tID]))          # old type of nodes in solution: (time,contourID)     e.g (t1,ID1)
-                t_nodes_new.append(tuple([t_time] + list(t_comb)))    # new type of nodes in solution: (time,*clusterIDs)   e.g (t1,ID1,ID2,...)
+    t_last_seg_ID_in_big_121s   = [t[-1]    for t in t_big121s_edited if t is not None]
+    t_big121s_edited_clean      = [t        for t in t_big121s_edited if t is not None]
 
-            t_nodes_all = []
-            for t_time,t_comb in lr_big121s_perms_pre[t_conn].items():
-                for tID in t_comb:
-                    t_nodes_all.append(tuple([t_time, tID]))
-
-            # basically in order to correctly reconnectd sides of inter-segment i have to also delete old edges from side nodes
-            # this can be done by deleting them and adding back
-            t_nodes_new_sides = [segments2[t_from][-2]] + t_nodes_new + [segments2[t_to][1]]
-            # find element which will be deleted, but will be readded later
-            t_common_nodes = set(t_nodes_all).intersection(set(t_nodes_new_sides))
-            # store their parameters
-            t_node_params = {t:dict(G.nodes[t]) for t in t_common_nodes}
+    t_segments_new = copy.deepcopy(segments2)
+    for t_conn in lr_big121s_perms_cases:
+        t_from, t_to = t_conn
+        t_from_new = lr_C0_condensed_connections_relations[t_from]
+        t_to_new = lr_C0_condensed_connections_relations[t_to]
+        print(f'edge :({t_from},{t_to}) or = {t_segments_new[t_from_new][-1]}->{t_segments_new[t_to_new][0]}')   
+        save_connections_two_ways(t_segments_new, lr_big121s_perms_pre[t_conn], t_from,  t_to, G, G2, lr_C0_condensed_connections_relations, g0_contours)
             
-            G.remove_nodes_from(t_nodes_all)                          # edges will be also dropped
-            
+                       
 
-            t_pairs = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
-    
-            G.add_edges_from(t_pairs)
-            # restore deleted parameters
-            for t,t_params in t_node_params.items():
-                G.add_node(t, **t_params)
-            # determine t_from masters index, send that segment intermediate nodes and second segment
-            # if t_from is its own master, it still works, check it with simple ((0,1),(1,2)) and {0:0,1:0,2:0}
-            t_from_new = lr_C0_condensed_connections_relations[t_from]
-            t_nodes_intermediate = list(sorted(t_nodes_new, key = lambda x: x[0]))[1:-1]
-            t_segments_new[t_from_new] += t_nodes_intermediate
-            t_segments_new[t_from_new] += segments2[t_to]
-
-
-    
-            # fill centroid, area and momement of innertia zz missing for intermediate segment
-            set_custom_node_parameters(G, g0_contours, t_nodes_intermediate, t_from_new, calc_hull = 1)
-
-            for t_node in segments2[t_to]:
-                G.nodes[t_node]["owner"] = t_from_new
-            # wipe data if t_from is inherited
-            if t_from_new != t_from:
-                t_segments_new[t_from] = []
-            # wipe data from t_to anyway
-            t_segments_new[t_to] = []
-
-            # modify node view graph. since these are big 121s, eventally first segment will be connected to last
-            # so when t_to is last in t_big121s_edited, you can wipe all in between.
-            if t_to in t_last_seg_ID_in_big_121s:
-                t_index = t_last_seg_ID_in_big_121s.index(t_to) # which big 121 is it
-                t_drop_IDs = t_big121s_edited_clean[t_index][1:]                  # grab all members 
-                t_from_OG = t_big121s_edited_clean[t_index][0]
-                t_successors   = extractNeighborsNext(G2, t_to, lambda x: G2.nodes[x]["t_start"])
-                t_edges = [(t_from_OG,t_succ) for t_succ in t_successors]
-                G2.remove_nodes_from(t_drop_IDs)
-                G2.add_edges_from(t_edges)
-                G2.nodes()[t_from_OG]["t_end"] = segments2[t_from_new][-1][0] # change master node parameter
-                a = 1
             
     # at this time some segments got condenced into big 121s. right connection might be changed.
     lr_time_active_segments = {t:[] for t in lr_time_active_segments}
@@ -2080,71 +2026,89 @@ print('Saving fake event data...')
 if  1 == 1:
         for t_ID_old,t_param_dict in t_fake_events_k_s_edge_master.items():
             t_ID = lr_C0_condensed_connections_relations[t_ID_old]
-            t_state                     = t_param_dict['state'  ] 
-            t_conn                      = t_param_dict['edge'   ]
-            t_from, t_to = t_conn                                     
-            t_IDs_remove = t_event_start_end_times[t_state][t_ID]['branches']
-            t_sol   = lr_weighted_solutions_max[t_conn]               # pick evolution index that won (most likely)
-            t_path  = t_temp_cases[t_conn][t_sol]             # t_path contains start-end points of segments !!!
-            t_times = t_temp_times[t_conn]                    # get inter-segment times
-            t_nodes_new = []
-            for t_time,t_comb in zip(t_times,t_path):                 # create composite nodes
-                t_nodes_new.append(tuple([t_time] + list(t_comb)))    # new type of nodes in solution: (time,*clusterIDs)   e.g (t1,ID1,ID2,...)
+            t_state         = t_param_dict['state'  ] 
+            t_conn          = t_param_dict['edge'   ]
+            t_branches      = t_event_start_end_times[t_state][t_ID]['branches']
+            t_sol           = lr_weighted_solutions_max[t_conn]
+            t_from, t_to    = t_conn                                     
+            # prep combs similar to 121 connection saving, except branches are scooped out and included in combs, and start-end IDs changed.
+            t_combs = {t_time:list(t_subIDs) for t_time,t_subIDs in zip(t_temp_times[t_conn], t_temp_cases[t_conn][t_sol])}
+            t_node_from = t_segments_new[lr_C0_condensed_connections_relations[t_from   ]][-1   ]
+            t_node_to   = t_segments_new[lr_C0_condensed_connections_relations[t_to     ]][0    ]
+            print(f'fake {t_state} event ({t_conn}) saved: {t_node_from} -> {t_node_to}') 
+            save_connections_two_ways(t_segments_new, t_combs, t_from, t_to, G, G2, lr_C0_condensed_connections_relations, g0_contours)
 
-            t_nodes_all = t_event_start_end_times[t_state][t_ID]['t_nodes_solo']
-            
-            # basically in order to correctly reconnectd sides of inter-segment i have to also delete old edges from side nodes
-            # this can be done by deleting them and adding back
-            t_nodes_new_sides = [t_segments_new[t_from][-2]] + t_nodes_new + [t_segments_new[t_to][1]]
-            # find element which will be deleted, but will be readded later
-            t_common_nodes = set(t_nodes_all).intersection(set(t_nodes_new_sides))
-            # store their parameters
-            t_node_params = {t:dict(G.nodes[t]) for t in t_common_nodes}
-            
-            G.remove_nodes_from(t_nodes_all)                          # edges will be also dropped
-            
-
-            t_pairs = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
-    
-            G.add_edges_from(t_pairs)
-            # restore deleted parameters
-            for t,t_params in t_node_params.items():
-                G.add_node(t, **t_params)
-            # determine t_from masters index, send that segment intermediate nodes and second segment
-            # if t_from is its own master, it still works, check it with simple ((0,1),(1,2)) and {0:0,1:0,2:0}
-            t_from_new = lr_C0_condensed_connections_relations[t_from]
-            t_nodes_intermediate = list(sorted(t_nodes_new, key = lambda x: x[0]))[1:-1]
-            t_segments_new[t_from_new] += t_nodes_intermediate
-            t_segments_new[t_from_new] += t_segments_new[t_to]
-    
-            # fill centroid, area and momement of innertia zz missing for intermediate segment
-            set_custom_node_parameters(G, g0_contours, t_nodes_intermediate, t_from_new, calc_hull = 1)
-    
-            for t_node in t_segments_new[t_to]:
-                G.nodes[t_node]["owner"] = t_from_new
-            # copy data from inherited
-    
-            # wipe data if t_from is inherited
-            if t_from_new != t_from:
-                t_segments_new[t_from] = []
-            # wipe data from branches and t_to
-            for t_ID_2 in t_IDs_remove + [t_to]:
-                t_segments_new[t_ID_2] = []
+            for t_segment_remove in t_branches:        # remove and change refs of fake branches
+                t_segments_new[t_segment_remove] = []
+                G2.remove_node(t_segment_remove)
+                t_from_new = lr_C0_condensed_connections_relations[t_from]
+                lr_C0_condensed_connections_relations[t_segment_remove] = t_from_new
 
             if t_state == 'merge':   
                 lr_conn_merges_to_nodes.remove(t_ID_old) # its not real, remove
             else:
                 lr_conn_splits_from_nodes.remove(t_ID_old)
-            for t in t_IDs_remove:
-                lr_C0_condensed_connections_relations[t] = t_from_new
 
-            lr_C0_condensed_connections_relations[t_to] = t_from_new
-            # modify node view graph
-            t_successors   = extractNeighborsNext(G2, t_to, lambda x: G2.nodes[x]["t_start"])
-            t_edges = [(t_from_new,t_succ) for t_succ in t_successors]
-            G2.remove_nodes_from(t_IDs_remove + [t_to])
-            G2.add_edges_from(t_edges)
-            G2.nodes()[t_from_new]["t_end"] = t_segments_new[t_from_new][-1][0]
+               
+            #for_graph_plots(G, segs = t_segments_new)
+            a = 1
+            #for t_time,t_comb in zip(t_times,t_path):                 # create composite nodes
+            #    t_nodes_new.append(tuple([t_time] + list(t_comb)))    # new type of nodes in solution: (time,*clusterIDs)   e.g (t1,ID1,ID2,...)
+
+            #t_nodes_all = t_event_start_end_times[t_state][t_ID]['t_nodes_solo']
+            
+            ## basically in order to correctly reconnectd sides of inter-segment i have to also delete old edges from side nodes
+            ## this can be done by deleting them and adding back
+            #t_nodes_new_sides = [t_segments_new[t_from][-2]] + t_nodes_new + [t_segments_new[t_to][1]]
+            ## find element which will be deleted, but will be readded later
+            #t_common_nodes = set(t_nodes_all).intersection(set(t_nodes_new_sides))
+            ## store their parameters
+            #t_node_params = {t:dict(G.nodes[t]) for t in t_common_nodes}
+            
+            #G.remove_nodes_from(t_nodes_all)                          # edges will be also dropped
+            
+
+            #t_pairs = [(x, y) for x, y in zip(t_nodes_new_sides[:-1], t_nodes_new_sides[1:])]
+    
+            #G.add_edges_from(t_pairs)
+            ## restore deleted parameters
+            #for t,t_params in t_node_params.items():
+            #    G.add_node(t, **t_params)
+            ## determine t_from masters index, send that segment intermediate nodes and second segment
+            ## if t_from is its own master, it still works, check it with simple ((0,1),(1,2)) and {0:0,1:0,2:0}
+            #t_from_new = lr_C0_condensed_connections_relations[t_from]
+            #t_nodes_intermediate = list(sorted(t_nodes_new, key = lambda x: x[0]))[1:-1]
+            #t_segments_new[t_from_new] += t_nodes_intermediate
+            #t_segments_new[t_from_new] += t_segments_new[t_to]
+    
+            ## fill centroid, area and momement of innertia zz missing for intermediate segment
+            #set_custom_node_parameters(G, g0_contours, t_nodes_intermediate, t_from_new, calc_hull = 1)
+    
+            #for t_node in t_segments_new[t_to]:
+            #    G.nodes[t_node]["owner"] = t_from_new
+            ## copy data from inherited
+    
+            ## wipe data if t_from is inherited
+            #if t_from_new != t_from:
+            #    t_segments_new[t_from] = []
+            ## wipe data from branches and t_to
+            #for t_ID_2 in t_IDs_remove + [t_to]:
+            #    t_segments_new[t_ID_2] = []
+
+            #if t_state == 'merge':   
+            #    lr_conn_merges_to_nodes.remove(t_ID_old) # its not real, remove
+            #else:
+            #    lr_conn_splits_from_nodes.remove(t_ID_old)
+            #for t in t_IDs_remove:
+            #    lr_C0_condensed_connections_relations[t] = t_from_new
+
+            #lr_C0_condensed_connections_relations[t_to] = t_from_new
+            ## modify node view graph
+            #t_successors   = extractNeighborsNext(G2, t_to, lambda x: G2.nodes[x]["t_start"])
+            #t_edges = [(t_from_new,t_succ) for t_succ in t_successors]
+            #G2.remove_nodes_from(t_IDs_remove + [t_to])
+            #G2.add_edges_from(t_edges)
+            #G2.nodes()[t_from_new]["t_end"] = t_segments_new[t_from_new][-1][0]
 
 G_seg_view_2 = nx.Graph()
 G_seg_view_2.add_edges_from([(x,y) for y,x in lr_C0_condensed_connections_relations.items()])
@@ -2173,14 +2137,11 @@ lr_extend_merges_IDs += [(lr_C1_condensed_connections_relations[t],'mixed') for 
 #lr_extend_merges_IDs = list() + list(t_split_real_dict.keys()) + [lr_C1_condensed_connections_relations[t] for t in lr_conn_splits_merges_mixed_dict]
 lr_mixed_completed      = {'full': defaultdict(dict),'partial': defaultdict(dict)} #AutoCreateDict()#
 for t_ID, t_state in lr_extend_merges_IDs:
-    if t_state == 'merge':
-        t_branches = t_event_start_end_times[t_state][t_ID]['branches']
-        t_times_target = []
-    elif t_state == 'split':
+    if t_state in ('merge','split'):
         t_branches = t_event_start_end_times[t_state][t_ID]['branches']
         t_times_target = []
     else:
-        t_branches = [t_ID] # dont have real branches, molding data to merge case
+        t_branches = [t_ID] # dont have real branches, molding data to merge case structure
         t_nodes_target = t_event_start_end_times[t_state][t_ID]['t_target_nodes']
         t_times_target = [t[0] for t in t_nodes_target.values()]
         t_subIDs_target = {t:[] for t in t_times_target}
@@ -2192,7 +2153,8 @@ for t_ID, t_state in lr_extend_merges_IDs:
             t_conn = (t_branch_ID, t_ID)
             t_t_from    = t_event_start_end_times[t_state][t_ID]['t_start'][t_branch_ID] # last of branch
             t_t_to      = t_event_start_end_times[t_state][t_ID]['t_end']                # first of target
-            t_node_from = t_segments_new[t_branch_ID][-1]
+            t_branch_ID_new = lr_C1_condensed_connections_relations[t_branch_ID] 
+            t_node_from = t_segments_new[t_branch_ID_new][-1]
             t_node_to   = t_segments_new[t_ID][0]
         else:
             t_conn = (t_ID, t_branch_ID)
@@ -2382,116 +2344,18 @@ for (t_ID,t_state), t_conns in lr_conn_merges_good.items():
     # if path is extended partially, special treatment of edges is needed (see (3))
     for t_conn in t_conns:
         t_from, t_to = t_conn
-        t_from_new = lr_C1_condensed_connections_relations[t_from]
         t_combs = t_extrapolate_sol_comb[t_conn]
 
         if len(t_combs) == 0: continue                              # no extension, skip.
 
-        t_nodes_solo,t_nodes_composite = [],[]                                          
-                                                   
-        # from COMBS regenerate composite nodes, if there are, but also disperse into original solo nodes, which are a part of event space (node paths between segments)
-        for t_time,t_subIDs in t_combs.items():                     
-            for t_subID in t_subIDs:                                
-                t_nodes_solo.append((t_time,t_subID))                
-            t_nodes_composite.append(tuple([t_time] + list(t_subIDs)))  
-            
-        # difference in split and merge extension is simply choice of start or end of
-        # recovered combs and whether you use successors of predecessors during process
-
-        # (1) drop all edges from last known node going into intermediate solution.
-        # (2) same as (1), but with other side
-        # (3) in case when extension (merge for example) is stopped earlier, and last intermediate node is 
-        # (3) composite, this node has to inherit forward edges of each solo node it consists of
-        # (4) reconstruct path using chain of nodes
-        # (5) i have to drop disperesed nodes so edges are also dropped. but also parameters will be dropped
-        # (5) if resolved combs may stay solo. their parameters should be copied on top of clean nodes
-        # (6) drop disperse nodes (this way unwanted edges are also dropped) and reconstruct only useful edges
-        # 
         if t_state in ('merge', 'mixed') and t_from not in lr_mixed_completed['full']:
-            
-            t_from_node_last = t_segments_new[t_from_new][-1]                                       # (1)
-            t_from_successors = list(G.successors(t_from_node_last))                                # (1)
-            t_from_successors_edges = [(t_from_node_last, t_node) for t_node in  t_from_successors] # (1)
-            G.remove_edges_from(t_from_successors_edges)                                            # (1)
-            
-            t_comb_node_last = t_nodes_composite[-1]                                                # (3)
-            t_comb_disp_nodes = disperse_composite_nodes_into_solo_nodes([t_comb_node_last])        # (3)
-            t_comb_last_edges = set()                                                               # (3)
-            for t_node in t_comb_disp_nodes:                                                        # (3)
-                t_comb_last_edges.update([(t_comb_node_last,t) for t in G.successors(t_node)])      # (3)
-            
-            t_node_chain = [t_from_node_last] + t_nodes_composite                                   # (4)
-            t_edges_sequence = [(x, y) for x, y in zip(t_node_chain[:-1], t_node_chain[1:])]        # (4)
-            t_edges_sequence += list(t_comb_last_edges)                                             # (4)
-
-            t_segments_new[t_from_new] += t_nodes_composite                       
-                
-            G2.nodes()[t_from_new]["t_end"] = t_segments_new[t_from_new][-1][0]
-
+            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
         elif t_state == 'split':
-            t_to_node_first = t_segments_new[t_to][0]                                               # (2)
-            t_to_predecessors = list(G.predecessors(t_to_node_first))                               # (2)
-            t_to_predecessors_edges = [(t_node, t_to_node_first) for t_node in  t_to_predecessors]  # (2)
-            G.remove_edges_from(t_to_predecessors_edges)                                            # (2)
-
-            t_comb_node_first = t_nodes_composite[0]                                                # (3)
-            t_comb_disp_nodes = disperse_composite_nodes_into_solo_nodes([t_comb_node_first])       # (3)
-            t_comb_first_edges = set()                                                              # (3)
-            for t_node in t_comb_disp_nodes:                                                        # (3)
-                t_comb_first_edges.update([(t,t_comb_node_first) for t in G.predecessors(t_node)])  # (3)
-                
-            t_node_chain = t_nodes_composite + [t_to_node_first]                                    # (4)
-            t_edges_sequence = [(x, y) for x, y in zip(t_node_chain[:-1], t_node_chain[1:])]        # (4)
-            t_edges_sequence += list(t_comb_first_edges)                                            # (4)
-
-            t_segments_new[t_to] =  t_nodes_composite  + t_segments_new[t_to]
-
-            G2.nodes()[t_to]["t_start"] = t_nodes_composite[0][0]
-
+            save_connections_splits(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
         else:
             t_to = lr_mixed_completed['full'][t_from]['targets'][0]
-                                                                                                    
-            t_from_node_last = t_segments_new[t_from_new][-1]                                       # (1)
-            t_from_successors = list(G.successors(t_from_node_last))                                # (1)
-            t_from_successors_edges = [(t_from_node_last, t_node) for t_node in  t_from_successors] # (1)
-            G.remove_edges_from(t_from_successors_edges)                                            # (1)
-
-            t_to_node_first = t_segments_new[t_to][0]                                               # (2)
-            t_to_predecessors = list(G.predecessors(t_to_node_first))                               # (2)
-            t_to_predecessors_edges = [(t_node, t_to_node_first) for t_node in  t_to_predecessors]  # (2)
-            G.remove_edges_from(t_to_predecessors_edges)                                            # (2)
-                                                                                                    
-            t_nodes_solo = [t_node for t_node in t_nodes_solo if t_node[0] < t_to_node_first[0]]
-            t_nodes_composite = [t_node for t_node in t_nodes_composite if t_node[0] < t_to_node_first[0]]
-
-            t_node_chain = [t_from_node_last] + t_nodes_composite + [t_to_node_first]               # (4)
-            t_edges_sequence = [(x, y) for x, y in zip(t_node_chain[:-1], t_node_chain[1:])]        # (4)
-
-            for t_node in t_segments_new[t_to]:
-                G.nodes[t_node]["owner"] = t_from_new
-
-            t_segments_new[t_from_new] += t_nodes_composite
-            t_segments_new[t_from_new] += t_segments_new[t_to]
-            t_segments_new[t_to] = []
-
-            t_successors   = extractNeighborsNext(G2, t_to, lambda x: G2.nodes[x]["t_start"])
-            t_edges = [(t_from_new,t_succ) for t_succ in t_successors]
-            G2.remove_nodes_from([t_to])
-            G2.add_edges_from(t_edges)
-            G2.nodes()[t_from_new]["t_end"] = t_segments_new[t_from_new][-1][0] 
-            lr_C1_condensed_connections_relations[t_to] = t_from_new
-
-        t_common_nodes = set(t_nodes_solo).intersection(set(t_nodes_composite))                     # (5)
-        t_composite_nodes = set(t_nodes_composite) - set(t_nodes_solo)                              # (5)
-        t_node_params = {t:dict(G.nodes[t]) for t in t_common_nodes}                                # (5)
+            save_connections_two_ways(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
         
-        G.remove_nodes_from(t_nodes_solo)                                                           # (6)
-        G.add_edges_from(t_edges_sequence)                                                          # (6)
-
-        for t,t_params in t_node_params.items():    
-                G.add_node(t, **t_params)
-
-        set_custom_node_parameters(G, g0_contours, t_composite_nodes, t_from_new, calc_hull = 1)
 aaa = defaultdict(set)
 for t, t_segment in enumerate(t_segments_new):
     for t_node in t_segment:
@@ -2586,7 +2450,7 @@ for t_ID in fin_additional_segments_IDs: # check left and right connected neighb
 
     G2.add_edges_from(t_conns_left + t_conns_right)
     a = 1
-
+# for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # ===============================================================================================
 # ============== Final passes. Find k and s params for interpolating holes ======================
 # ===============================================================================================
@@ -2606,7 +2470,7 @@ for t_ID in t_segments_IDs_relevant:
     t_k_s = interpolate_find_k_s(trajectory, time, params_k, params_s,  report_on = True, report = t_report[t_ID], num_sub_iterations = 20)
     fin_interpolate_k_s_params[t_ID] = min(t_k_s, key=t_k_s.get)    # (1,5) is a failsafe. will have a value of 6666666
 
-
+# for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # ===============================================================================================
 # ===============================================================================================
 # ================================ Final passes. Find stray nodes ===============================
@@ -2678,7 +2542,7 @@ for t,t_segment in enumerate(t_segments_new):
             t_node = (t_time,t_subID)                                           # decompose nodes to fit OG graph
             t_neighbors = G_OG.neighbors(t_node)                                # check remaining connections
             t_segment_stray_neighbors[t].update(t_neighbors)                    # add stray nodes to storage
-
+# for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # ===============================================================================================
 # ===============================================================================================
 # ================================ Final passes. test and redistribute stray nodes ===============================

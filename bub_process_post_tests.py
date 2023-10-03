@@ -1,5 +1,5 @@
 from ast import For
-import enum, copy, random
+import enum, copy, random, timeit
 from collections import defaultdict
 from tracemalloc import start
 import numpy as np, itertools, networkx as nx, sys, time as time_lib
@@ -639,7 +639,6 @@ font = cv2.FONT_HERSHEY_SIMPLEX
 fontScale = 0.7; thickness = 4;
 
 # for_graph_plots(G)    # <<<<<<<<<<<<<<
-
 # ===============================================================================================
 # ===============================================================================================
 # =========== Extract solo-to-solo bubble trajectories from less rough graphs ===================
@@ -2426,8 +2425,10 @@ for k,t_segment in enumerate(t_segments_new):
 # ===============================================================================================
 # ============== Final passes. new straight. update connectivity ====================
 # ===============================================================================================
-
-for t_ID in fin_additional_segments_IDs: # check left and right connected neighbors. path only though free nodes.
+G2.add_edges_from(G2.edges())
+fin_connectivity_graphs = defaultdict(list) #fin_additional_segments_IDs
+t_segments_relevant = [t for t,t_seg in enumerate(t_segments_new) if len(t_seg) > 0]
+for t_ID in t_segments_relevant: # check left and right connected neighbors. path only though free nodes.
     t_DT = 20                            # first subgraph contains nodes up to, but not including source (*)
                                          # as to drop segments that end in same time, so connections are not made in reverse. 
     t_t_min = G2.nodes[t_ID]["t_start" ]
@@ -2446,10 +2447,44 @@ for t_ID in fin_additional_segments_IDs: # check left and right connected neighb
     t_node_from = t_add_custom_nodes[0]
     t_segments_active_all = unique_active_segments(t_start, t_end, lr_time_active_segments)  # put outside function
     
-    t_conns_right = find_segment_connectivity_isolated(G, t_start, t_end, t_add_custom_nodes, t_segments_active_all, t_ID, source_node = t_node_from, target_nodes = None)
-
+    t_conns_right, t_conn_graphs = find_segment_connectivity_isolated(G, t_start, t_end, t_add_custom_nodes, t_segments_active_all, t_ID, source_node = t_node_from, target_nodes = None, return_cc = True)
+    for t_conn, t_vals in t_conn_graphs.items():
+        fin_connectivity_graphs[t_conn] = t_vals
     G2.add_edges_from(t_conns_left + t_conns_right)
     a = 1
+# for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+# ===============================================================================================
+# ============== Final passes. extract inter segment nodes ====================
+# ===============================================================================================
+# NOTE: element order in t_conn now is fixed (from, to), numbering hierarchy does not represent order anymore.
+t_start_points  = []
+t_end_points    = []
+
+for t_ID in G2.nodes():
+    t_successors    = extractNeighborsNext(     G2, t_ID, func_next_neighb)
+    t_predecessors  = extractNeighborsPrevious( G2, t_ID, func_prev_neighb)
+    if len(t_successors)    == 0: t_end_points.append(t_ID)
+    if len(t_predecessors)  == 0: t_start_points.append(t_ID)
+
+if 1 == 1:
+    
+    def dfs_pred(graph, node, time_lim, node_set):
+        node_set.add(node)
+        predecessors = list(graph.predecessors(node))
+        for successor in predecessors:
+            if successor not in node_set and graph.nodes[successor]['time'] > time_lim:
+                dfs_pred(graph, successor, time_lim, node_set)
+
+    t_back = defaultdict(set)
+    for t_ID in t_start_points:
+        t_node_from = t_segments_new[t_ID][0]
+        dfs_pred(G, t_node_from, time_lim = t_node_from[0] - 10, node_set = t_back[t_ID])
+
+
+extract_graph_connected_components
+
+a = 1
+
 # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # ===============================================================================================
 # ============== Final passes. Find k and s params for interpolating holes ======================
@@ -2515,11 +2550,26 @@ G_OG.remove_edges_from(t_edges_all)                                             
 
 t_segment_overlap = find_common_intervals(lr_time_active_segments)              # extract possible connections between overlapping
 for (t_seg_1, t_seg_2), t_times in t_segment_overlap.items():                   # contours. only possible edges where abs(t1-t2) = 1
-
+    t_edges_inter_segment = []
+    t_times_sides = [t_times[0] - 1] + t_times + [t_times[-1] +1 ]
     t_times_staggered = [(x, y) for x, y in zip(t_times[:-1], t_times[1:])]     # list of two consequitive time steps (t1,t2)
+    #t_start_edge = (t_times[0] - 1, t_times[0])
+    t_end_edge   = (t_times[-1] , t_times[-1] + 1)
+    t_1,t_2 = (t_times[0] - 1, t_times[0])
+    if t_1 in lr_time_active_segments:
+        if t_seg_1 in lr_time_active_segments[t_1] and t_seg_2 in lr_time_active_segments[t_2]:
+            t_1_subIDs_1 = t_nodes_resolved_per_segment[t_seg_1][t_1]                
+            t_2_subIDs_1 = t_nodes_resolved_per_segment[t_seg_2][t_2]               
+            t_prod_1 = list(itertools.product(t_1_subIDs_1, t_2_subIDs_1))
+            [t_edges_inter_segment.append(((t_1, t_from),(t_2,t_to))) for t_from, t_to in t_prod_1]
+
+        if t_seg_2 in lr_time_active_segments[t_1] and t_seg_1 in lr_time_active_segments[t_2]:
+            t_1_subIDs_2 = t_nodes_resolved_per_segment[t_seg_2][t_1]
+            t_2_subIDs_2 = t_nodes_resolved_per_segment[t_seg_1][t_2]
+            t_prod_2 = list(itertools.product(t_1_subIDs_2, t_2_subIDs_2)) 
+            [t_edges_inter_segment.append(((t_1, t_from),(t_2,t_to))) for t_from, t_to in t_prod_2]
+
     for t_1,t_2 in t_times_staggered:
-        t_edges_inter_segment = []
-        
         t_1_subIDs_1 = t_nodes_resolved_per_segment[t_seg_1][t_1]               # extract subIDs for segment 1 at t1 and 
         t_2_subIDs_1 = t_nodes_resolved_per_segment[t_seg_2][t_2]               # subIDs for segment 2 for t2
         
@@ -2529,10 +2579,24 @@ for (t_seg_1, t_seg_2), t_times in t_segment_overlap.items():                   
         t_prod_1 = list(itertools.product(t_1_subIDs_1, t_2_subIDs_1))          # for connections between two cases. 
         t_prod_2 = list(itertools.product(t_1_subIDs_2, t_2_subIDs_2))          # order t1<t2 still holds
         
-        for t_from, t_to in t_prod_1 + t_prod_2:                                # combine connections together and add times
-            t_edges_inter_segment.append(((t_1, t_from),(t_2,t_to))) 
+        [t_edges_inter_segment.append(((t_1, t_from),(t_2,t_to))) for t_from, t_to in t_prod_1 + t_prod_2]                                # combine connections together and add times
+             
 
-        G_OG.remove_edges_from(t_edges_inter_segment)                           # remove edges
+    t_1, t_2 = (t_times[-1] , t_times[-1] + 1)
+    if t_2 in lr_time_active_segments:
+        if t_seg_1 in lr_time_active_segments[t_1] and t_seg_2 in lr_time_active_segments[t_2]:
+            t_1_subIDs_1 = t_nodes_resolved_per_segment[t_seg_1][t_1]                
+            t_2_subIDs_1 = t_nodes_resolved_per_segment[t_seg_2][t_2]               
+            t_prod_1 = list(itertools.product(t_1_subIDs_1, t_2_subIDs_1))
+            [t_edges_inter_segment.append(((t_1, t_from),(t_2,t_to))) for t_from, t_to in t_prod_1]
+
+        if t_seg_2 in lr_time_active_segments[t_1] and t_seg_1 in lr_time_active_segments[t_2]:
+            t_1_subIDs_2 = t_nodes_resolved_per_segment[t_seg_2][t_1]
+            t_2_subIDs_2 = t_nodes_resolved_per_segment[t_seg_1][t_2]
+            t_prod_2 = list(itertools.product(t_1_subIDs_2, t_2_subIDs_2)) 
+            [t_edges_inter_segment.append(((t_1, t_from),(t_2,t_to))) for t_from, t_to in t_prod_2]
+
+    G_OG.remove_edges_from(t_edges_inter_segment)                           # remove edges
 
 
 t_segment_stray_neighbors = defaultdict(set)
@@ -2543,6 +2607,7 @@ for t,t_segment in enumerate(t_segments_new):
             t_neighbors = G_OG.neighbors(t_node)                                # check remaining connections
             t_segment_stray_neighbors[t].update(t_neighbors)                    # add stray nodes to storage
 # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+# for_graph_plots(G, segs = segments2)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<# for_graph_plots(G_OG) 
 # ===============================================================================================
 # ===============================================================================================
 # ================================ Final passes. test and redistribute stray nodes ===============================

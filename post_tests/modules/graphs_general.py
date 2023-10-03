@@ -1,6 +1,7 @@
 
 import networkx as nx, cv2, numpy as np
 from matplotlib import pyplot as plt
+from collections import defaultdict
 from bubble_params import (centroid_area_cmomzz)
 from misc import (cyclicColor, order_segment_levels, prep_combs_clusters_from_nodes)
 
@@ -121,7 +122,7 @@ def extract_graph_connected_components(graph, sort_function = lambda x: x):
     connected_components_unique = []
     [connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
     return connected_components_unique
-def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_segments, source_segment, source_node = None, target_nodes = None):
+def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_segments, source_segment, source_node = None, target_nodes = None, return_cc = False):
     # test connectivity of source segments to nearby segments (within certain time interval - [t_max, t_min]
     # to avoid paths that go though other segments, active at that time, temporary subgraph is created
     # from which all but one test target is removed.
@@ -143,7 +144,7 @@ def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_se
     else                            : test_segments = set(active_segments)      - {source_segment}
     
     connected_edges = []
-
+    out_cc = defaultdict(list)
     for test_segment in test_segments:                              # go though all active segments except original source
         segments_keep_sub = (None, source_segment, test_segment)    # no owner, source or test segments are selected for subgraph
         nodes_keep_sub    = [node for node in subgraph_main.nodes() if subgraph_main.nodes[node]["owner"] in segments_keep_sub]
@@ -163,8 +164,24 @@ def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_se
 
         if hasPath:
             connected_edges.append((source_segment,test_segment))
+            if return_cc:
+                nodes_from  = [node for node in nodes_keep_sub if subgraph_test.nodes[node]["owner"] == source_segment]
+                nodes_to    = [node for node in nodes_keep_sub if subgraph_test.nodes[node]["owner"] == test_segment]
 
-    return connected_edges
+                node_from_last  = max(nodes_from, key = lambda x: x[0])
+                node_to_firt    = min(nodes_to  , key = lambda x: x[0])
+
+                sub_test_nodes = [node for node in nodes_keep_sub if node_from_last[0] < node[0] < node_to_firt[0]]
+                sub_test_nodes += [node_from_last, node_to_firt]
+
+                sub_subgraph_test = subgraph_test.subgraph(sub_test_nodes) 
+                cc_all = extract_graph_connected_components(sub_subgraph_test.to_undirected(),  lambda x: (x[0], *x[1:]))
+                cc_sol = [cc for cc in cc_all if source_node in cc]
+                if len(cc_sol) == 0:cc_sol = [None]
+                out_cc[(source_segment,test_segment)] = cc_sol[0]
+
+    if return_cc: return connected_edges, out_cc
+    else: return connected_edges
 
 
 def drawH(H, paths, node_positions, fixed_nodes = []):

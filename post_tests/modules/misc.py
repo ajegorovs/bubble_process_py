@@ -191,7 +191,7 @@ def find_common_intervals(data):
         common_times = active_times[element_1].intersection(active_times[element_2])
         
         if common_times:
-            common_times_dict[pair] = list(common_times)
+            common_times_dict[pair] = sorted(common_times)
 
     return common_times_dict
 
@@ -631,7 +631,7 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
 
     for t,t_params in t_node_params.items():    
             graph_nodes.add_node(t, **t_params)
-
+            graph_nodes.nodes[t]["owner"] = segment_from_new
     set_custom_node_parameters(graph_nodes, contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)    
     
 def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to, graph_nodes, graph_segments, ID_remap, contours_dict):
@@ -679,7 +679,7 @@ def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to,
 
     for t,t_params in t_node_params.items():    
             graph_nodes.add_node(t, **t_params)
-
+            graph_nodes.nodes[t]["owner"] = segment_from_new
     set_custom_node_parameters(graph_nodes, contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)  
     
 def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to, graph_nodes, graph_segments, ID_remap, contours_dict):
@@ -728,7 +728,7 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
 
     for t,t_params in t_node_params.items():    
             graph_nodes.add_node(t, **t_params)
-
+            graph_nodes.nodes[t]["owner"] = segment_to
     set_custom_node_parameters(graph_nodes, contours_dict, t_composite_nodes, segment_to, calc_hull = 1)  # owner changed
 
 

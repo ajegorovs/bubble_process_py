@@ -694,7 +694,7 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
                         
         nodes_composite.append(tuple([time] + list(subIDs)))  
 
-    segment_from_new        = ID_remap[segment_from]
+    #segment_from_new        = ID_remap[segment_from] # should not be used, since splits dont reach it
 
     node_to_first = node_segments[segment_to][0]                                                    # (2)
     to_predecessors = list(graph_nodes.predecessors(node_to_first))                                 # (2)

@@ -2210,7 +2210,7 @@ for t_ID, t_state in lr_extend_merges_IDs:
             t_combs_all = t_combs_all[-2::-1]
             t_times_all = t_times_all[-2::-1]
         else:
-            t_combs_all = t_combs_all[1:]               # last element is being dropped during saving. should examine if needed.
+            t_combs_all = t_combs_all[1:]               # last element is being dropped during saving. should examine if needed. EDIT: not sure if relevant
             t_times_all = t_times_all[1:]
 
         for t_time, t_permutations in zip(t_times_all,t_combs_all):
@@ -2277,83 +2277,124 @@ for t_ID, t_state in lr_extend_merges_IDs:
 
 # search for conflict nodes for extended branches
 # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-lr_conn_merges_good = defaultdict(set)#{tID:[] for tID in lr_conn_merges_to_nodes}
-#lr_conn_merges_good2 = {tID:[] for tID in lr_conn_merges_to_nodes}
-if 1 == 1:
-    node_properties = defaultdict(list)
-    # to find overlapping branches add owners to each node. multiple owners = contested.
-    for key, dic in t_extrapolate_sol_comb.items():
-        t_nodes =  [(key, value) for key, values in dic.items() for value in values]
-        for t_node in t_nodes:
-            node_properties[t_node].extend([key])
-    t_duplicates = {t_node: t_branches for t_node,t_branches in node_properties.items() if len(t_branches) > 1}
-    assert len(t_duplicates) == 0, 'havent tested after addition of split and mixed extension code 28.09.23'
-    t_all_problematic_conns = list(set(sum(list(t_duplicates.values()),[])))
-    t_all_problematic_conns_to = [a[1] for a in t_all_problematic_conns]
-    for tID,t_state in lr_extend_merges_IDs: # here lies problem with splits, and possibly with mixed cases!!!! <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        if tID not in t_all_problematic_conns_to:
-            if t_state == 'merge':
-                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
-            elif t_state == 'split':
-                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[0] == tID]
-            else:
-                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
-            lr_conn_merges_good[(tID,t_state)].update(t_conns_relevant)
-            #lr_conn_merges_good.update((tID,t_state))
+# ===============================================================================================
+# ====  FOR BRANCH EXTENSION, SEE IF THERE ARE CONTESTED NODES AND REDISTRIBUTE THEM ====
+# ===============================================================================================
+# WHY: extensions are performed effectively in parallel, without coupling between processes.
+# WHY: thats why some recovered paths may overlap. and overlap has to be removed.
+# HOW: nodes that are in multiple extensions are called contested. Since each contested node can have
+# HOW: only one owner, we construct all possible choices for this kind of node redistribution.
+# HOW: additionally, we cannot strip node from path that will be left with no nodes at any time step.
+# NOTE: only case where no contested nodes are found and only one possible redistribution is scripted. <<<
+def conflicts_stage_1(owner_dict):
+    # find contested nodes by counting their owners
+    node_owners = defaultdict(list)
+    for owner, times_subIDs in owner_dict.items():
+        # {owner:nodes,...}, where nodes = {time:*subIDs,...} = {483: (3,), 484: (4,),..}
+        nodes =  [(time, subID) for time, subIDs in times_subIDs.items() for subID in subIDs]
+        for node in nodes:
+            node_owners[node].extend([owner])
 
+    return {node: owners for node,owners in node_owners.items() if len(owners) > 1}
+
+def conflicts_stage_2(contested_dict):
+    # prep data for redistribution schemes. get options of node owners: node1:owners1 -> 
+    # -> (owner) choices for node 1 = ([node1, owner11],[node1, owner12],..)
+    # node_owner_choices -> [choices for node 1, choices for node 2,...]
+    node_owner_choices = [] 
+    for key,values in contested_dict.items():
+        node_owner_choices.append(list(itertools.product([key],values)))
+    # for fair node distribution, only one owner choice from each "choices for node X" is possible
+    # so we construct combinations of single choices for each "choices for node X"
+    # which is well described by permutation product (a branching choice tree).
+    return list(itertools.product(*node_owner_choices))
+
+def conflicts_stage_3(node_destribution_options,contested_node_owners_dict, owner_dict):
+    # if this choice of node redistribution is correct, i have to delete contested nodes from
+    # alternative owners. if some of alternative owners are left with no nodes, its incorrect choice
     variants_possible = []
+    for nodes_owners in node_destribution_options: # examine one redistribution variant
+        t_skip = False
+        for node, owner in nodes_owners:           # examine one particular node
+            time, *subIDs = node                   # determine alternative owners
+            owners_others = [t for t in contested_node_owners_dict[node] if t != owner]
+            for owner_other in owners_others:
+                leftover_subIDs = set(owner_dict[owner_other][time]) - set(subIDs)
+                if  len(leftover_subIDs) == 0:     # check subIDs after removal of contested subIDs
+                    t_skip = True
+                    break                          # stop examining alternative owners. case failed
+            if t_skip: break                       # stop examining nodes of case
+        if not t_skip:
+            variants_possible.append(nodes_owners)
+    return variants_possible
+
+lr_conn_merges_good = set()#dict()#defaultdict(set)
+if 1 == 1:
+   
+    # check if there are contested nodes in all extrapolated paths
+    t_duplicates = conflicts_stage_1(t_extrapolate_sol_comb)
+    assert len(t_duplicates) == 0, 'havent tested after addition of split and mixed extension code 28.09.23'
     if len(t_duplicates) > 0:
-        # each contested node is an option. each choice of owner produces a different configuration branch
-        variants = [] # generate these options for each contested node
-        for t,(key,values) in enumerate(t_duplicates.items()):
-            sd  = list(itertools.product([key],values))
-            variants.append(sd)
-        # generate all possible evoltions via product permutation: choice_1 -> choice_2 -> ...
-        variants_all = list(itertools.product(*variants))
-        # check if other paths, which will have at least one remaining node after deletion.
-        for t_choice_evol in variants_all:
-            t_skip = False
-            for t_node,t_conn in t_choice_evol:
-                t_time, *t_subIDs = t_node
-                t_delete_conns = [t_c for t_c in t_duplicates[t_node] if t_c != t_conn]
-                for t_delete_conn in t_delete_conns:
-                    if len(t_extrapolate_sol_comb[t_delete_conn][t_time]) == 1:
-                        t_skip = True
-            if not t_skip:
-                variants_possible.append(t_choice_evol)
-    if len(variants_possible) == 1: # if there is only one solution by default take it as answer
-        t_choice_evol = variants_possible[0]
+        # retrieve viable ways of redistribute contested nodes
+        variants_all        = conflicts_stage_2(t_duplicates)
+        variants_possible   = conflicts_stage_3(variants_all,t_duplicates, t_extrapolate_sol_comb)
+        #if there is only one solution by default take it as answer
+        if len(variants_possible) == 1:  
+            t_choice_evol = variants_possible[0]
+        else:
+            # method is not yet constructed, it should be based on criterium minimization for all variants
+            # current, trivial solution, is to pick solution at random. at least there is no overlap.
+            assert -1 == 0, 'multiple variants of node redistribution'
+            t_choice_evol = variants_possible[0]
+         
+        # redistribute nodes for best solution.
         for t_node,t_conn in t_choice_evol:
-            tID = t_conn[1]
-            t_time, *t_subIDs = t_node
-            t_delete_conns = [t_c for t_c in t_duplicates[t_node] if t_c != t_conn]
+            tID                 = t_conn[1]     # not correct w.r.t different states <<<
+            t_time, *t_subIDs   = t_node
+            t_delete_conns      = [t_c for t_c in t_duplicates[t_node] if t_c != t_conn]
             for t_delete_conn in t_delete_conns:
                 t_temp = t_extrapolate_sol_comb[t_delete_conn][t_time]
                 t_temp = [t for t in t_temp if t not in t_subIDs]
                 t_extrapolate_sol_comb[t_delete_conn][t_time] = t_temp
             t_conns_relevant = [t_c for t_c in t_extrapolate_sol_comb if t_c[1] == tID]
             lr_conn_merges_good.update(t_conns_relevant) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< not correct anymore
-            a = 1
+
+    t_all_problematic_conns = list(set(sum(list(t_duplicates.values()),[])))
+    t_all_problematic_conns_to = [a[1] for a in t_all_problematic_conns]
+    for tID,t_state in lr_extend_merges_IDs: # here lies problem with splits, and possibly with mixed cases!!!! <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        if tID not in t_all_problematic_conns_to:
+            if t_state      == 'merge':
+                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
+            elif t_state    == 'split':
+                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[0] == tID]
+            else:
+                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
+            for t_conn in t_conns_relevant:
+                lr_conn_merges_good.add((t_conn,t_state))
+            #lr_conn_merges_good[(tID,t_state)].update(t_conns_relevant)
+            #lr_conn_merges_good.update((tID,t_state))
+    
         print('branches are resolved without conflict, or conflict resolved by redistribution of nodes')
 # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-for (t_ID,t_state), t_conns in lr_conn_merges_good.items():
+#for (t_ID,t_state), t_conns in lr_conn_merges_good.items():
+for t_conn, t_state in lr_conn_merges_good:
     # modifying graphs and storage based on recovered path though solo node space (web) between segments (see (6))
     # path consists of composite nodes. they are disperesed back to solo nodes and deleted from graph. new comp nodes are added
     # if path is extended partially, special treatment of edges is needed (see (3))
-    for t_conn in t_conns:
-        t_from, t_to = t_conn
-        t_combs = t_extrapolate_sol_comb[t_conn]
+    #for t_conn in t_conns:
+    t_from, t_to = t_conn
+    t_combs = t_extrapolate_sol_comb[t_conn]
 
-        if len(t_combs) == 0: continue                              # no extension, skip.
+    if len(t_combs) == 0: continue                              # no extension, skip.
 
-        if t_state in ('merge', 'mixed') and t_from not in lr_mixed_completed['full']:
-            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
-        elif t_state == 'split':
-            save_connections_splits(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
-        else:
-            t_to = lr_mixed_completed['full'][t_from]['targets'][0]
-            save_connections_two_ways(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
+    if t_state in ('merge', 'mixed') and t_from not in lr_mixed_completed['full']:
+        save_connections_merges(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
+    elif t_state == 'split':
+        save_connections_splits(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
+    else:
+        t_to = lr_mixed_completed['full'][t_from]['targets'][0]
+        save_connections_two_ways(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
         
 aaa = defaultdict(set)
 for t, t_segment in enumerate(t_segments_new):
@@ -2452,9 +2493,12 @@ for t_ID in t_segments_relevant: # check left and right connected neighbors. pat
         fin_connectivity_graphs[t_conn] = t_vals
     G2.add_edges_from(t_conns_left + t_conns_right)
     a = 1
+
+fin_connectivity_graphs = {t_conn:t_vals for t_conn, t_vals in fin_connectivity_graphs.items() if len(t_vals) > 2}
+for t_ID in fin_additional_segments_IDs: t_segment_k_s_diffs[t_ID] = None   
 # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # ===============================================================================================
-# ============== Final passes. extract inter segment nodes ====================
+# =========== Final passes. examine edges of terminated segments. retrieve nodes  ===============
 # ===============================================================================================
 # NOTE: element order in t_conn now is fixed (from, to), numbering hierarchy does not represent order anymore.
 t_start_points  = []
@@ -2471,20 +2515,191 @@ if 1 == 1:
     def dfs_pred(graph, node, time_lim, node_set):
         node_set.add(node)
         predecessors = list(graph.predecessors(node))
-        for successor in predecessors:
-            if successor not in node_set and graph.nodes[successor]['time'] > time_lim:
-                dfs_pred(graph, successor, time_lim, node_set)
+        for predecessor in predecessors:
+            if predecessor not in node_set and graph.nodes[predecessor]['time'] > time_lim:
+                dfs_pred(graph, predecessor, time_lim, node_set)
+
+    def dfs_succ(graph, node, time_lim, node_set):
+        node_set.add(node)
+        successors = list(graph.successors(node))
+        for successor in successors:
+            if successor not in node_set and graph.nodes[successor]['time'] < time_lim:
+                dfs_succ(graph, successor, time_lim, node_set)
 
     t_back = defaultdict(set)
     for t_ID in t_start_points:
         t_node_from = t_segments_new[t_ID][0]
         dfs_pred(G, t_node_from, time_lim = t_node_from[0] - 10, node_set = t_back[t_ID])
+    t_back = {t:v for t,v in t_back.items() if len(v) > 1}
+    t_forw = defaultdict(set)
+    for t_ID in t_end_points:
+        t_node_from = t_segments_new[t_ID][-1]
+        dfs_pred(G, t_node_from, time_lim = t_node_from[0] + 10, node_set = t_forw[t_ID])
+    t_forw = {t:v for t,v in t_forw.items() if len(v) > 1}
 
 
-extract_graph_connected_components
+fafafs = defaultdict(dict)
+for t_ID , t_nodes in t_back.items():
+    t_perms = disperse_nodes_to_times(t_nodes)
+    t_sorted = sorted(t_perms)[:-1]
+    t_sorted.reverse()
+    t_perms = {t:t_perms[t] for t in t_sorted}
+    t_values = [combs_different_lengths(t_subIDs) for t_subIDs in t_perms.values()]
+    fafafs[(t_ID,'back')] = {t:v for t,v in zip(t_perms, t_values)}
 
+for t_ID , t_nodes in t_forw.items():
+    t_perms = disperse_nodes_to_times(t_nodes)
+    t_sorted = sorted(t_perms)[1:]
+    t_perms = {t:t_perms[t] for t in t_sorted}
+    t_values = [combs_different_lengths(t_subIDs) for t_subIDs in t_perms.values()]
+    fafafs[(t_ID,'forward')] = {t:v for t,v in zip(t_perms, t_values)}
+
+
+# ===============================================================================================
+# =========== Final passes. examine edges of terminated segments. extrapolate ===============
+# ===============================================================================================
+t_out                   = defaultdict(dict)
+t_extrapolate_sol       = defaultdict(dict)
+#t_extrapolate_sol_back_forw = {'back':defaultdict(dict), 'forward': defaultdict(dict)}
+t_extrapolate_sol_comb  = defaultdict(dict)
+#t_extrapolate_sol_comb_back_forw = {'back':defaultdict(dict), 'forward': defaultdict(dict)}
+for (t_ID, t_state), t_combs in fafafs.items():
+    t_conn = (t_ID, t_state) # <<<<< custom. t_ID may be two states, and they have to be differentiated
+    #t_nodes = t_segments_new[t_ID]
+    if t_state == 'forward':
+        assert 1== -1, 'not tested. examine!'
+        t_t_from = t_segments_new[t_ID][-1][0]
+        t_nodes = [t_node for t_node in t_segments_new[t_ID] if t_node[0] > t_t_from - h_interp_len_max2]
+        t_node_from = t_segments_new[t_ID][-1]
+    else:
+        t_t_to = t_segments_new[t_ID][0][0]
+        t_nodes = [t_node for t_node in t_segments_new[t_ID] if t_node[0] < t_t_to + h_interp_len_max2]
+        t_node_from = t_segments_new[t_ID][0]
+
+    trajectory = np.array([G.nodes[t]["centroid"] for t in t_nodes])
+    time       = np.array([G.nodes[t]["time"    ] for t in t_nodes])
+
+    if t_state == 'forward':
+        t_traj_buff     = CircularBuffer(h_interp_len_max2, trajectory) 
+        t_time_buff     = CircularBuffer(h_interp_len_max2, time)       
+        t_time_next     = t_t_from    + 1                               
+    if t_state == 'back':
+        t_traj_buff     = CircularBufferReverse(h_interp_len_max2, trajectory) 
+        t_time_buff     = CircularBufferReverse(h_interp_len_max2, time)      
+        t_time_next     = t_t_to      - 1
+        #t_times = [t for t int_combs]
+        #t_combs = {t:p for t,p in t_combs.items() }
+    N = 5
+    if t_segment_k_s_diffs[t_ID] is not None:
+        t_last_deltas   = list(t_segment_k_s_diffs[t_ID].values())[-N:]  # not changing for splits
+    else:
+        t_last_deltas = np.linalg.norm(np.diff(trajectory, axis=0), axis=1)[-N:]*0.5
+
+    t_norm_buffer   = CircularBuffer(N, t_last_deltas)
+    t_times_accumulate_resolved = []
+    for t_time, t_permutations in t_combs.items():
+        
+        t_time_next = t_time
+        t_extrap = interpolate_trajectory(t_traj_buff.get_data(), t_time_buff.get_data(), which_times = [t_time_next] ,s = t_s, k = t_k, debug = 0 ,axes = 0, title = 'title', aspect = 'equal')[0]
+
+        t_centroids = []
+        t_areas     = []
+        for t_permutation in t_permutations:
+            t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][tID] for tID in t_permutation]))
+            t_centroid, t_area = centroid_area(t_hull)
+            t_centroids.append(t_centroid)
+            t_areas.append(t_area)
+        
+        t_diffs = np.array(t_centroids).reshape(-1,2) - t_extrap
+        t_diff_norms = np.linalg.norm(t_diffs, axis=1)
+        t_where_min = np.argmin(t_diff_norms)
+        t_sol_d_norm = t_diff_norms[t_where_min]
+        t_known_norms = np.array(t_norm_buffer.get_data())
+        t_mean = np.mean(t_known_norms)
+        t_std = np.std(t_known_norms)
+        if t_diff_norms[t_where_min] < max(t_mean, 5) + 5 * t_std:
+            t_norm_buffer.append(t_sol_d_norm)
+            t_traj_buff.append(t_extrap)
+            t_time_buff.append(t_time_next)
+                
+            t_extrapolate_sol[t_conn][t_time] = t_extrap
+            t_extrapolate_sol_comb[t_conn][t_time] = t_permutations[t_where_min]
+            #t_extrapolate_sol_back_forw[t_state][t_ID] = t_extrap
+            #t_extrapolate_sol_comb_back_forw[t_state][t_ID] = t_permutations[t_where_min]
+            #print(f"inter!:c{t_permutations[t_where_min]}, m{t_mean}, s{t_std}, df{t_diff_norms[t_where_min]}")
+            t_times_accumulate_resolved.append(t_time)
+        else:
+            break
+    
+    
+    if len(t_times_accumulate_resolved) > 0:
+
+        t_node_to = tuple([t_time] + list(t_extrapolate_sol_comb[t_conn][t_time]))
+
+        if 1 <= len(t_times_accumulate_resolved)<= 3:
+            t =f'{t_times_accumulate_resolved}'
+        else:
+            t = f'{t_times_accumulate_resolved[0]}->{t_times_accumulate_resolved[-1]}'
+
+        print(f' {t_state}: {t_ID} = {t_node_from}->{t_node_to}  time: {t}')
+    else:
+        t_node_to = '-'
+        print(f'!{t_state}: {t_ID} = {t_node_from}->{t_node_to} failed, no times')
 a = 1
 
+# for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+# ===============================================================================================
+# =========== Final passes. examine edges of terminated segments. solve conflicts  ===============
+# ===============================================================================================
+
+# check if there are contested nodes in all extrapolated paths
+t_duplicates = conflicts_stage_1(t_extrapolate_sol_comb)
+assert len(t_duplicates) == 0, 'havent tested after addition of split and mixed extension code 28.09.23'
+if len(t_duplicates) > 0:
+    # retrieve viable ways of redistribute contested nodes
+    variants_all        = conflicts_stage_2(t_duplicates)
+    variants_possible   = conflicts_stage_3(variants_all,t_duplicates, t_extrapolate_sol_comb)
+    #if there is only one solution by default take it as answer
+    if len(variants_possible) == 1:  
+        t_choice_evol = variants_possible[0]
+    else:
+        # method is not yet constructed, it should be based on criterium minimization for all variants
+        # current, trivial solution, is to pick solution at random. at least there is no overlap.
+        assert -1 == 0, 'multiple variants of node redistribution'
+        t_choice_evol = variants_possible[0]
+         
+    # redistribute nodes for best solution.
+    for t_node,t_conn in t_choice_evol:
+        tID                 = t_conn[1]
+        t_time, *t_subIDs   = t_node
+        t_delete_conns      = [t_c for t_c in t_duplicates[t_node] if t_c != t_conn]
+        for t_delete_conn in t_delete_conns:
+            t_temp = t_extrapolate_sol_comb[t_delete_conn][t_time]
+            t_temp = [t for t in t_temp if t not in t_subIDs]
+            t_extrapolate_sol_comb[t_delete_conn][t_time] = t_temp
+        t_conns_relevant = [t_c for t_c in t_extrapolate_sol_comb if t_c[1] == tID]
+        lr_conn_merges_good.update(t_conns_relevant) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< not correct anymore
+
+# for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+# ===============================================================================================
+# =========== Final passes. examine edges of terminated segments. save extensions  ===============
+# ===============================================================================================
+
+#for (t_ID,t_state), t_conns in lr_conn_merges_good.items():
+for t_conn, t_combs in t_extrapolate_sol_comb.items():
+    (t_ID, t_state) = t_conn
+    # ref for comments to versions encountered previously.
+    #for t_conn in t_conns:
+    #t_from, t_to = t_conn
+    #t_combs = t_extrapolate_sol_comb[t_conn]
+
+    if len(t_combs) == 0: continue                              # no extension, skip.
+
+    if t_state == 'forward':
+        save_connections_merges(t_segments_new, t_extrapolate_sol_comb[t_conn], t_ID,  None, G, G2, lr_C1_condensed_connections_relations, g0_contours)
+    elif t_state == 'back':
+        save_connections_splits(t_segments_new, t_extrapolate_sol_comb[t_conn], None,  t_ID, G, G2, lr_C1_condensed_connections_relations, g0_contours)
+    
 # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 # ===============================================================================================
 # ============== Final passes. Find k and s params for interpolating holes ======================

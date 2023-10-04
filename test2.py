@@ -355,6 +355,101 @@ if 1 == -1:
                     t_skip = True
         if not t_skip:
             variants_possible.append(t_choice_evol)
+
+
+
+if 1 == 1:
+    t_extrapolate_sol_comb = {
+        (0, 3): {483: (3,), 484: (4,), 485: (5,), 486: (6,), 487: (8,), 488: (4,), 489: (6,), 490: (7,)},
+        (2, 3): {483: (1,), 484: (1,), 485: (1,), 486: (1,), 487: (1,5), 488: (0,), 489: (2,)},
+        (5, 6): {483: (2,), 484: (2,), 485: (2,), 486: (2,), 487: (2,), 488: (2,), 489: (1,)}
+    }
+
+    lr_extend_merges_IDs = [(0, 'merge'), (2, 'merge'), (3, 'merge')]
+    import copy, itertools
+    from collections import defaultdict
+    lr_conn_merges_good = defaultdict(set)
+
+    def conflicts_stage_1(owner_dict):
+        # find contested nodes by counting their owners
+        node_owners = defaultdict(list)
+        for owner, times_subIDs in owner_dict.items():
+            # {owner:nodes,...}, where nodes = {time:*subIDs,...} = {483: (3,), 484: (4,),..}
+            nodes =  [(time, subID) for time, subIDs in times_subIDs.items() for subID in subIDs]
+            for node in nodes:
+                node_owners[node].extend([owner])
+
+        return {node: owners for node,owners in node_owners.items() if len(owners) > 1}
+
+    t_duplicates = conflicts_stage_1(t_extrapolate_sol_comb)
+
+    #assert len(t_duplicates) == 0, 'havent tested after addition of split and mixed extension code 28.09.23'
+    t_all_problematic_conns = list(set(sum(list(t_duplicates.values()),[])))
+    t_all_problematic_conns_to = [a[1] for a in t_all_problematic_conns]
+    for tID,t_state in lr_extend_merges_IDs: # here lies problem with splits, and possibly with mixed cases!!!! <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        if tID not in t_all_problematic_conns_to:
+            if t_state == 'merge':
+                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
+            elif t_state == 'split':
+                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[0] == tID]
+            else:
+                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
+            lr_conn_merges_good[(tID,t_state)].update(t_conns_relevant)
+            #lr_conn_merges_good.update((tID,t_state))
+
+    def conflicts_stage_2(contested_dict):
+        # prep data for redistribution schemes. get options of node owners: node1:owners1 -> 
+        # -> (owner) choices for node 1 = ([node1, owner11],[node1, owner12],..)
+        # node_owner_choices -> [choices for node 1, choices for node 2,...]
+        node_owner_choices = [] 
+        for key,values in contested_dict.items():
+            node_owner_choices.append(list(itertools.product([key],values)))
+        # for fair node distribution, only one owner choice from each "choices for node X" is possible
+        # so we construct combinations of single choices for each "choices for node X"
+        # which is well described by permutation product (a branching choice tree).
+        return list(itertools.product(*node_owner_choices)) if len(node_owner_choices) > 0  else []
+
+    
+
+    variants_all = conflicts_stage_2(t_duplicates)
+
+    def conflicts_stage_3(node_destribution_options,contested_node_owners_dict, owner_dict):
+        # if this choice of node redistribution is correct, i have to delete contested nodes from
+        # alternative owners. if some of alternative owners are left with no nodes, its incorrect choice
+        variants_possible = []
+        for nodes_owners in node_destribution_options: # examine one redistribution variant
+            t_skip = False
+            for node, owner in nodes_owners:           # examine one particular node
+                time, *subIDs = node                   # determine alternative owners
+                owners_others = [t for t in contested_node_owners_dict[node] if t != owner]
+                for owner_other in owners_others:
+                    leftover_subIDs = set(owner_dict[owner_other][time]) - set(subIDs)
+                    if  len(leftover_subIDs) == 0:     # check subIDs after removal of contested subIDs
+                        t_skip = True
+                        break                          # stop examining alternative owners. case failed
+                if t_skip: break                       # stop examining nodes of case
+            if not t_skip:
+                variants_possible.append(nodes_owners)
+        return variants_possible
+
+    variants_possible = conflicts_stage_3(variants_all,t_duplicates, t_extrapolate_sol_comb)
+
+
+    if len(variants_possible) == 1: # if there is only one solution by default take it as answer
+        t_choice_evol = variants_possible[0]
+        for t_node,t_conn in t_choice_evol:
+            tID = t_conn[1]
+            t_time, *t_subIDs = t_node
+            t_delete_conns = [t_c for t_c in t_duplicates[t_node] if t_c != t_conn]
+            for t_delete_conn in t_delete_conns:
+                t_temp = t_extrapolate_sol_comb[t_delete_conn][t_time]
+                t_temp = [t for t in t_temp if t not in t_subIDs]
+                t_extrapolate_sol_comb[t_delete_conn][t_time] = t_temp
+            t_conns_relevant = [t_c for t_c in t_extrapolate_sol_comb if t_c[1] == tID]
+            lr_conn_merges_good.update(t_conns_relevant) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< not correct anymore
+            a = 1
+        print('branches are resolved without conflict, or conflict resolved by redistribution of nodes')
+
 if 1 == -1:
     from collections import defaultdict
 

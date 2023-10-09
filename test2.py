@@ -605,7 +605,7 @@ if 1 == -1:
 
 
         return common_times_dict
-if 1 == 1:
+if 1 == -11:
     from collections import defaultdict
 
     def find_common_intervals(data):
@@ -729,31 +729,71 @@ if 1 == 1:
 
 from collections import deque
 import numpy as np
+if 1== -1:
+    class CircularBufferReverse:
+        def __init__(self, size, initial_data=None):
+            self.size = size
+            self.buffer = deque(maxlen=size)
+            if initial_data is not None:
+                self.extend(initial_data)
 
-class CircularBufferReverse:
-    def __init__(self, size, initial_data=None):
-        self.size = size
-        self.buffer = deque(maxlen=size)
-        if initial_data is not None:
-            self.extend(initial_data)
+        def append(self, element):
+            if isinstance(element, list):
+                for item in element:
+                    self.buffer.appendleft(item)
+            else:
+                self.buffer.appendleft(element)
 
-    def append(self, element):
-        if isinstance(element, list):
-            for item in element:
+        def extend(self, lst):
+            for item in reversed(lst):
                 self.buffer.appendleft(item)
-        else:
-            self.buffer.appendleft(element)
 
-    def extend(self, lst):
-        for item in reversed(lst):
-            self.buffer.appendleft(item)
+        def get_data(self):
+            return np.array(self.buffer)
 
-    def get_data(self):
-        return np.array(self.buffer)
+    aa = CircularBufferReverse(3, [3,4,5])
+    aa.append(2)
+    print(aa.get_data())
 
-aa = CircularBufferReverse(3, [3,4,5])
-aa.append(2)
-print(aa.get_data())
+if 1 == -1:
+    import itertools
+
+    def split_into_bins(L, num_bins):
+        n = len(L)
+    
+        if num_bins == 1:
+            yield [sorted(L)]  # Sort the elements before yielding
+            return
+    
+        for r in range(1, n - num_bins + 2):
+            for combination in itertools.combinations(L, r):
+                remaining = [x for x in L if x not in combination]
+                for rest in split_into_bins(remaining, num_bins - 1):
+                    yield [sorted(list(combination))] + rest  # Sort the combination sublist before yielding
+
+    def combs_different_lengths(elements_list):
+        return sum([list(itertools.combinations(elements_list, r)) for r in range(1,len(elements_list)+1)],[])
+    # Example usage:
+    L = [1, 2, 3, 4]
+    num_bins = 2
+
+    print(combs_different_lengths(L))
+    a = list(split_into_bins(L, num_bins))
+    for aa in a:
+        print(aa)
+
+lr_conn_splits_merges_mixed_dict = {1: [4, 5], 3: [4], 4:[7], 5:[6,7], 8:[9]}
+import itertools
+from collections import defaultdict
+# 10.10.2023 bonus for branch extension with conservative subID redistribution
+# get small connected clusters [from1, from2.] -> [to1,to2,..]. 
+t_from_IDs = lr_conn_splits_merges_mixed_dict.keys()
+t_compair_pairs = list(itertools.combinations(t_from_IDs, 2))
+t_from_connected = defaultdict(set)#{t:set([t]) for t in t_from_IDs}
+for t1,t2 in t_compair_pairs:
+    t_common_elems = set(lr_conn_splits_merges_mixed_dict[t1]).intersection(set(lr_conn_splits_merges_mixed_dict[t2]))
+    if len(t_common_elems) > 0:
+        t_from_connected[t1].add(t2)
 
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key

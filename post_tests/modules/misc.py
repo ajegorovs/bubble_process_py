@@ -220,7 +220,19 @@ def prep_combs_clusters_from_nodes(t_nodes):
         t_return[t_time] += [min(t_subIDs)] # <<<<<<<< in case of many IDs inside, take only minimal, as representative >><<< its not really used currently!!!
     return {t_time:sorted(t_subIDs) for t_time,t_subIDs in t_return.items()}
 
-
+        
+def split_into_bins(L, num_bins):
+    n = len(L)
+    
+    if num_bins == 1:
+        yield [L]#([list(t)] for t in combs_different_lengths(L))  # Sort the elements before yielding
+        return
+    
+    for r in range(1, n - num_bins + 2):
+        for combination in itertools.combinations(L, r):
+            remaining = [x for x in L if x not in combination]
+            for rest in split_into_bins(remaining, num_bins - 1):
+                yield [sorted(list(combination))] + rest  # Sort the combination sublist before yielding
 # have to redefine here because i get circular import error
 #def extract_graph_connected_components(graph, sort_function = lambda x: x): 
 #    # extract all conneted component= clusters from graph. to extract unique clusters,
@@ -685,6 +697,7 @@ def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to,
 def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to, graph_nodes, graph_segments, ID_remap, contours_dict):
     # *** is used to modify graphs and data storage with info about resolved extensions of split branches (from right to split node) ***
     # ref save_connections_two_ways() for docs. (1) absent, (3) is new
+    # >> maybe i have to sort nodes_composite instead of [::-1] <<< later
     from graphs_general import (set_custom_node_parameters)
     nodes_solo, nodes_composite = [],[]
 
@@ -710,12 +723,12 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
     nodes_solo      = [node for node in nodes_solo      if  node[0] < node_to_first[0]]
     nodes_composite = [node for node in nodes_composite if  node[0] < node_to_first[0]]
 
-    node_chain = nodes_composite + [node_to_first]                                                  # (4)
+    node_chain = nodes_composite[::-1] + [node_to_first]                                            # (4)
     edges_sequence = [(x, y) for x, y in zip(node_chain[:-1], node_chain[1:])]                      # (4)
     edges_sequence += list(sols_first_edges)                                                        # (4)
 
 
-    node_segments[segment_to] = nodes_composite + node_segments[segment_to]
+    node_segments[segment_to] = nodes_composite[::-1] + node_segments[segment_to]
     
     graph_segments.nodes()[segment_to]["t_start"] = nodes_composite[0][0]
             

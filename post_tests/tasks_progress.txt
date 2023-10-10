@@ -4,9 +4,12 @@ TODO:
 28.09.23 (minor)	not sure if "rudamentary split/merge analysis based on nearest neighbor connectedness symmetry" is needed. might anaylze unidirected graph degrees instead
 					although to differentiate splits and merges, have to understand time directions
 
-29.09.23 (major) (# search for conflict nodes for extended branches) method needs testing. currently its on trigger.
-29.09.23 (# search for conflict nodes for extended branches) method needs further develpment in cases of multiple solutions.
-
+10.10.23 (medium/minor) in the end, there is no check for cases where reak split-merge is diffirentiated from fake one. 
+10.10.23 (major)		have to implement iterator though families of cases. most likely need a storage, at least to draw stuff.
+10.10.23 (minor)		need extension of branches, better resolution of splits merges via alpha hull
 
 DONE:
 29.09.23 - 27.09.23 extension of split branches havent been done yet. no test data
+
+10.10.23 - 29.09.23 (major) (# search for conflict nodes for extended branches) method needs testing. currently its on trigger.			#NOTE: conflict search is not relevant in main code now
+10.10.23 - 29.09.23 (# search for conflict nodes for extended branches) method needs further develpment in cases of multiple solutions.	#NOTE: now it is done inside branch extension (its coupled)

@@ -184,7 +184,7 @@ def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_se
     else: return connected_edges
 
 
-def drawH(H, paths, node_positions, fixed_nodes = []):
+def drawH(H, paths, node_positions, fixed_nodes = [], show = True, figsize = ( 10,5), node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
     colors = {i:np.array(cyclicColor(i))/255 for i in paths}
     colors = {i:np.array([R,G,B]) for i,[B,G,R] in colors.items()}
     colors_edges2 = {}
@@ -195,12 +195,12 @@ def drawH(H, paths, node_positions, fixed_nodes = []):
             if u in path and v in path:
 
                 colors_edges2[(u,v)] = colors[i]
-                width2[(u,v)] = 3
+                width2[(u,v)] = edge_width_path
                 break
             else:
 
                 colors_edges2[(u,v)] = np.array((0.5,0.5,0.5))
-                width2[(u,v)] = 1
+                width2[(u,v)] = edge_width
 
     nx.set_node_attributes(H, node_positions, 'pos')
 
@@ -211,19 +211,21 @@ def drawH(H, paths, node_positions, fixed_nodes = []):
     lable_pos   = {k: (v[0], v[1] + (-1)**(k[0]%2) * label_offset) for k, v in pos.items()}
     labels      = {node: f"{node}" for node in H.nodes()}
 
-    fig, ax = plt.subplots(figsize=( 10,5))
-
-    nx.draw_networkx_edges( H, pos, alpha=0.7, width = list(width2.values()), edge_color = list(colors_edges2.values()))
-    nx.draw_networkx_nodes( H, pos, node_size = 30, node_color='lightblue', alpha=1)
+    fig, ax = plt.subplots(figsize=figsize)
+    edge_width = list(width2.values())
+    edge_color = list(colors_edges2.values())
+    nx.draw_networkx_edges( H, pos, alpha=0.7, width = edge_width, edge_color = edge_color)
+    nx.draw_networkx_nodes( H, pos, node_size = node_size, node_color='lightblue', alpha=1)
     #label_options = {"ec": "k", "fc": "white", "alpha": 0.3}
-    nx.draw_networkx_labels(H, pos = lable_pos, labels=labels, font_size=7)#, bbox=label_options
+    nx.draw_networkx_labels(H, pos = lable_pos, labels=labels, font_size=font_size)#, bbox=label_options
     
     
     #nx.draw(H, pos, with_labels=False, node_size=50, node_color='lightblue',font_size=6,
     #        font_color='black', edge_color=list(colors_edges2.values()), width = list(width2.values()))
-    plt.show()
+    if show: plt.show()
+    return edge_width, edge_color, node_size
 
-def for_graph_plots(G, segs = []):
+def for_graph_plots(G, segs = [], show = True, node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
     if len(segs) == 0:
         segments3, skipped = graph_extract_paths(G,lambda x : x[0])
     else:
@@ -256,12 +258,12 @@ def for_graph_plots(G, segs = []):
         for t_k, t_subID in enumerate(t_subIDs):
             t_node = tuple([t_time,t_subID])
             all_nodes_pos[t_node][1] = 0.28*(t_k - 0.5)
-    G = G.to_undirected()
-    drawH(G, paths, all_nodes_pos)
+    #G = G.to_undirected()
+    edge_width, edge_color, node_size = drawH(G.to_undirected(), paths, all_nodes_pos, show = show,  node_size = node_size, edge_width_path = edge_width_path, edge_width = edge_width, font_size = font_size)
     #drawH(G, paths, all_nodes_pos, fixed_nodes = all_segments_nodes)
     #drawH(G, paths, node_positions = all_nodes_pos, fixed_nodes = all_segments_nodes)
 
-    return None
+    return all_nodes_pos, edge_width, edge_color, node_size
 
 
 

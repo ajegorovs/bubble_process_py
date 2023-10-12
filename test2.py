@@ -781,20 +781,33 @@ if 1 == -1:
     a = list(split_into_bins(L, num_bins))
     for aa in a:
         print(aa)
+if 1 == -1:
+    lr_conn_splits_merges_mixed_dict = {1: [4, 5], 3: [4], 4:[7], 5:[6,7], 8:[9]}
+    import itertools
+    from collections import defaultdict
+    # 10.10.2023 bonus for branch extension with conservative subID redistribution
+    # get small connected clusters [from1, from2.] -> [to1,to2,..]. 
+    t_from_IDs = lr_conn_splits_merges_mixed_dict.keys()
+    t_compair_pairs = list(itertools.combinations(t_from_IDs, 2))
+    t_from_connected = defaultdict(set)#{t:set([t]) for t in t_from_IDs}
+    for t1,t2 in t_compair_pairs:
+        t_common_elems = set(lr_conn_splits_merges_mixed_dict[t1]).intersection(set(lr_conn_splits_merges_mixed_dict[t2]))
+        if len(t_common_elems) > 0:
+            t_from_connected[t1].add(t2)
 
-lr_conn_splits_merges_mixed_dict = {1: [4, 5], 3: [4], 4:[7], 5:[6,7], 8:[9]}
-import itertools
-from collections import defaultdict
-# 10.10.2023 bonus for branch extension with conservative subID redistribution
-# get small connected clusters [from1, from2.] -> [to1,to2,..]. 
-t_from_IDs = lr_conn_splits_merges_mixed_dict.keys()
-t_compair_pairs = list(itertools.combinations(t_from_IDs, 2))
-t_from_connected = defaultdict(set)#{t:set([t]) for t in t_from_IDs}
-for t1,t2 in t_compair_pairs:
-    t_common_elems = set(lr_conn_splits_merges_mixed_dict[t1]).intersection(set(lr_conn_splits_merges_mixed_dict[t2]))
-    if len(t_common_elems) > 0:
-        t_from_connected[t1].add(t2)
 
+import networkx as nx
+
+G = nx.Graph()  # Your NetworkX graph
+# Add nodes and edges to your graph
+G.add_edges_from([(1,2),(2,3),(3,4),(5,6)])
+# Define edge colors (e.g., based on edge attribute 'color')
+for u, v in G.edges():
+    #color = G[u][v].get('color', 'red')  # You can use a different edge attribute for color
+    G[u][v]['color'] = 'red'
+
+# Export the graph to GEXF format
+nx.write_gexf(G, "your_graph_with_attributes.gexf")
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key
     cv2.destroyAllWindows()

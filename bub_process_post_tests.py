@@ -85,16 +85,21 @@ from graphs_brects import (overlappingRotatedRectangles, graphUniqueComponents)
 
 from image_processing import (convertGray2RGB, undistort)
 
-from bubble_params import (centroid_area_cmomzz, centroid_area)
+from bubble_params  import (centroid_area_cmomzz, centroid_area)
 
-from graphs_general import (extractNeighborsNext, extractNeighborsPrevious, graph_extract_paths, for_graph_plots, extract_graph_connected_components,
+from graphs_general import (extractNeighborsNext, extractNeighborsPrevious, graph_extract_paths, find_paths_from_to_multi,
+                            comb_product_to_graph_edges, for_graph_plots, extract_graph_connected_components,
                             find_segment_connectivity_isolated,  graph_sub_isolate_connected_components, set_custom_node_parameters)
 
 from interpolation import (interpolate_trajectory, interpolate_find_k_s, extrapolate_find_k_s, interpolateMiddle2D_2, interpolateMiddle1D_2)
 
-from misc import (cyclicColor, closes_point_contours, timeHMS, modBR, rect2contour, combs_different_lengths, unique_sort_list, disperse_nodes_to_times, disperse_composite_nodes_into_solo_nodes,
-                  find_key_by_value, CircularBuffer, CircularBufferReverse, AutoCreateDict, find_common_intervals, unique_active_segments, split_into_bins, lr_reindex_masters, dfs_pred, dfs_succ, getNodePos,
-                  getNodePos2, segment_conn_end_start_points, old_conn_2_new, lr_evel_perm_interp_data, lr_weighted_sols, perms_with_branches, save_connections_two_ways, save_connections_merges, save_connections_splits)
+from misc import (cyclicColor, closes_point_contours, timeHMS, modBR, rect2contour, combs_different_lengths, unique_sort_list, 
+                  disperse_nodes_to_times, disperse_composite_nodes_into_solo_nodes,
+                  find_key_by_value, CircularBuffer, CircularBufferReverse, AutoCreateDict, find_common_intervals,
+                  unique_active_segments, split_into_bins, lr_reindex_masters, dfs_pred, dfs_succ, getNodePos,
+                  getNodePos2, segment_conn_end_start_points, old_conn_2_new, lr_evel_perm_interp_data, lr_weighted_sols,
+                  perms_with_branches, save_connections_two_ways, save_connections_merges, save_connections_splits,
+                  itertools_product_length)
 
 # ========================================================================================================
 # ============== Import image files and process them, store in archive or import archive =================
@@ -497,7 +502,7 @@ doX = 30#60#30#60#56#20#18#2#84#30#60#30#20#15#2#1#60#84
 
 trajectories_all_dict = {}
 graphs_all_dict = {}
-for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
+for doX in range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]: #[138]:# [86]:#
     print(f'\n\n\n{timeHMS()}: working on family {doX}')
     test = connected_components_unique_0[doX]                       # specific family of nodes
 
@@ -903,10 +908,7 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
             for t_neighbor in t_neighbors:
                 t_time_neighbor_start    = G2.nodes()[t_neighbor]["t_start" ]#segments2[t_neighbor][0][0]
                 t_time_neighbor_end      = G2.nodes()[t_neighbor]["t_end"   ]#segments2[t_neighbor][-1][0]
-                #if t_time_start < t_time_neighbor_start and t_time_end < t_time_neighbor_start:  # EDIT 24.08.23
-                #    t_neighbors_next.append(t_neighbor)                                          # EDIT 24.08.23
-                #elif t_time_start > t_time_neighbor_end and t_time_end > t_time_neighbor_end:    # EDIT 24.08.23
-                #    t_neighbors_prev.append(t_neighbor)                                          # EDIT 24.08.23
+
                 if t_time_end < t_time_neighbor_start:
                     t_neighbors_next.append(t_neighbor)
                 elif t_time_neighbor_end < t_time_start:
@@ -956,80 +958,8 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
         for node2, weight in t_conn.items():
             G2.add_edge(node, node2)
     #for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # ===============================================================================================
-    # ===============================================================================================
-    # === calculate all paths between nearest segments ===
-    # ===============================================================================================
-    # ===============================================================================================
-    # >>>>>>> MAYBE FOR BIG INTER-SEGMENT SAVE ONLY SOLO PATH, THIS WAY YOU CAN KNOW IT CANT BE ANYTHING ELSE <<<<<
-    #segment_conn_end_start_points((11,20), nodes = 1)
-    aa = G.is_directed();print(f'G s directed:{aa}')
 
-    if 1 == 1:
-        lr_big121s_perms_pre = {}
-        lr_close_segments_simple_paths = {}
-        #lr_close_segments_simple_paths_inter = {}
-        tIDs = [tID for tID,t_dic in t_neighbor_sol_all_next.items() if len(t_dic) >0]
-        for t_from in tIDs:
-            for t_to in t_neighbor_sol_all_next[t_from]:
-                t_from_node_last   = segments2[t_from][-1]
-                t_to_node_first      = segments2[t_to][0]
-
-                # for directed graph i can disable cutoff, since paths can progress only forwards
-                t_from_node_last_time   = t_from_node_last[0]
-                t_to_node_first_time    = t_to_node_first[0]
-                t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
-                hasPath = nx.has_path(G, source=t_from_node_last, target=t_to_node_first)
-                # soo.. all_simple_paths method goes into infinite (?) loop when graph is not limited, shortest_simple_paths does not.
-                t_start, t_end = t_from_node_last[0], t_to_node_first[0]
-                activeNodes = [t_node for t_node, t_time in G.nodes(data='time') if t_start <= t_time <= t_end]
-                g_limited = G.subgraph(activeNodes)
-
-                # ====== CREATE ACTIVE CONTOUR DICT IN INTER-SEGMENT SPACE: {T1:[C1,C2],T2:[C2,C4],...} ====
-                # DO IT BY EXPLORING DIRECTED CONNECTIONS FROM END OF LEFT SEGMENT USING DEPTH SEARCH
-                # include end point times =  ideally only segment node will be there, but not always (its due to overlap artifacts)
-                t_connected_nodes = set()
-                dfs_succ(g_limited, t_from_node_last, time_lim = t_to_node_first_time + 1, node_set = t_connected_nodes)
-                # to_start time nodes are included. now get from_end time nodes
-                t_nodes_after_from_end = [t_node for t_node in t_connected_nodes if t_node[0] == t_from_node_last_time + 1]
-                t_predecessors = set()
-                for t_node in t_nodes_after_from_end:
-                    t_preds = list(g_limited.predecessors(t_node))
-                    t_predecessors.update(t_preds)
-                t_connected_nodes.update(t_predecessors)
-
-                t_temp = {t:[] for t in np.arange(t_from_node_last_time, t_to_node_first_time + 1,1)}
-                for t_time,*t_subIDs in t_connected_nodes:
-                    t_temp[t_time] += t_subIDs
-                lr_big121s_perms_pre[(t_from,t_to)] = t_temp
-                a = 1
-                #t_from_to_paths_simple  = list(nx.shortest_simple_paths(G, t_from_node_last, t_to_node_first)) # , cutoff = t_from_to_max_time_steps
-
-                #if t_to == -1:
-                #    t_short = nx.shortest_path(g_limited, source=t_from_node_last, target=t_to_node_first, weight=None, method='dijkstra')
-                #    t_short_edges = []
-                #    for t_node in t_short[1:-1]:
-                #        t_short_edges += g_limited.predecessors(t_node)
-                #        t_short_edges += g_limited.successors(t_node)
-                #    t_short_edges2 = [t_node for t_node in t_short_edges if t_node not in t_short]
-                #    a = 1
-                t_from_to_paths_simple  = list(nx.all_simple_paths(g_limited, t_from_node_last, t_to_node_first, cutoff = t_from_to_max_time_steps)) 
-                t_from_to_paths_nodes_all       = sorted(set(sum(t_from_to_paths_simple,[])),key=lambda x: x[0])
-                #t_from_to_paths_nodes_all_inter = [t_node for t_node in t_from_to_paths_nodes_all if t_node not in [t_from_node_last,t_to_node_first]]
-
-                lr_close_segments_simple_paths[         tuple([t_from,t_to])]  = t_from_to_paths_simple
-                #lr_close_segments_simple_paths_inter[   tuple([t_from,t_to])]  = t_from_to_paths_nodes_all_inter
-
-        node_positions2 = {}
-        t_segments_times = {}
-        labels = {}
-        for t,segment in enumerate(segments2):
-            t_times = [a[0] for a in segment]
-            t_segments_times[t] = int(np.mean(t_times))
-            labels[t] = f'{t}_{segment[0]}'
-        node_positions2 = getNodePos2(t_segments_times, S = 1)
-
-    
+    #aa = G.is_directed();print(f'G s directed:{aa}')
     # ===============================================================================================
     # ====== rudamentary split/merge analysis based on nearest neighbor connectedness symmetry ======
     # ===============================================================================================
@@ -1186,8 +1116,25 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
             t_to_subIDs = sorted(set([t_to for t in t_from_subIDs for t_to in lr_conn_splits_merges_mixed_dict[t]]))
             lr_conn_mixed_from_to[tuple(t_from_subIDs)] = tuple(t_to_subIDs)
         a = 1
-
+    # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # ===============================================================================================
+
+    # FLOWCHART OF PROCESSING 121 SEGMENTS:
+    #
+    # (121.A) isolate 121 connections
+    # (121.B) extract inter-segment nodes as time slices : {t1:[*subIDs],...}
+    # (121.C) detect which cases are zero-path ZP. its 121 that splits into segment and a node. byproduct of a method.
+    # (121.D) resolve case with ZP
+    # (121.E) find which 121 form a long chain- its an interrupted solo bubble's trejctory.
+    #           missing data in 'holes' is easier to interpolate from larger chains 
+    # (121.F) chain edges may be terminated by artifacts - 'fake' events, find them and refine chain list elements.
+    # (121.G) hole interpolation
+    # (121.H) prep data (area, centroids) for all subID combinations
+    # (121.I) generate permutations from subIDs
+    # (121.K) generate all possible evolutions of subIDs perms though time. 
+    # (121.J) find best fit evolution by minimizing area and isplacement criterium
+    # (121.L) save data into graps and storage.
+
     # ===============================================================================================
     # === extract segment-segment connections that are connected only together (one-to-one; 121) ====
     # ===============================================================================================
@@ -1197,6 +1144,51 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
     # REMARK: so non split/merge connection is refinement of unidir connection list with info of merge/split
 
     t_conn_121 = [t_conn for t_conn in lr_connections_unidirectional if t_conn not in t_merge_split_culprit_edges_all]
+
+    # ===================================================================================================
+    # ==================== SLICE INTER-SEGMENT (121) NOTE-SUBID SPACE W.R.T TIME ========================
+    # ===================================================================================================
+    # CREATE A DICTIONARY OF TYPE {TIME1:[*SUBIDS_AT_TIME1],...}
+    # WHAT: unresolved inter-segment space, for 121 connections, may contain multiple contours associated
+    # WHAT: with a single bubble at any single time. Real bubble may be any combination of these bubbles
+
+    if 1 == 1:
+        lr_big121s_perms_pre = {}
+        tIDs = [t_conn[0] for t_conn in t_conn_121]
+        for t_from in tIDs:
+            for t_to in t_neighbor_sol_all_next[t_from]: # is a dict but walk the keys.
+                t_from_node_last   = segments2[t_from][-1]
+                t_to_node_first      = segments2[t_to][0]
+
+                # for directed graph i can disable cutoff, since paths can progress only forwards
+                t_from_node_last_time   = t_from_node_last[0]
+                t_to_node_first_time    = t_to_node_first[0]
+                t_from_to_max_time_steps= t_to_node_first_time - t_from_node_last_time + 1
+                hasPath = nx.has_path(G, source=t_from_node_last, target=t_to_node_first)
+                # soo.. all_simple_paths method goes into infinite (?) loop when graph is not limited, shortest_simple_paths does not.
+                t_start, t_end = t_from_node_last[0], t_to_node_first[0]
+                activeNodes = [t_node for t_node, t_time in G.nodes(data='time') if t_start <= t_time <= t_end]
+                g_limited = G.subgraph(activeNodes)
+
+                # ====== CREATE ACTIVE CONTOUR DICT IN INTER-SEGMENT SPACE: {T1:[C1,C2],T2:[C2,C4],...} ====
+                # DO IT BY EXPLORING DIRECTED CONNECTIONS FROM END OF LEFT SEGMENT USING DEPTH SEARCH
+                # include end point times =  ideally only segment node will be there, but not always (its due to overlap artifacts)
+                t_connected_nodes = set()
+                dfs_succ(g_limited, t_from_node_last, time_lim = t_to_node_first_time + 1, node_set = t_connected_nodes)
+                # to_start time nodes are included. now get from_end time nodes
+                t_nodes_after_from_end = [t_node for t_node in t_connected_nodes if t_node[0] == t_from_node_last_time + 1]
+                t_predecessors = set()
+                for t_node in t_nodes_after_from_end:
+                    t_preds = list(g_limited.predecessors(t_node))
+                    t_predecessors.update(t_preds)
+                t_connected_nodes.update(t_predecessors)
+
+                t_temp = {t:[] for t in np.arange(t_from_node_last_time, t_to_node_first_time + 1,1)}
+                for t_time,*t_subIDs in t_connected_nodes:
+                    t_temp[t_time] += t_subIDs
+                lr_big121s_perms_pre[(t_from,t_to)] = t_temp
+                a = 1
+
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # ===============================================================================================
     # separate 121 paths with zero inter length
@@ -1206,59 +1198,17 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
     # REMARK: this case might be inside merge/split merge.
     t_conn_121_zero_path = []
     for t_node in t_conn_121:
-        #if len(lr_close_segments_simple_paths_inter[t_node]) == 0:
-        #    t_conn_121_zero_path.append(t_node)
         if len(lr_big121s_perms_pre[t_node]) == 2:
             t_t_min = min(lr_big121s_perms_pre[t_node])
             t_t_max = max(lr_big121s_perms_pre[t_node])
             if len(lr_big121s_perms_pre[t_node][t_t_min]) > 1 or len(lr_big121s_perms_pre[t_node][t_t_max]) > 1:
                 t_conn_121_zero_path.append(t_node)
 
-    # EDIT: 20.09.23 keep zero path in t_conn_121
-    # >>>>>>>>>>>>>>>> WHAT I SHOULD DO <<<<<<<<<<<<<<<<<<<
-    # 1) E.Z consume small branch. its most likely true sol-n, but algorithm might not be ready for composite nodes
-    # 2) or i strip edge status from all small branches, thus its no longer zero path. so you can treat it as usual.
-
-    #t_conn_121 = [t_node for t_node in t_conn_121 if t_node not in t_conn_121_zero_path]
-
-    # ===============================================================================================
-    # reconstruct 121 zero path neighbors
-    # ===============================================================================================
-    # REMARK: zero path implies that solo nodes are connected to prev segment end or next segment start
-
-    # EDIT!!!: this is not generated straight into "lr_big121s_perms_pre", just have to know t_conn via "t_conn_121_zero_path"
-
-
-    #t_conn_121_zero_path_nodes = {t_conn:[] for t_conn in t_conn_121_zero_path}
-    #t_conn_121_zp_contour_combs= {t_conn:{} for t_conn in t_conn_121_zero_path}
-    #for t_conn in t_conn_121_zero_path:
-    #    t_from, t_to    = t_conn
-    #    t_from_node_end = segments2[t_from  ][-1]
-    #    t_to_node_start = segments2[t_to    ][0]
-    #    #t_from_neigbors_next    = extractNeighborsNext(     G, t_from_node_end,  lambda x: x[0])
-    #    #t_to_neigbors_prev      = extractNeighborsPrevious( G, t_to_node_start,  lambda x: x[0])
-    #    t_from_neigbors_next    = list(G.successors(t_from_node_end))
-    #    t_to_neigbors_prev      = list(G.predecessors(t_to_node_start))
-    #    t_conn_121_zero_path_nodes[t_conn] = sorted(set(t_from_neigbors_next+t_to_neigbors_prev),key=lambda x: (x[0], x[1]))
-    #    t_times = sorted(set([t_node[0] for t_node in t_conn_121_zero_path_nodes[t_conn]]))
-    #    t_conn_121_zp_contour_combs[t_conn] = {t_time:[] for t_time in t_times}
-    
-    #    for t_time,*t_subIDs in t_conn_121_zero_path_nodes[t_conn]:
-    #        t_conn_121_zp_contour_combs[t_conn][t_time] += t_subIDs
-
-    #    for t_time in t_conn_121_zp_contour_combs[t_conn]:
-    #         t_conn_121_zp_contour_combs[t_conn][t_time] = sorted(t_conn_121_zp_contour_combs[t_conn][t_time])
     a = 1
-
-    # EDIT: 20.09.23
-    # consume zero path
-    # combine contested nodes
-    # join segments into one.
 
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     lr_zp_redirect = {tID: tID for tID in range(len(segments2))}
-    #for t_conn,t_dict in t_conn_121_zp_contour_combs.items():
     for t_conn in t_conn_121_zero_path: 
         t_dict = lr_big121s_perms_pre[t_conn]
         t_from, t_to        = t_conn                                                    # no inheritance is yet needed
@@ -1485,7 +1435,7 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
                         if t_to in t_subIDs:
                             lr_big121s_conn_121.append(t_conn)
                             break
-        print(f'Trimmed big 121s: {lr_big121s_conn_121}/nInterpolating whole big 121s...')
+        print(f'Trimmed big 121s: {lr_big121s_conn_121}\nInterpolating whole big 121s...')
 
         # -----------------------------------------------------------------------------------------------
         # BIG 121S INTERPOLATE COMBINED TRAJECTORIES, GIVEN FULL INFO REDISTRIBUTE FOR DATA FOR EACH CONN
@@ -1536,44 +1486,22 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
                     lr_big121s_interpolation_big[tuple(t_subIDs)]['areas'    ] = t_interpolation_areas_1
 
     
-
-
-        # ===============================================================================================
-        # ====  EXTRACT POSSIBLE CONTOUR ELEMENTS FROM PATHS ====
-        # ===============================================================================================
-        # REMARK: gather all inter-segment nodes and grab slices w.r.t time
-        # REMARK: so result is {time_01:[ID1,ID2],time_02:[ID4,ID5],...}
-        # REMARK: i expect most of the time solution to be all elements in cluster. except real merges
-
-        # EDIT!!!: i dont use paths, instead i do connection depth search from last node 
-        #print('Computing contour elements for space between segments')
-        #if 1 == 1:
-
-        #    lr_big121s_perms_pre = {}
-
-        #    for t_conn in lr_big121s_conn_121:  # did not modify it after removing/combining zero path conns.
-        #        t_traj = lr_close_segments_simple_paths[t_conn][0]
-        #        t_nodes = {t_time:[] for t_time in [t_node[0] for t_node in t_traj]}
-        #        for t_traj in lr_close_segments_simple_paths[t_conn]:
-        #            for t_time,*t_subIDs in t_traj:
-        #                t_nodes[t_time] += t_subIDs
-        #        for t_time in t_nodes:
-        #            t_nodes[t_time] = sorted(list(set(t_nodes[t_time])))
-        #        lr_big121s_perms_pre[t_conn] = t_nodes
     
-        # ===============================================================================================
-        # ====  CONSTRUCT PERMUTATIONS FROM CLUSTER ELEMENT CHOICES ====
-        # ===============================================================================================
-        # REMARK: grab different combinations of elements in clusters
+        # ===================================================================================================
+        # ===================== CONSTRUCT PERMUTATIONS FROM CLUSTER ELEMENT CHOICES =========================
+        # ===================================================================================================
+        # WHAT: generate different permutation of subIDs for each time step.
+        # WHY:  Bubble may be any combination of contour subIDs at a given time. 
+        # HOW:  itertools combinations of varying lenghts
+
         print('Computing contour element permutations for each time step...')
         if 1 == 1:
             # if "lr_zp_redirect" is not trivial, drop resolved zp edges
             
-            lr_big121s_perms_pre = {old_conn_2_new(t_conn,lr_zp_redirect):v for t_conn,v in lr_big121s_perms_pre.items()}
-            lr_big121s_perms_pre_keys = [t_conn for t_conn in lr_big121s_perms_pre if  t_conn[0] != t_conn[1]]
-            #lr_big121s_perms_pre = {t:lr_big121s_perms_pre[t] for t in lr_big121s_perms_pre_keys}
-            lr_big121s_perms = {old_conn_2_new(t_conn,lr_zp_redirect):{t_time:[] for t_time in t_dict} for t_conn,t_dict in lr_big121s_perms_pre.items()}
-            #lr_big121s_perms = {(t_from,t_to): t for (t_from,t_to),t in lr_big121s_perms.items() if t_from != t_to}
+            lr_big121s_perms_pre        = {old_conn_2_new(t_conn,lr_zp_redirect):v for t_conn,v in lr_big121s_perms_pre.items()}
+            lr_big121s_perms_pre_keys   = [t_conn for t_conn in lr_big121s_perms_pre if  t_conn[0] != t_conn[1]]
+            #lr_big121s_perms            = {old_conn_2_new(t_conn,lr_zp_redirect):{t_time:[] for t_time in t_dict} for t_conn,t_dict in lr_big121s_perms_pre.items()}
+            lr_big121s_perms            = {t_conn:{t_time:[] for t_time in lr_big121s_perms_pre[t_conn]} for t_conn in lr_big121s_perms_pre_keys}
             for t_conn, t_times_contours in lr_big121s_perms_pre.items():
                 t_conn_new = old_conn_2_new(t_conn,lr_zp_redirect)
                 if t_conn_new[0] != t_conn_new[1]:
@@ -1584,14 +1512,14 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
 
 
         # ===============================================================================================
-        # ====  PRE-CALCULATE HULL CENTROIDS AND AREAS FOR EACH PERMUTATION ====
+        # =================  PRE-CALCULATE HULL CENTROIDS AND AREAS FOR EACH PERMUTATION ================
         # ===============================================================================================
-        # REMARK: these will be reused alot in next steps, store them to avoid need of recalculation
+        # WHY: these will be reused alot in next steps, store them to avoid need of recalculation
         print('Calculating parameters for possible contour combinations...')
         if 1 == 1:    
-            lr_big121s_perms_areas      = AutoCreateDict()# lr_init_perm_precomputed(lr_big121s_perms,0)
-            lr_big121s_perms_centroids  = AutoCreateDict()# lr_init_perm_precomputed(lr_big121s_perms,[0,0])
-            lr_big121s_perms_mom_z      = AutoCreateDict()# lr_init_perm_precomputed(lr_big121s_perms,0)
+            lr_big121s_perms_areas      = AutoCreateDict()
+            lr_big121s_perms_centroids  = AutoCreateDict()
+            lr_big121s_perms_mom_z      = AutoCreateDict()
 
             for t_conn, t_times_perms in lr_big121s_perms.items():
                 t_conn_new = old_conn_2_new(t_conn,lr_zp_redirect)
@@ -1604,62 +1532,65 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
                         lr_big121s_perms_centroids[ t_conn_new][t_time][t_perm] = t_centroid
                         lr_big121s_perms_mom_z[     t_conn_new][t_time][t_perm] = t_mom_z
 
-    
-
-            #drawH(G, paths, node_positions)
+        # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # ===============================================================================================
-        # ====  CONSTUCT DIFFERENT PATHS FROM UNIQUE CHOICES ====
+        # =================  CONSTUCT UNIQUE EVOLUTIONS THOUGH CONTOUR PERMUTATION SPACE ================
         # ===============================================================================================
-        # REMARK: try different evolutions of inter-segment paths
+        # WHAT: using subID permutations at missing time construct choice tree. 
+        # WHY:  each branch represents a bubbles contour ID evolution through unresolved intervals.
+        # HOW: either though itertools product, or if number of branches is big, dont consider
+        # HOW: branches where area changes more than set threshold. 
         print('Generating possible bubble evolution paths from prev combinations...')
-        if 1 == 1:
-            #lr_big121s_perms_cases = {t_conn:[] for t_conn in lr_big121s_perms_pre}
-            #lr_big121s_perms_times = {t_conn:[] for t_conn in lr_big121s_perms_pre}
-            lr_big121s_perms_cases = {}
-            lr_big121s_perms_times = {}
-            for t_conn, t_times_perms in lr_big121s_perms.items():
-                t_conn_new = old_conn_2_new(t_conn,lr_zp_redirect)
-                t_values = list(t_times_perms.values())
-                t_times = list(t_times_perms.keys())
 
+        rel_area_thresh = 2
+        def edge_crit_func(conn,edge):
+            time1,*subIDs1 = edge[0]; time2,*subIDs2 = edge[1]
+                
+            area1 = lr_big121s_perms_areas[conn][time2][tuple(subIDs2)] 
+            area2 = lr_big121s_perms_areas[conn][time1][tuple(subIDs1)]
+            rel_change = abs(area2-area1)/max(area2, 0.0001)
+            out = True if rel_change < rel_area_thresh else False
+            return out
+
+        lr_big121s_perms_cases = {}
+        lr_big121s_perms_times = {}
+        for t_conn, t_times_perms in lr_big121s_perms.items():
+            func = lambda edge : edge_crit_func(t_conn,edge)
+
+            t_conn_new = old_conn_2_new(t_conn,lr_zp_redirect)
+            t_values = list(t_times_perms.values())
+            t_times = list(t_times_perms.keys())
+            t_branches_count = itertools_product_length(t_values)
+            if t_branches_count >= 5000:
+                t_choices = [[(t_time,) + t_perm for t_perm in t_perms] for t_time,t_perms in zip(t_times,t_values)]
+                edges, nodes_start, nodes_end = comb_product_to_graph_edges(t_choices, func)
+                sequences = find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = True, G = None, edges = edges, only_subIDs = True)
+            else:
                 sequences = list(itertools.product(*t_values))
 
-                lr_big121s_perms_cases[t_conn_new] = sequences
-                lr_big121s_perms_times[t_conn_new] = t_times
+            lr_big121s_perms_cases[t_conn_new] = sequences
+            lr_big121s_perms_times[t_conn_new] = t_times
 
         # ===============================================================================================
         # ==== EVALUATE HULL CENTROIDS AND AREAS FOR EACH EVOLUTION, FIND CASES WITH LEAST DEVIATIONS====
         # ===============================================================================================
-        # REMARK: evolutions with least path length and are changes should be right ones
+        # WHAT: calculate how area and centroids behave for each evolution
+        # WHY:  evolutions with least path length and area changes should be right ones
         print('Determining evolutions thats are closest to interpolated missing data...')
-        if 1 == 1:
-            t_temp_centroids = {t_conn:t_dict['centroids'] for t_conn,t_dict in lr_big121s_interpolation.items()}
-            #t_cases = {t:lr_big121s_perms_cases[t] for t in lr_big121s_conn_121}
-            #t_times = {t:lr_big121s_perms_times[t] for t in lr_big121s_conn_121}
-            t_args = [lr_big121s_conn_121, lr_big121s_perms_cases,t_temp_centroids,lr_big121s_perms_times,
-                    lr_big121s_perms_centroids,lr_big121s_perms_areas,lr_big121s_perms_mom_z]
+        
+        t_temp_centroids = {t_conn:t_dict['centroids'] for t_conn,t_dict in lr_big121s_interpolation.items()}
+        t_args = [lr_big121s_conn_121, lr_big121s_perms_cases,t_temp_centroids,lr_big121s_perms_times,
+                lr_big121s_perms_centroids,lr_big121s_perms_areas,lr_big121s_perms_mom_z]
 
-            t_sols_c, t_sols_c_i, t_sols_a, t_sols_m = lr_evel_perm_interp_data(*t_args)
+        t_sols_c, t_sols_c_i, t_sols_a, t_sols_m = lr_evel_perm_interp_data(*t_args)
 
-            t_weights   = [1,1.5,0,1]
-            t_sols      = [t_sols_c, t_sols_c_i, t_sols_a, t_sols_m]
-            lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems =  lr_weighted_sols(lr_big121s_conn_121,t_weights, t_sols, lr_big121s_perms_cases )
+        t_weights   = [1,1.5,0,1]
+        t_sols      = [t_sols_c, t_sols_c_i, t_sols_a, t_sols_m]
+        lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems =  lr_weighted_sols(lr_big121s_conn_121,t_weights, t_sols, lr_big121s_perms_cases )
 
 
 
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-        #C0 = nx.Graph()
-        #C0.add_edges_from(list(lr_big121s_perms_cases.keys()))
-    
-        #lr_C0_condensed_connections = extract_graph_connected_components(C0, lambda x: x)
-
-        ## lets condense all sub-segments into one with smallest index. EDIT: give each segment index its master. since number of segments will shrink anyway
-        #t_condensed_connections_all_nodes = sorted(sum(lr_C0_condensed_connections,[])) # neext next
-        #lr_C0_condensed_connections_relations = lr_zp_redirect.copy() #t_condensed_connections_all_nodes
-        #for t_subIDs in lr_C0_condensed_connections:
-        #    for t_subID in t_subIDs:
-        #        lr_C0_condensed_connections_relations[t_subID] = min(t_subIDs)
 
         lr_C0_condensed_connections_relations = lr_zp_redirect.copy()
         print('Saving results for restored parts of big 121s')
@@ -1674,9 +1605,6 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
             print(f'edge :({t_from},{t_to}) or = {t_segments_new[t_from_new][-1]}->{t_segments_new[t_to_new][0]}')   
             save_connections_two_ways(t_segments_new, lr_big121s_perms_pre[t_conn], t_from,  t_to, G, G2, lr_C0_condensed_connections_relations, g0_contours)
             
-                       
-
-            
         # at this time some segments got condenced into big 121s. right connection might be changed.
         lr_time_active_segments = {t:[] for t in lr_time_active_segments}
         for k,t_segment in enumerate(t_segments_new):
@@ -1685,10 +1613,15 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
                 lr_time_active_segments[t].append(k)
 
         #for_graph_plots(G, segs = t_segments_new) 
+
+        # ===============================================================================================
+        # ==== EVALUATE HULL CENTROIDS AND AREAS FOR EACH EVOLUTION, FIND CASES WITH LEAST DEVIATIONS====
+        # ===============================================================================================
+        # WHAT: calculate how area and centroids behave for each evolution
         # -----------------------------------------------------------------------------------------------
         # prep permutations for merges/splits fake and real
         # -----------------------------------------------------------------------------------------------
-        print('Working on real and fake events (merges/splits):/nPreparing data...')
+        print('Working on real and fake events (merges/splits):\nPreparing data...')
         if 1 == 1: # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             # -----------------------------------------------------------------------------------------------
             # ------ PREPARE DATA INTO USABLE FORM ----
@@ -1756,29 +1689,7 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
                 t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_from_min, t_t_to_start, lr_time_active_segments,
                                                                        t_segments_new, t_segments_keep, ref_node = t_segments_new[t_to][0]) 
                 t_node_subIDs_all = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
-                #t_values = [combs_different_lengths(t_subIDs) for t_subIDs in t_node_subIDs_all.values()]
-
-
-                a = 1
-                # working with each branch separately
-                #for t_from, t_times_all in t_times.items():
-                #    t_segments_keep = [t_from, t_to]      # new inherited ID
-                #    t_start = t_predecessors_times_end[t_from]  # storage uses old ID
                 
-                #    if t_t_to_start - t_start > 1:
-                #        t_sol = graph_sub_isolate_connected_components(t_subgraph, t_start, t_t_to_start, lr_time_active_segments,
-                #                                                       t_segments_new, t_segments_keep, ref_node = t_segments_new[t_from][-1]) 
-                #        t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
-                #        t_values = [combs_different_lengths(t_subIDs) for t_subIDs in t_perms.values()]
-                #    else:
-                #        t_perms = {}
-                #        t_values = None
-                #    t_event_start_end_times[t_state][t_to]['t_perms'        ][t_from] = t_values
-                #    t_event_start_end_times[t_state][t_to]['t_subIDs'       ][t_from] = t_perms
-                #    for t_time in t_times_all[1:-1]: # remove start-end points
-                #        t_event_start_end_times[t_state][t_to]['t_active_IDs'   ][t_time].append(t_from)
-                #t_times_sorted = sorted(t_event_start_end_times[t_state][t_to]['t_active_IDs'   ])
-                #t_event_start_end_times[t_state][t_to]['t_active_IDs'   ] = {t:t_event_start_end_times[t_state][t_to]['t_active_IDs'   ][t] for t in t_times_sorted}
                 t_active_IDs = {t:[] for t in np.arange(t_t_from_min + 1, t_t_to_start)}
                 for t_from, t_times_all in t_times.items():
                     for t_time in t_times_all[1:-1]: # remove start-end points
@@ -1819,25 +1730,7 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
                 t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_start, t_t_to_max, lr_time_active_segments,
                                                                        t_segments_new, t_segments_keep, ref_node = t_segments_new[t_from_new][-1]) 
                 t_node_subIDs_all = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
-                #t_values = [combs_different_lengths(t_subIDs) for t_subIDs in t_node_subIDs_all.values()]
 
-                # working with each branch separately
-                #for t_to, t_times_all in t_times.items():
-                #    t_segments_keep = [t_from_new, t_to] 
-                #    t_t_to_end = t_successors_times[t_to]
-                #    if t_t_to_end - t_t_start > 1:
-                #        t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_start, t_t_to_end, lr_time_active_segments,
-                #                                                       t_segments_new, t_segments_keep, ref_node = t_segments_new[t_from_new][-1])
-                #        t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
-                #        t_values = [combs_different_lengths(t_subIDs) for t_subIDs in t_perms.values()]
-                #        #t_values = [sum([list(itertools.combinations(t_subIDs, r)) for r in range(1,len(t_subIDs)+1)],[]) for t_subIDs in t_perms.values()]
-                #    else: 
-                #        t_perms = {}
-                #        t_values = None
-                #    t_event_start_end_times[t_state][t_from_new]['t_perms'      ][t_to] = t_values
-                #    t_event_start_end_times[t_state][t_from_new]['t_subIDs'     ][t_to] = t_perms
-                #    for t_time in t_times_all[1:-1]:
-                #        t_event_start_end_times[t_state][t_from_new]['t_active_IDs' ][t_time].append(t_to)
                 t_active_IDs = {t:[] for t in np.arange(t_t_to_max -1, t_t_start, -1)} #>>> reverse for reverse re
 
                 for t_from, t_times_all in t_times.items():
@@ -1939,23 +1832,11 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
             # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             t_state = 'mixed'
             for t_from_all,t_to_all in lr_conn_mixed_from_to.items():
-                #t_predecessors   = extractNeighborsPrevious(G2, t_to, func_prev_neighb)
-                #t_predecessors = [lr_C0_condensed_connections_relations[t] for t in t_predecessors] # update if inherited
                 t_from_all_new = [lr_C0_condensed_connections_relations[t] for t in t_from_all]
                 t_predecessors_times_end = {t:G2.nodes[t]["t_end"] for t in t_from_all_new}
-                #t_t_to_start = G2.nodes[t_to]["t_start"]
-                #t_times         = {t_ID: np.arange(t_t_from_end, t_t_to_start + 1, 1)
-                #                   for t_ID,t_t_from_end in t_predecessors_times_end.items()}
-
-                #t_from_new = lr_C0_condensed_connections_relations[t_from]                  # split segment may be inherited.
-                #t_from_successors   = extractNeighborsNext(G2, t_from_new, func_next_neighb)     # branches are not
-
+                
                 t_successors_times_start = {t_to:G2.nodes[t_to]["t_start"] for t_to in t_to_all}
                 t_target_nodes = {t:t_segments_new[t][0] for t in t_to_all}
-                #t_t_start = G2.nodes[t_from_new]["t_end"]
-                #t_times         = {t:np.arange(t_t_start, t_t_end + 1, 1) for t,t_t_end in t_successors_times.items()}
-
-                
 
                 # pre-isolate graph segment where all sub-events take place
                 t_t_from_min    = min(t_predecessors_times_end.values())    # take earliest branch time
@@ -1966,8 +1847,6 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
                 # get non-segment nodes within event time inteval
                 t_nodes_keep    = [node for node in G.nodes() if t_t_from_min < node[0] <= t_t_to_max and G.nodes[node]['owner'] is None] # < excluded edges
                 # add start of t_to segment, which are branch extension targets. 
-                #for t in t_from_all_new:
-                #    t_nodes_keep.append(t_segments_new[t][-1])
                 for t in t_to_all:
                     t_nodes_keep.append(t_segments_new[t][0])
 
@@ -1977,33 +1856,6 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
                 t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_from_min + 1, t_t_to_max, lr_time_active_segments,
                                                                 t_segments_new, t_segments_keep, ref_node = t_segments_new[t_to_all[0]][0]) 
                 t_node_subIDs_all = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
-                #for t_from_new in t_from_all_new:
-                    
-                #    t_segments_keep = [t_from_new] + list(t_to_all)  
-                #    t_start = t_predecessors_times_end[t_from_new]  # storage uses old ID
-                #    t_t_to_start = t_t_to_max
-
-                #    if t_t_to_start - t_start > 1:
-                #        t_subgraph = G.subgraph(t_nodes_keep)   # big subgraph
-                #        t_sol = graph_sub_isolate_connected_components(t_subgraph, t_start + 1, t_t_to_start, lr_time_active_segments,
-                #                                                       t_segments_new, t_segments_keep, ref_node = t_segments_new[t_to_all[0]][0]) 
-                #        t_perms = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
-                #        t_values = [combs_different_lengths(t_subIDs) for t_subIDs in t_perms.values()]
-                #    else:   # event with no intermediate steps. means end of in-branch has to be extended and testet straight to start of out-branch
-                #        t_ghost_node = t_segments_new[t_from_new][-1]   # added first node of 'from' segment
-                #        t_nodes_keep.append(t_ghost_node) 
-                #        t_subgraph = G.subgraph(t_nodes_keep)           # modified isolate method's start time to include ghost time
-                #        t_sol = graph_sub_isolate_connected_components(t_subgraph, t_start, t_t_to_start, lr_time_active_segments,
-                #                                                       t_segments_new, t_segments_keep, ref_node = t_ghost_node) 
-                #        t_sol.remove(t_ghost_node)                      # 
-                #        t_perms = disperse_nodes_to_times(t_sol) 
-                #        t_values = [combs_different_lengths(t_subIDs) for t_subIDs in t_perms.values()]
-
-                #    t_event_start_end_times[t_state][t_from_all]['t_perms'        ][t_from_new] = t_values
-                #    t_event_start_end_times[t_state][t_from_all]['t_subIDs'       ][t_from_new] = t_perms
-
-                #    for t_time in set([t[0] for t in t_sol]):
-                #        t_active_IDs[t_time].append(t_from_new)
 
                 for t_from in t_from_all_new: # from end of branch time to event max time
                     for t_time in np.arange(t_predecessors_times_end[t_from] + 1, t_t_to_max + 1, 1):
@@ -2241,7 +2093,6 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
             t_branches = t_event_start_end_times[t_state][t_ID]['branches']
             t_times_target = []
         elif t_state == 'mixed':
-            #t_state == 'mixed2'
             t_branches = t_event_start_end_times[t_state][t_ID]['branches']
             t_nodes_target = t_event_start_end_times[t_state][t_ID]['t_target_nodes']
             t_times_target = [t[0] for t in t_nodes_target.values()]
@@ -2262,7 +2113,6 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
         if 1 == 1:#('merge','split'):
 
             if t_state == 'split':
-                #assert 1 == -1, 'check splits algorithm'
                 t_start = t_event_start_end_times[t_state][t_ID]['t_start']
                 t_end   = min(t_event_start_end_times[t_state][t_ID]['t_end'].values())
             elif t_state == 'mixed':
@@ -2272,11 +2122,6 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
                 t_start = min(t_event_start_end_times[t_state][t_ID]['t_start'].values())
                 t_end   = t_event_start_end_times[t_state][t_ID]['t_end']
 
-            #t_subIDs_dict = {t_time:set() for t_time in np.arange(t_start,t_end + 1 ,1)} # pregen time where branches have to be resolved
-
-            #for t_branch_ID in t_branches:                                               # combine subIDs of branch choices for set time t
-            #    for t_time, t_subIDs in t_event_start_end_times[t_state][t_ID]['t_subIDs'][t_branch_ID].items():
-            #        t_subIDs_dict[t_time].update(t_subIDs)
             a = 1
             t_all_norm_buffers  = {}
             t_all_traj_buffers  = {}
@@ -2321,7 +2166,6 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
                 else:
                     t_last_deltas = np.linalg.norm(np.diff(trajectory, axis=0), axis=1)[-N:]*0.5
 
-                #t_norm_buffer   = CircularBuffer(N, t_last_deltas)
                 t_all_norm_buffers[t_branch_ID] = CircularBuffer(N, t_last_deltas)
                 if t_state in ('merge','mixed'):
                     t_all_traj_buffers[t_branch_ID] = CircularBuffer(h_interp_len_max2, trajectory)
@@ -2754,20 +2598,16 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
         t_values = [combs_different_lengths(t_subIDs) for t_subIDs in t_perms.values()]
         fafafs[(t_ID,'forward')] = {t:v for t,v in zip(t_perms, t_values)}
 
-
+    # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # ===============================================================================================
     # =========== Final passes. examine edges of terminated segments. extrapolate ===============
     # ===============================================================================================
     t_out                   = defaultdict(dict)
     t_extrapolate_sol       = defaultdict(dict)
-    #t_extrapolate_sol_back_forw = {'back':defaultdict(dict), 'forward': defaultdict(dict)}
     t_extrapolate_sol_comb  = defaultdict(dict)
-    #t_extrapolate_sol_comb_back_forw = {'back':defaultdict(dict), 'forward': defaultdict(dict)}
     for (t_ID, t_state), t_combs in fafafs.items():
         t_conn = (t_ID, t_state) # <<<<< custom. t_ID may be two states, and they have to be differentiated
-        #t_nodes = t_segments_new[t_ID]
         if t_state == 'forward':
-            assert 1== -1, 'not tested. examine!'
             t_t_from = t_segments_new[t_ID][-1][0]
             t_nodes = [t_node for t_node in t_segments_new[t_ID] if t_node[0] > t_t_from - h_interp_len_max2]
             t_node_from = t_segments_new[t_ID][-1]
@@ -2787,8 +2627,11 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
             t_traj_buff     = CircularBufferReverse(h_interp_len_max2, trajectory) 
             t_time_buff     = CircularBufferReverse(h_interp_len_max2, time)      
             t_time_next     = t_t_to      - 1
-            #t_times = [t for t int_combs]
-            #t_combs = {t:p for t,p in t_combs.items() }
+        
+        if t_segment_k_s[t_ID] is not None:
+            t_k,t_s = t_segment_k_s[t_ID]
+        else:
+            t_k,t_s = (1,5)
         N = 5
         if t_segment_k_s_diffs[t_ID] is not None:
             t_last_deltas   = list(t_segment_k_s_diffs[t_ID].values())[-N:]  # not changing for splits
@@ -2824,9 +2667,6 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
                 
                 t_extrapolate_sol[t_conn][t_time] = t_extrap
                 t_extrapolate_sol_comb[t_conn][t_time] = t_permutations[t_where_min]
-                #t_extrapolate_sol_back_forw[t_state][t_ID] = t_extrap
-                #t_extrapolate_sol_comb_back_forw[t_state][t_ID] = t_permutations[t_where_min]
-                #print(f"inter!:c{t_permutations[t_where_min]}, m{t_mean}, s{t_std}, df{t_diff_norms[t_where_min]}")
                 t_times_accumulate_resolved.append(t_time)
             else:
                 break
@@ -2888,10 +2728,6 @@ for doX in [138]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63
     #for (t_ID,t_state), t_conns in lr_conn_merges_good.items():
     for t_conn, t_combs in t_extrapolate_sol_comb.items():
         (t_ID, t_state) = t_conn
-        # ref for comments to versions encountered previously.
-        #for t_conn in t_conns:
-        #t_from, t_to = t_conn
-        #t_combs = t_extrapolate_sol_comb[t_conn]
 
         if len(t_combs) == 0: continue                              # no extension, skip.
 
@@ -3223,16 +3059,17 @@ if 1 == 1:
         pickle.dump(graphs_all_dict , handle) 
 
     for doX, G in graphs_all_dict.items():
+        for node in G.nodes():
+            [cx,cy] = G.nodes[node]['centroid']
+            del G.nodes[node]['centroid']
+            G.nodes[node]['cx'] = cx
+            G.nodes[node]['cy'] = cy
+            if G.nodes[node]['owner'] == None: G.nodes[node]['owner'] = -1
+
         if len(trajectories_all_dict[doX]) > 0:
             all_nodes_pos, edge_width, edge_color, node_size = for_graph_plots(G, segs = trajectories_all_dict[doX], show = False, node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7)
             # for_graph_plots(G, segs = trajectories_all_dict[doX]) 
             for node, (x,y) in all_nodes_pos.items():
-                [cx,cy] = G.nodes[node]['centroid']
-                del G.nodes[node]['centroid']
-                G.nodes[node]['cx'] = cx
-                G.nodes[node]['cy'] = cy
-
-                if G.nodes[node]['owner'] == None: G.nodes[node]['owner'] = -1
 
                 G.nodes[node]['viz'] = {'position': {'x': x, 'y': y*12, 'z': 0.0}, 
                                         'size': 0.23, 
@@ -3245,7 +3082,8 @@ if 1 == 1:
 
             file_path = os.path.join(graphsFolder, f'G_{doX}.gexf')
             nx.write_gexf(G, file_path)
-            a = 1
+        #graphs_all_dict[doX] = G
+        a = 1
 
 if 1 == 1:
 
@@ -3271,7 +3109,7 @@ if 1 == 1:
             x = [graphs_all_dict[doX].nodes[t]["cx"] for t in case]
             y = [graphs_all_dict[doX].nodes[t]["cy"] for t in case]
             t_centroids_all = np.vstack((x,y)).T
-            #t_centroids_all = [np.array([x,y]) for x, y in zip(graphs_all_dict[doX].nodes[t]["centroid"] for t in case]
+            
             for k,subCase in enumerate(case):
                 t_time,*subIDs = subCase
                 t_k_from = max(0, k - 10)
@@ -3345,7 +3183,7 @@ if 1 == 1:
         fileName = f"{str(k).zfill(4)}.png"
         cv2.imwrite(os.path.join(folder,fileName) ,img)
         #cv2.imshow('a',imgs[time])
-
+a = 1
 if 1 == -11:
     binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
     imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(binarizedMaskArr.shape[0])]

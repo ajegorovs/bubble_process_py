@@ -795,19 +795,96 @@ if 1 == -1:
         if len(t_common_elems) > 0:
             t_from_connected[t1].add(t2)
 
+if 1 == -1:
+    import networkx as nx
+
+    G = nx.Graph()  # Your NetworkX graph
+    # Add nodes and edges to your graph
+    G.add_edges_from([(1,2),(2,3),(3,4),(5,6)])
+    # Define edge colors (e.g., based on edge attribute 'color')
+    for u, v in G.edges():
+        #color = G[u][v].get('color', 'red')  # You can use a different edge attribute for color
+        G[u][v]['color'] = 'red'
+
+    # Export the graph to GEXF format
+    nx.write_gexf(G, "your_graph_with_attributes.gexf")
+
+
+import itertools
+
+# Define the choices and their associated values
+choices_a = ['a1']
+choices_b = ['b1', 'b2']
+choices_c = ['c1', 'c2']
+
+L = [choices_a, choices_b, choices_c]
+
+D = {'a1': 1, 'b1': 3, 'b2': 10, 'c1': 4, 'c2': 2}
+L_vals = [[D[a] for a in b] for b in L]
+print(L)
+print(L_vals)
+
+# Function to build and check the choice tree
+thresh = 4
+
+refine_tree_condition = lambda elem_1, elem_2 : np.abs(D[elem_2] - D[elem_1]) <= thresh
+def refine_tree(L, thresh_func):
+    output_edges = []
+    choice_from = L[0]
+    for i in list(range(1, len(L))):
+        choice_to = L[i]
+        conns = list(itertools.product(choice_from,choice_to))
+        conns_viable = [(elem_1,elem_2) for elem_1,elem_2 in conns if thresh_func(elem_1, elem_2)]
+        output_edges += conns_viable
+        choice_from = [elem_2 for _,elem_2 in conns_viable]
+    return output_edges, L[0], choice_from
+
 
 import networkx as nx
+edges, nodes_start, nodes_end = refine_tree(L, refine_tree_condition)
+def find_paths_from_to_multi(nodes_start, nodes_end, edges = None, G = None, construct_graph= False):
 
-G = nx.Graph()  # Your NetworkX graph
-# Add nodes and edges to your graph
-G.add_edges_from([(1,2),(2,3),(3,4),(5,6)])
-# Define edge colors (e.g., based on edge attribute 'color')
-for u, v in G.edges():
-    #color = G[u][v].get('color', 'red')  # You can use a different edge attribute for color
-    G[u][v]['color'] = 'red'
+    if not construct_graph:
+        G = nx.DiGraph()
+        G.add_edges_from(edges)
 
-# Export the graph to GEXF format
-nx.write_gexf(G, "your_graph_with_attributes.gexf")
+    all_paths = []
+    for start_node in nodes_start:
+        for end_node in nodes_end:
+            if nx.has_path(G, source=start_node, target=end_node):
+                paths = list(nx.all_simple_paths(G, source=start_node, target=end_node))
+                all_paths.extend(paths)
+
+paths = find_paths_from_to_multi(nodes_start, nodes_end,edges = None, G = None, construct_graph = False)
+a = 21
+def build_choice_tree(choices, current_branch, current_value):
+    viable_branches = []
+
+    if not choices:
+        # End of the tree, add the branch and its value to viable_branches
+        viable_branches.append((current_branch, current_value))
+    else:
+        current_choices = choices[0]
+        remaining_choices = choices[1:]
+
+        for choice in current_choices:
+            new_branch = current_branch + [choice]
+            new_value = current_value + D.get(choice, 0)
+            
+            if abs(D.get(choice, 0)) <= 4:  # Check the value constraint
+                viable_branches.extend(build_choice_tree(remaining_choices, new_branch, new_value))
+
+    return viable_branches
+
+# Start building the choice tree
+viable_branches = build_choice_tree(L, [], 0)
+
+# Print the resulting viable branches
+for branch, value in viable_branches:
+    print(f"Branch: {branch}, Value: {value}")
+
+
+
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key
     cv2.destroyAllWindows()

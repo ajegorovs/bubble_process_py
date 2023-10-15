@@ -1,5 +1,5 @@
 TODO:
-27.09.23 (major) implement final pass / extension of segment start/end 
+27.09.23 (major) implement final pass / extension of segment start/end - done only isolated segment end-start extension
 
 28.09.23 (minor)	not sure if "rudamentary split/merge analysis based on nearest neighbor connectedness symmetry" is needed. might anaylze unidirected graph degrees instead
 					although to differentiate splits and merges, have to understand time directions
@@ -8,6 +8,8 @@ TODO:
 
 10.10.23 (minor)		need extension of branches, better resolution of splits merges via alpha hull
 
+15.10.23 (medium/major)	for merge/splits you might see  split-merges which only have 1 frame inberween.
+						cant be see from segment interaction approach. currently method stops there. but it had to be extended. may be "27.09.23 (major)" helps
 DONE:
 29.09.23 - 27.09.23 extension of split branches havent been done yet. no test data
 

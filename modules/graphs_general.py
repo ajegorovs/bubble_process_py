@@ -1,5 +1,5 @@
 
-import networkx as nx, cv2, numpy as np
+import networkx as nx, cv2, numpy as np, itertools
 from matplotlib import pyplot as plt
 from collections import defaultdict
 from bubble_params import (centroid_area_cmomzz)
@@ -111,6 +111,39 @@ def graph_extract_paths(H,f):
     
     
     return segments2, skipped
+
+def find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = False, G = None, edges = None, only_subIDs = False):
+    # extract all possible paths from set of nodes nodes_start to set of nodes nodes_end
+    # give edges and set construct_graph = True to create a graph, alternatively supply graph G
+
+    if construct_graph:
+        G = nx.DiGraph()
+        G.add_edges_from(edges)
+
+    all_paths = []
+    for start_node in nodes_start:
+        for end_node in nodes_end:
+            if nx.has_path(G, source = start_node, target = end_node):
+                paths = list(nx.all_simple_paths(G, source = start_node, target = end_node))
+                if only_subIDs:
+                    paths = [[tuple(subIDs) for t,*subIDs in node] for node in paths]
+                all_paths.extend(paths)
+    return all_paths
+
+def comb_product_to_graph_edges(choices_list, thresh_func):
+    # to construct all possible branches from list of choices use itertools.product(*choices_list)
+    # what if some edges in branch violate a criterion? that branch should not be considered.
+    # go though
+    output_edges = []
+    choice_from = choices_list[0]                               # start with choice 1
+    for i in list(range(1, len(choices_list))):                  
+        choice_to = choices_list[i]                             # take next choice
+        conns = list(itertools.product(choice_from,choice_to))  # find all connections from prev to next choices
+        conns_viable = [conn for conn in conns if thresh_func(conn)] # check constr.
+        output_edges += conns_viable                            # save viable edges
+        choice_from = set([elem_2 for _,elem_2 in conns_viable])# basically refine choice_to
+
+    return output_edges, choices_list[0], choice_from
 
 def extract_graph_connected_components(graph, sort_function = lambda x: x): 
     # extract all conneted component= clusters from graph. to extract unique clusters,

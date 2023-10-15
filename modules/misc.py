@@ -344,6 +344,20 @@ def order_segment_levels(t_segments, debug = 0):
 
 
 
+def dfs_pred(graph, node, time_lim, node_set):
+    node_set.add(node)
+    predecessors = list(graph.predecessors(node))
+    for predecessor in predecessors:
+        if predecessor not in node_set and graph.nodes[predecessor]['time'] > time_lim:
+            dfs_pred(graph, predecessor, time_lim, node_set)
+
+def dfs_succ(graph, node, time_lim, node_set):
+    node_set.add(node)
+    successors = list(graph.successors(node))
+    for successor in successors:
+        if successor not in node_set and graph.nodes[successor]['time'] < time_lim:
+            dfs_succ(graph, successor, time_lim, node_set)
+
 def getNodePos2(dic0, S = 20):
     dups, cnts = np.unique([a for a in dic0.values()], return_counts = True)
     # relate times to 'local IDs', which are also y-positions or y-indexes
@@ -404,8 +418,10 @@ def segment_conn_end_start_points(connections, segment_list = segments2, nodes =
             return None
 
 
+def old_conn_2_new(conn,transform):
+    return (transform[conn[0]], transform[conn[1]])
 
-def lr_evel_perm_interp_data(lr_permutation_cases,lr_121_interpolation_centroids,lr_permutation_times,
+def lr_evel_perm_interp_data(t_conns, lr_permutation_cases,lr_121_interpolation_centroids,lr_permutation_times,
         lr_permutation_centroids_precomputed,lr_permutation_areas_precomputed,lr_permutation_mom_z_precomputed):
         
     t_all_traj      = {t_conn:[] for t_conn in lr_permutation_cases}
@@ -416,7 +432,7 @@ def lr_evel_perm_interp_data(lr_permutation_cases,lr_121_interpolation_centroids
     t_sols_a        = {t_conn:[] for t_conn in lr_permutation_cases}
     t_sols_m        = {t_conn:[] for t_conn in lr_permutation_cases}
 
-    for t_conn in lr_permutation_cases:
+    for t_conn in t_conns:
         t_c_interp = lr_121_interpolation_centroids[t_conn]
         for t,t_perms in enumerate(lr_permutation_cases[t_conn]):
             # dump sequences of areas and centroids for each possible trajectory
@@ -477,7 +493,7 @@ def lr_evel_perm_interp_data(lr_permutation_cases,lr_121_interpolation_centroids
         t_sols_m[t_conn] += [t_m_mean_min,t_m_stdevs_min]
     return t_sols_c, t_sols_c_i, t_sols_a, t_sols_m
 
-def lr_weighted_sols(weights, t_sols, lr_permutation_cases):
+def lr_weighted_sols(t_conns, weights, t_sols, lr_permutation_cases):
     lr_weighted_solutions = {t_conn:{} for t_conn in lr_permutation_cases}
     lr_weight_c, lr_weight_c_i,lr_weight_a, lr_weight_m = weights
     # set normalized weights for methods
@@ -485,7 +501,7 @@ def lr_weighted_sols(weights, t_sols, lr_permutation_cases):
     lr_weight_c, lr_weight_c_i,lr_weight_a, lr_weight_m = lr_weights / np.sum(lr_weights)
 
     t_sols_c, t_sols_c_i, t_sols_a, t_sols_m = t_sols
-    for t_conn in lr_permutation_cases:  # gather all best solutions
+    for t_conn in t_conns:  # gather all best solutions
         t_all_sols = []
         t_all_sols += t_sols_c[t_conn]
         t_all_sols += t_sols_c_i[t_conn]
@@ -510,9 +526,9 @@ def lr_weighted_sols(weights, t_sols, lr_permutation_cases):
 
  
     
-    lr_weighted_solutions_max = {t_conn:0 for t_conn in lr_permutation_cases}
+    lr_weighted_solutions_max = {t_conn:0 for t_conn in t_conns}
     lr_weighted_solutions_accumulate_problems = {}
-    for t_conn in lr_permutation_cases:                     # determing winning solution by max reward
+    for t_conn in t_conns:                     # determing winning solution by max reward
         t_weight_max = max(lr_weighted_solutions[t_conn].values())
         t_keys_max = [tID for tID, t_weight in lr_weighted_solutions[t_conn].items() if t_weight == t_weight_max]
         if len(t_keys_max) == 1:                            # only one has max
@@ -714,7 +730,7 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
     to_predecessors_edges = [(node, node_to_first) for node in  to_predecessors]                    # (2)
     graph_nodes.remove_edges_from(to_predecessors_edges)                                            # (2)
 
-    sols_node_first = nodes_composite[0]                                                            # (3)
+    sols_node_first = nodes_composite[-1]                                                           # (3)
     sols_nodes_disperesed = disperse_composite_nodes_into_solo_nodes([sols_node_first])             # (3)
     sols_first_edges = set()                                                                        # (3)
     for node in sols_nodes_disperesed:                                                              # (3)

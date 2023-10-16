@@ -762,11 +762,103 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
 
 
 
+# ===============================================================================================
+# ====  FOR BRANCH EXTENSION, SEE IF THERE ARE CONTESTED NODES AND REDISTRIBUTE THEM ====
+# ===============================================================================================
+# WHY: extensions are performed effectively in parallel, without coupling between processes.
+# WHY: thats why some recovered paths may overlap. and overlap has to be removed.
+# HOW: nodes that are in multiple extensions are called contested. Since each contested node can have
+# HOW: only one owner, we construct all possible choices for this kind of node redistribution.
+# HOW: additionally, we cannot strip node from path that will be left with no nodes at any time step.
+# NOTE: only case where no contested nodes are found and only one possible redistribution is scripted. <<<
+def conflicts_stage_1(owner_dict):
+    # find contested nodes by counting their owners
+    node_owners = defaultdict(list)
+    for owner, times_subIDs in owner_dict.items():
+        # {owner:nodes,...}, where nodes = {time:*subIDs,...} = {483: (3,), 484: (4,),..}
+        nodes =  [(time, subID) for time, subIDs in times_subIDs.items() for subID in subIDs]
+        for node in nodes:
+            node_owners[node].extend([owner])
+
+    return {node: owners for node,owners in node_owners.items() if len(owners) > 1}
+
+def conflicts_stage_2(contested_dict):
+    # prep data for redistribution schemes. get options of node owners: node1:owners1 -> 
+    # -> (owner) choices for node 1 = ([node1, owner11],[node1, owner12],..)
+    # node_owner_choices -> [choices for node 1, choices for node 2,...]
+    node_owner_choices = [] 
+    for key,values in contested_dict.items():
+        node_owner_choices.append(list(itertools.product([key],values)))
+    # for fair node distribution, only one owner choice from each "choices for node X" is possible
+    # so we construct combinations of single choices for each "choices for node X"
+    # which is well described by permutation product (a branching choice tree).
+    return list(itertools.product(*node_owner_choices))
+
+def conflicts_stage_3(node_destribution_options,contested_node_owners_dict, owner_dict):
+    # if this choice of node redistribution is correct, i have to delete contested nodes from
+    # alternative owners. if some of alternative owners are left with no nodes, its incorrect choice
+    variants_possible = []
+    for nodes_owners in node_destribution_options: # examine one redistribution variant
+        t_skip = False
+        for node, owner in nodes_owners:           # examine one particular node
+            time, *subIDs = node                   # determine alternative owners
+            owners_others = [t for t in contested_node_owners_dict[node] if t != owner]
+            for owner_other in owners_others:
+                leftover_subIDs = set(owner_dict[owner_other][time]) - set(subIDs)
+                if  len(leftover_subIDs) == 0:     # check subIDs after removal of contested subIDs
+                    t_skip = True
+                    break                          # stop examining alternative owners. case failed
+            if t_skip: break                       # stop examining nodes of case
+        if not t_skip:
+            variants_possible.append(nodes_owners)
+    return variants_possible
 
 
+#if 1 == -1:
+#    # check if there are contested nodes in all extrapolated paths
+#    t_duplicates = conflicts_stage_1(t_extrapolate_sol_comb)
+#    assert len(t_duplicates) == 0, 'havent tested after addition of split and mixed extension code 28.09.23'
+#    if len(t_duplicates) > 0:
+#        # retrieve viable ways of redistribute contested nodes
+#        variants_all        = conflicts_stage_2(t_duplicates)
+#        variants_possible   = conflicts_stage_3(variants_all,t_duplicates, t_extrapolate_sol_comb)
+#        #if there is only one solution by default take it as answer
+#        if len(variants_possible) == 1:  
+#            t_choice_evol = variants_possible[0]
+#        else:
+#            # method is not yet constructed, it should be based on criterium minimization for all variants
+#            # current, trivial solution, is to pick solution at random. at least there is no overlap.
+#            assert -1 == 0, 'multiple variants of node redistribution'
+#            t_choice_evol = variants_possible[0]
+         
+#        # redistribute nodes for best solution.
+#        for t_node,t_conn in t_choice_evol:
+#            tID                 = t_conn[1]     # not correct w.r.t different states <<<
+#            t_time, *t_subIDs   = t_node
+#            t_delete_conns      = [t_c for t_c in t_duplicates[t_node] if t_c != t_conn]
+#            for t_delete_conn in t_delete_conns:
+#                t_temp = t_extrapolate_sol_comb[t_delete_conn][t_time]
+#                t_temp = [t for t in t_temp if t not in t_subIDs]
+#                t_extrapolate_sol_comb[t_delete_conn][t_time] = t_temp
+#            t_conns_relevant = [t_c for t_c in t_extrapolate_sol_comb if t_c[1] == tID]
+#            lr_conn_merges_good.update(t_conns_relevant) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< not correct anymore
 
-
-
+#    t_all_problematic_conns = list(set(sum(list(t_duplicates.values()),[])))
+#    t_all_problematic_conns_to = [a[1] for a in t_all_problematic_conns]
+#    for tID,t_state in ms_branch_extend_IDs: # here lies problem with splits, and possibly with mixed cases!!!! <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+#        if tID not in t_all_problematic_conns_to:
+#            if t_state      == 'merge':
+#                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
+#            elif t_state    == 'split':
+#                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[0] == tID]
+#            else:
+#                t_conns_relevant = [t_conn for t_conn in t_extrapolate_sol_comb if t_conn[1] == tID]
+#            for t_conn in t_conns_relevant:
+#                lr_conn_merges_good.add((t_conn,t_state))
+#            #lr_conn_merges_good[(tID,t_state)].update(t_conns_relevant)
+#            #lr_conn_merges_good.update((tID,t_state))
+    
+#        print('branches are resolved without conflict, or conflict resolved by redistribution of nodes')
 
 
 # not used =====================

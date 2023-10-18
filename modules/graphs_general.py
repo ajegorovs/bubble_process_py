@@ -155,6 +155,12 @@ def extract_graph_connected_components(graph, sort_function = lambda x: x):
     connected_components_unique = []
     [connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
     return connected_components_unique
+
+def extract_graph_connected_components_autograph(edges, sort_function = lambda x: x): 
+    graph = nx.Graph()
+    graph.add_edges_from(edges)
+    return extract_graph_connected_components(graph, sort_function = sort_function)
+
 def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_segments, source_segment, source_node = None, target_nodes = None, return_cc = False):
     # test connectivity of source segments to nearby segments (within certain time interval - [t_max, t_min]
     # to avoid paths that go though other segments, active at that time, temporary subgraph is created

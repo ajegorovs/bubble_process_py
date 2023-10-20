@@ -14,7 +14,7 @@ from collections import defaultdict
 # ========================================================================================================
 inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\100 sccm' #
 # image data subsets are controlled by specifying image index, which is part of an image. e.g image1, image2, image20, image3
-intervalStart   = 1000                             # start with this ID
+intervalStart   = 2000                             # start with this ID
 numImages       = 1000                          # how many images you want to analyze.
 intervalStop    = intervalStart + numImages     # images IDs \elem [intervalStart, intervalStop); start-end will be updated depending on available data.
 
@@ -498,8 +498,8 @@ trajectories_all_dict = {}
 graphs_all_dict = {}
 contours_all_dict = {}
 
-issues_all_dict = {}
-for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]: #[138]:# [86]:# [34]:#[63]:#
+issues_all_dict = {} #[2]:#
+for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]: #[138]:# [86]:# [34]:#[63]:# [1]:#
 
     contours_all_dict[doX] = {'contours':{},'hulls':{}}
     issues_all_dict[doX] = {}
@@ -1290,41 +1290,48 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
         for t_conn in t_conn_121_zero_path: 
             t_dict = lr_big121s_perms_pre[t_conn]
             t_from, t_to        = t_conn                                                    # no inheritance is yet needed
+            t_from_new          = lr_zp_redirect[t_from]
             t_times             = [t for t,t_subIDs in t_dict.items() if len(t_subIDs) > 1]
-            assert len(t_times) == 1, "unexpected case. multiple times, need to insert nodes in correct order"
+            if len(t_times) > 1:
+                if 'zero_path' not in issues_all_dict[doX]: issues_all_dict[doX]['zero_path'] = []
+                issues_all_dict[doX]['zero_path'].append(f'multiple times: {t_dict}')
+                lr_big121s_perms_pre.pop(t_conn,None)
+                t_conn_121.remove(t_conn)
+                continue
+            #assert len(t_times) == 1, "unexpected case. multiple times, need to insert nodes in correct order"
             t_nodes_composite   = [tuple([t] + t_dict[t]) for t in t_times]                 # join into one node (composit)
             t_nodes_solo        = [(t,t_subID) for t in t_times for t_subID in t_dict[t]]   # get solo contour nodes
 
             t_edges             = []
-            t_nodes_prev        =   [t_node for t_node in segments2[t_from] if t_node not in t_nodes_solo] 
+            t_nodes_prev        =   [t_node for t_node in segments2[t_from_new] if t_node not in t_nodes_solo] 
             t_edges             +=  [(t_nodes_prev[-1]      , t_nodes_composite[0]) ]
-            segments2[t_from]   =   t_nodes_prev
-            segments2[t_from]   +=  t_nodes_composite
+            segments2[t_from_new]   =   t_nodes_prev
+            segments2[t_from_new]   +=  t_nodes_composite
             t_nodes_next        =   [t_node for t_node in segments2[t_to] if t_node not in t_nodes_solo]
             t_edges             +=  [(t_nodes_composite[0]  , t_nodes_next[0])      ]
-            segments2[t_from]   +=  t_nodes_next
+            segments2[t_from_new]   +=  t_nodes_next
     
             # modify graph: remove solo IDs, add new composite nodes. add parameters to new nodes
             G.remove_nodes_from(t_nodes_solo) 
             G.add_edges_from(t_edges)
 
-            set_custom_node_parameters(G, g0_contours, t_nodes_composite, t_from, calc_hull = 1)
+            set_custom_node_parameters(G, g0_contours, t_nodes_composite, t_from_new, calc_hull = 1)
 
             for t_node in t_nodes_next: # t_nodes_prev + 
-                    G.nodes[t_node]["owner"] =  t_from
+                    G.nodes[t_node]["owner"] =  t_from_new
 
             segments2[t_to]     = []
 
             # modify segment view graph.
             t_successors   = extractNeighborsNext(G2, t_to, lambda x: G2.nodes[x]["t_start"])
     
-            t_edges = [(t_from,t_succ) for t_succ in t_successors]
+            t_edges = [(t_from_new,t_succ) for t_succ in t_successors]
             G2.remove_node(t_to)
             G2.add_edges_from(t_edges)
-            G2.nodes()[t_from]["t_end"] = segments2[t_from][-1][0]
+            G2.nodes()[t_from_new]["t_end"] = segments2[t_from_new][-1][0]
 
             # create dict to re-connect previously obtained edges.
-            lr_zp_redirect[t_to] = t_from
+            lr_zp_redirect[t_to] = t_from_new
             print(f'zero path: joined segments: {t_conn}')
     
     lr_conn_edges_merges    = lr_reindex_masters(lr_zp_redirect, lr_conn_edges_merges   )
@@ -1333,7 +1340,13 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
     t_conn_121              = lr_reindex_masters(lr_zp_redirect, t_conn_121             ,remove_solo_ID = 1)
 
     a = 1
-    # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<        
+
+    fk_time_active_segments = defaultdict(list)                                     
+    for k,t_segment in enumerate(segments2):
+        t_times = [G.nodes[a]["time"] for a in t_segment]
+        for t in t_times:
+            fk_time_active_segments[t].append(k)
+
     # ===============================================================================================
     # ===== EDIT 10.09.23 lets find joined 121s ========================
     # ===============================================================================================
@@ -1352,9 +1365,9 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
         lr_big_121s_chains = extract_graph_connected_components(G_seg_view_1.to_undirected(), lambda x: x)
 
         print(f'Working on joining all continious 121s together: {lr_big_121s_chains}')
-        # for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        # big 121s terminate at zero neighbors, real or pseudo merges/splits 
-        # both cannot easily tell te difference between real and pseudo. have search for recombination
+        # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<        
+    # big 121s terminate at zero neighbors, real or pseudo merges/splits 
+        # both cannot easily tell the difference between real and pseudo. have search for recombination
         # pseudo events means start/end of a big 121 contain only part of bubble and cannot
         # be used to determine history. For the real m/s start/end segments can be used. 
         # how to tell real and pseudo apart? 
@@ -1365,51 +1378,65 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
         # -----------------------------------------------------------------------------------------------
         # PSEUDO MERGE/SPLIT ON EDGES: DETECT BIG 121S WITH M/S
         # -----------------------------------------------------------------------------------------------
-        # check left side = part of split
-    
+        # check which segment chains have leftmost and rightmost segmentsa s parts of splits and merges respectively
+
+        fk_event_branchs = {'merge':defaultdict(list),'split':defaultdict(list)}
+        [fk_event_branchs['merge'][t_to     ].append(t_from ) for t_from,t_to in lr_conn_edges_merges]    
+        [fk_event_branchs['split'][t_from   ].append(t_to   ) for t_from,t_to in lr_conn_edges_splits]
+
         if 1 == 1:
             t_segment_ID_left   = [t_subIDs[0] for t_subIDs in lr_big_121s_chains]
             t_segment_ID_right  = [t_subIDs[-1] for t_subIDs in lr_big_121s_chains]
-            t_temp_merge    = defaultdict(int)
-            t_temp_split    = defaultdict(int)
-            t_temp_in_merge = defaultdict(list)
-            t_temp_in_split = defaultdict(list)
+            fk_merge_to     = {}                                        # chain segment ID : merge to which segment
+            fk_split_from   = {}
+            t_index_has_merge = []
+            t_index_has_split = []
             # find if left is part of split, and with whom
             for t, t_ID in enumerate(t_segment_ID_left):
                 for t_from,t_to in lr_conn_edges_splits:
-                    if t_to == t_ID:                    # if t_ID is branch of split from t_from
-                        t_temp_split[t_ID] = t_from     # save who was mater of left segment-> t_ID:t_from
-                        t_temp_in_split[t] = lr_big_121s_chains[t]     # index in big 121s: connected components. t_ID in cc.
+                    if t_to == t_ID:                                    # if t_ID is branch of split from t_from
+                        fk_split_from[t_ID] = t_from                    # save who was mater of left segment-> t_ID:t_from
+                        t_index_has_split.append(t)  
 
             # find if right is part of merge, and with whom
-            for t, t_ID in enumerate(t_segment_ID_right): # order in big 121s, right segment ID.
+            for t, t_ID in enumerate(t_segment_ID_right):               # order in big 121s, right segment ID.
                 for t_from,t_to in lr_conn_edges_merges:
                     if t_from == t_ID: 
-                        t_temp_merge[t_ID] = t_to
-                        t_temp_in_merge[t] = lr_big_121s_chains[t]
+                        fk_merge_to[t_ID] = t_to
+                        t_index_has_merge.append(t)  
 
             # extract big 121s that are in no need of real/pseudo m/s analysis.
             lr_big121_events_none = defaultdict(list) # big 121s not terminated by splits or merges. ready to resolve.
             # find if elements of big 121s are without m/s or bounded on one or both sides by m/s.
-            set1 = set(t_temp_in_merge)
-            set2 = set(t_temp_in_split)
+            set1 = set(t_index_has_merge)
+            set2 = set(t_index_has_split)
 
             t_only_merge = set1 - set2
             t_only_split = set2 - set1
 
             t_merge_split = set1.intersection(set2)
-            t_merge_split_no = set(range(len(lr_big_121s_chains))) - (set1.union(set2))
+            #t_merge_split_no = set(range(len(lr_big_121s_chains))) - (set1.union(set2))
             #assert len(t_merge_split) == 0, "segments bounded on both sides by merge/split. not encountered before, but ez to fix"
 
             #lr_events = {'merge':defaultdict(list), 'split':defaultdict(list)}
+        # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # -----------------------------------------------------------------------------------------------
         # PSEUDO MERGE/SPLIT ON EDGES: DETERMINE IF M/S IS FAKE OR REAL
         # -----------------------------------------------------------------------------------------------
-
-        # test if edge segment is part of real of fake m/s.
-        # strip it from big 121s and compare area of prev segment and result of event
-        # if area changed drastically then its real m/s, otherwise its same bubble with fake m/s
-        # NOTE: currently i take a single end-start nodes. might take more if i test for if they are in m/s (change to segment of history avg later)
+        # 19.10.23 comments:
+        # looking at end points of chains is a very niche case. seem to be important in our case.
+        # split or merge does not have to be violent, bubbles may simply touch for few frames.
+        # you cannot tell apart fake and real events, by area, on frames right before and after event
+        # if bubble softly touches or splits, short term dynamics of total area can be subtle.
+        # - branch may be a bubble that poped out near, so total area will grow rapidly
+        # - or your main segment may be a branch that popped up (had this case)
+        # 19.10.23 what can you do:
+        # 1)    check if branch is long. might indicate that its not a fluke/optial artifact
+        # 2)    look at cases with only 2 branches. most likely due to sideways illum producing only side reflecitons
+        # 3)    check if that other branch is isolated- does not have a history. 
+        # 4)    other branch spans larger times. kind of meh crit. cannot know in case of random bubble popping out.
+        # 5)    check area change right near an event. this will rule out random neighbor bubble.
+        #       this will also rule out if your segment is a random bubble.
         print('Determining if end points of big 121s are pseudo events: ')
         if 1 == 1:
             t_big121s_merge_conn_fake = []
@@ -1420,14 +1447,59 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
             t_max_pre_merge_segment_length = 12 # skip if branch is too long. most likely a real branch
 
             t_only_merge_fake = []
-            for t in t_only_merge.union(t_merge_split): #t_only_merge + t_merge_split
+            for t in t_only_merge.union(t_merge_split): # check these big chains IDs with merge event
                 t_big121_subIDs = lr_big_121s_chains[t]
                 #if t not in t_merge_split:
                 t_from      = t_big121_subIDs[-1]   # possible fake merge branch (segment ID).
                 t_from_from = t_big121_subIDs[-2]   # segment ID prior to that, most likely OG bubble.
-                t_from_to   = t_temp_merge[t_from]  # seg ID of merge.
+                t_from_to   = fk_merge_to[t_from]   # seg ID of merge.
+                t_from_branches = fk_event_branchs['merge'][t_from_to]
+                if len(segments2[t_from]) >= t_max_pre_merge_segment_length: 
+                    continue
+                if len(t_from_branches) > 2: # dont consider difficult cases
+                    continue     
 
-                if len(segments2[t_from]) >= t_max_pre_merge_segment_length: continue
+                t_from_other            = [t for t in t_from_branches if t != t_from][0]
+                t_time_from_other_start = G.nodes[  segments2[t_from_other  ][0 ]   ]["time"]
+                t_time_from_from_end    = G.nodes[  segments2[t_from_from   ][-1]   ]["time"]
+                if t_time_from_from_end >= t_time_from_other_start:  # branch overlaps from_from
+                    continue    
+
+                t_from_other_predecessors = extractNeighborsPrevious(G2, t_from_other, lambda x: G2.nodes[x]["t_end"])
+                if len(t_from_other_predecessors) > 0:                          continue     # branch lives on its life. probly real
+
+                t_nodes_to_first = segments2[t_from_to   ][:3]
+                # take a time period slice of both branches. should contain first times at which both branches are present.
+                t_time = G.nodes[segments2[t_from_to][0]]['time']
+                t_cntr = 0
+                t_times_common = []
+                while t_time >= t_time_from_from_end:
+                    t_inter = set(t_from_branches).intersection(set(fk_time_active_segments[t_time]))
+                    if len(t_inter) == len(t_from_branches):
+                        t_cntr += 1
+                        t_times_common.append(t_time)
+                    t_time -= 1
+                    if t_cntr >= 3:
+                        break
+                        
+                if len(t_times_common) == 0: continue 
+
+                t_nodes_at_times_common = []
+                for t in t_from_branches:
+                    t_nodes_at_times_common.extend([t_node for t_node in segments2[t] if G.nodes[t_node]['time'] in t_times_common])
+
+                t_dispered_nodes = disperse_nodes_to_times(t_nodes_at_times_common)
+
+                t_from_areas_last = []
+                for t_time, t_subIDs in t_dispered_nodes.items():
+                    t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t] for t in t_subIDs]))
+                    t_from_areas_last.append(centroid_area(t_hull)[1])
+
+                t_area_mean_to_first            = np.mean([G.nodes[n]["area"] for n in t_nodes_to_first])
+                t_area_mean_from_last_combined  = np.mean(t_from_areas_last)
+
+                t_rel_area_change_from_to = np.abs(t_area_mean_to_first - t_area_mean_from_last_combined) / t_area_mean_to_first
+                if  t_rel_area_change_from_to> 0.35: continue
 
                 t_from_to_node      = segments2[t_from_to   ][0 ]                   # take end-start nodes
                 t_from_from_node    = segments2[t_from_from ][-1]
@@ -1446,9 +1518,51 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
                 t_big121_subIDs = lr_big_121s_chains[t]
                 t_to            = t_big121_subIDs[0]   # possible fake merge branch (segment ID).
                 t_to_to         = t_big121_subIDs[1]   # segment ID prior to that, most likely OG bubble.
-                t_from_to       = t_temp_split[t_to]  # seg ID of merge.
+                t_from_to       = fk_split_from[t_to]  # seg ID of merge.
+                t_to_branches = fk_event_branchs['split'][t_from_to]
+                if len(segments2[t_to]) >= t_max_pre_merge_segment_length:  continue     # long branch - probly real
+                if len(t_to_branches) > 2:                                  continue     # dont consider difficult cases
 
-                if len(segments2[t_to]) >= t_max_pre_merge_segment_length: continue
+                t_to_other          = [t for t in t_to_branches if t != t_to][0]
+                t_time_to_other_end = G.nodes[  segments2[t_to_other  ][-1]     ]["time"]
+                t_time_to_to_start  = G.nodes[  segments2[t_to_to     ][0 ]     ]["time"]
+                if t_time_to_other_end >= t_time_to_to_start:               continue     # branch longer than expected end
+
+                t_to_other_successors = extractNeighborsNext(G2, t_to_other, lambda x: G2.nodes[x]["t_start"])
+                if len(t_to_other_successors) > 0:                          continue     # branch lives one its life. probly real
+
+                t_nodes_from_last = segments2[t_from_to   ][-3:]
+                # take a time period slice of both branches. should contain first times at which both branches are present.
+                t_time = G.nodes[segments2[t_from_to][-1]]['time']
+                t_cntr = 0
+                t_times_common = []
+                while t_time <= t_time_to_to_start:
+                    t_inter = set(t_to_branches).intersection(set(fk_time_active_segments[t_time]))
+                    if len(t_inter) == len(t_to_branches):
+                        t_cntr += 1
+                        t_times_common.append(t_time)
+                    t_time += 1
+                    if t_cntr >= 3:
+                        break
+                        
+                if len(t_times_common) == 0: continue     # branches not intersect in time
+
+                t_nodes_at_times_common = []
+                for t in t_to_branches:
+                    t_nodes_at_times_common.extend([t_node for t_node in segments2[t] if G.nodes[t_node]['time'] in t_times_common])
+
+                t_dispered_nodes = disperse_nodes_to_times(t_nodes_at_times_common)
+
+                t_to_areas_first = []
+                for t_time, t_subIDs in t_dispered_nodes.items():
+                    t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t] for t in t_subIDs]))
+                    t_to_areas_first.append(centroid_area(t_hull)[1])
+
+                t_area_mean_from_last           = np.mean([G.nodes[n]["area"] for n in t_nodes_from_last])
+                t_area_mean_to_first_combined   = np.mean(t_to_areas_first)
+
+                t_rel_area_change_from_to = np.abs(t_area_mean_from_last - t_area_mean_to_first_combined) / t_area_mean_from_last
+                if  t_rel_area_change_from_to> 0.35: continue
 
                 t_from_to_node  = segments2[t_from_to   ][-1]                   # take end-start nodes
                 t_to_to_node    = segments2[t_to_to     ][0]
@@ -1467,12 +1581,12 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
                     t_only_merge_split_fake += [t]
                 elif 0 in t_states:                     # only split is fake
                     t_to            = lr_big_121s_chains[t][0]   
-                    t_from_to       = t_temp_split[t_to] 
+                    t_from_to       = fk_split_from[t_to] 
                     t_only_split_fake += [t]
                     t_big121s_split_conn_fake.append((t_from_to,t_to))
                 else:                                  # only merge is fake
                     t_from      = lr_big_121s_chains[t][-1]  
-                    t_from_to   = t_temp_merge[t_from]
+                    t_from_to   = fk_merge_to[t_from]
                     t_only_merge_fake += [t]
                     t_big121s_merge_conn_fake.append((t_from,t_from_to))
 
@@ -1480,6 +1594,7 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
 
 
         print(f'Fake merges: {t_big121s_merge_conn_fake}, Fake splits: {t_big121s_split_conn_fake}')
+        # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # -----------------------------------------------------------------------------------------------
         # PSEUDO MERGE/SPLIT ON EDGES: TRIM BIG 121S AS TO DROP FAKE M/S.
         # CREATE NEW t_conn_121 -> lr_big121s_conn_121
@@ -1515,11 +1630,12 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
                             break
         print(f'Trimmed big 121s: {lr_big121s_conn_121}\nInterpolating whole big 121s...')
 
+        # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # -----------------------------------------------------------------------------------------------
         # BIG 121S INTERPOLATE COMBINED TRAJECTORIES, GIVEN FULL INFO REDISTRIBUTE FOR DATA FOR EACH CONN
         # -----------------------------------------------------------------------------------------------
         # CALCULATE interpolation of holes in data for big 121s
-        if 1 == 1: # for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        if 1 == 1: 
             lr_big121s_interpolation        = defaultdict(dict)
             lr_big121s_interpolation_big    = defaultdict(dict) 
 
@@ -1671,6 +1787,7 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
         lr_C0_condensed_connections_relations = lr_zp_redirect.copy()
+        t_zp_redirect_inheritance = {a:b for a,b in lr_zp_redirect.items() if a != b}
         print('Saving results for restored parts of big 121s')
         t_last_seg_ID_in_big_121s   = [t[-1]    for t in t_big121s_edited if t is not None]
         t_big121s_edited_clean      = [t        for t in t_big121s_edited if t is not None]
@@ -1682,7 +1799,10 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
             t_to_new = lr_C0_condensed_connections_relations[t_to]
             print(f'edge :({t_from},{t_to}) or = {t_segments_new[t_from_new][-1]}->{t_segments_new[t_to_new][0]}')   
             save_connections_two_ways(t_segments_new, lr_big121s_perms_pre[t_conn], t_from,  t_to, G, G2, lr_C0_condensed_connections_relations, g0_contours)
-            
+
+        # zp relations (edges) were not used in saving 121s. so they were not relinked.
+        for t_slave, t_master in t_zp_redirect_inheritance.items():
+            lr_C0_condensed_connections_relations[t_slave] = lr_C0_condensed_connections_relations[t_master]
         # at this time some segments got condenced into big 121s. right connection might be changed.
         lr_time_active_segments = {t:[] for t in lr_time_active_segments}
         for k,t_segment in enumerate(t_segments_new):
@@ -1932,12 +2052,16 @@ for doX in [1]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]:
                 # add start of t_to segment, which are branch extension targets. 
                 for t in t_to_all:
                     t_nodes_keep.append(t_segments_new[t][0])
-
+                # had cases where target nodes are decoupled and are out of connected components. connect them temporary
+                t_fake_edges = list(itertools.combinations(t_target_nodes.values(), 2))
+                G.add_edges_from(t_fake_edges)
                 t_subgraph = G.subgraph(t_nodes_keep)   
 
                 t_segments_keep = t_from_all_new + list(t_to_all)
+                
                 t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_from_min + 1, t_t_to_max, lr_time_active_segments,
                                                                 t_segments_new, t_segments_keep, ref_node = t_segments_new[t_to_all[0]][0]) 
+                G.remove_edges_from(t_fake_edges)
                 t_node_subIDs_all = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
 
                 for t_from in t_from_all_new: # from end of branch time to event max time
@@ -3252,69 +3376,17 @@ if 1 == 1:
                         [cv2.putText(imgs[t_time], str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
 
         for k,img in enumerate(imgs):
-            #folder = r"./post_tests/testImgs/"
-            #fileName = f"{str(k).zfill(4)}.png"
-            #cv2.imwrite(os.path.join(folder,fileName) ,img)
-
+            
             webp_parameters = [int(cv2.IMWRITE_WEBP_QUALITY), 20]
             filepath = os.path.join(imageFolder_output, f"{str(k).zfill(4)}.webp")
             cv2.imwrite(filepath, img, webp_parameters)
 
             #cv2.imshow('a',imgs[time])
 
-    #zip_file_name = "images_and_formats.zip"
-    #zipf = zipfile.ZipFile(zip_file_name, 'w', zipfile.ZIP_DEFLATED)
-    #for param in np.arange(95,40,-15):
-    #    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), param]
-    #    result, encimg = cv2.imencode('.jpg', imgs[t_time], encode_param)
-    #    zipf.writestr(f'jep_{param}.jpg', encimg)
-    #zipf.close()
-    if 1 == 11:
-        import zipfile
-        zip_file_name = "images_and_formats.zip"
-        zipf = zipfile.ZipFile(zip_file_name, 'w', zipfile.ZIP_DEFLATED)
-
-        # Assuming 'imgs' is a NumPy array containing your image data
-
-        # Define the compression parameters for different formats
-        compression_params = {
-            'JPEG': [int(cv2.IMWRITE_JPEG_QUALITY), 95],
-            'WebP': [int(cv2.IMWRITE_WEBP_QUALITY), 95],
-            'TIFF': [int(cv2.IMWRITE_TIFF_COMPRESSION), 1],  # Adjust compression level as needed
-            'PNG': [int(cv2.IMWRITE_PNG_COMPRESSION), 0],    # Adjust compression level as needed
-        }
-
-        # Loop through each format and its compression parameter
-        for format_name, params in compression_params.items():
-            result, encimg = cv2.imencode(f'.{format_name.lower()}', imgs[t_time], params)
-            zipf.writestr(f'a.{format_name.lower()}', encimg)
-        zipf.close()
-    #image = Image.fromarray(imgs[t_time])
-
-    ## Define the file names and formats with compression parameters
-    #output_formats = {
-    #    "JPEG (Quality 10)": {"format": "JPEG", "quality": 10},
-    #    "WebP (Quality 10)": {"format": "WebP", "quality": 10},
-    #    "JPEG (Quality 90)": {"format": "JPEG", "quality": 90},
-    #    "WebP (Quality 80)": {"format": "WebP", "quality": 80},
-    #    "PNG": {"format": "PNG"},  # PNG is lossless and doesn't have quality settings
-    #    "GIF": {"format": "GIF"},  # GIF is limited to indexed colors
-    #    "BMP": {"format": "BMP"},  # BMP is uncompressed
-    #    "TIFF (Compression LZW)": {"format": "TIFF", "compression": "tiff_lzw"},
-    #}
-
-    ## Save the image in different formats with compression parameters and add them to the ZIP archive
-    #for format_name, params in output_formats.items():
-    #    image_copy = image.copy()  # Create a copy to avoid overwriting the original
-    #    file_name = f'0_{format_name}.{params["format"]}'
-    #    image_copy.save(zipf, file_name, format = params["format"], **{a:b for a,b in params.items() if a != "format"})
-    #    #print(f"Saved as {format_name}: {file_name}")
-
-
-    ## Close the image
-    #image.close()
-    #zipf.close()
     
+    
+# for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+       
 a = 1
 if 1 == -11:
     binarizedMaskArr = np.load(binarizedArrPath)['arr_0']

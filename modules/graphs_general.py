@@ -264,7 +264,7 @@ def drawH(H, paths, node_positions, fixed_nodes = [], show = True, figsize = ( 1
     if show: plt.show()
     return edge_width, edge_color, node_size
 
-def for_graph_plots(G, segs = [], show = True, node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
+def for_graph_plots(G, segs = [], show = False, node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
     if len(segs) == 0:
         segments3, skipped = graph_extract_paths(G,lambda x : x[0])
     else:

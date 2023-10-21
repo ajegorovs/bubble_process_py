@@ -498,10 +498,12 @@ trajectories_all_dict = {}
 graphs_all_dict = {}
 contours_all_dict = {}
 
-issues_all_dict = {} #[2]:#
-for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]: #[138]:# [86]:# [34]:#[63]:# [1]:#
+issues_all_dict = {} #[2]:#[19]:#
+temp = [167]
+temp = range(len(connected_components_unique_0))
+for doX in temp:
 
-    contours_all_dict[doX] = {'contours':{},'hulls':{}}
+    #contours_all_dict[doX] = {'contours':{},'hulls':{}}
     issues_all_dict[doX] = {}
     print(f'\n\n\n{timeHMS()}: working on family {doX}')
     test = connected_components_unique_0[doX]                       # specific family of nodes
@@ -652,6 +654,11 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
 
     set_custom_node_parameters(G, g0_contours_hulls, G.nodes(), None, calc_hull = 0) # pre define params and init owner to None 
 
+    G_time      = lambda node, graph = G : graph.nodes[node]['time']
+    G_area      = lambda node, graph = G : graph.nodes[node]['area']
+    G_centroid  = lambda node, graph = G : graph.nodes[node]['centroid']
+    G_owner     = lambda node, graph = G : graph.nodes[node]['owner']
+
     for t_edge in g0_edges_merge_strong:                                          # assign previously acquired 2 bubble merge 
         G[t_edge[0]][t_edge[1]]['edge_merge_strong'] = True                       # edge of high of high likelihood
 
@@ -724,11 +731,13 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
     segments_small_displ_areas_mean_std = {}
     for t,t_nodes in enumerate(segments_fb):
         if len(t_nodes) >= 2 :
-            t_traj = np.array([G.nodes[t_node]['centroid'] for t_node in t_nodes])
+            #t_traj = np.array([G.nodes[t_node]['centroid'] for t_node in t_nodes])
+            t_traj = np.array([G_centroid(t_node) for t_node in t_nodes])
             t_displ_all = np.linalg.norm(np.diff(t_traj, axis = 0), axis = 1)
             if np.mean(t_displ_all) <= fb_radiuss:
                 segments_small_displ_mean_centroids[t] = np.mean(t_traj, axis = 0)
-                t_areas = np.array([G.nodes[t_node]['area'] for t_node in t_nodes])
+                #t_areas = np.array([G.nodes[t_node]['area'] for t_node in t_nodes])
+                t_areas = np.array([G_area(t_node) for t_node in t_nodes])
                 segments_small_displ_areas_mean_std[t] = (np.mean(t_areas),np.std(t_areas))
 
     a = 1
@@ -769,13 +778,12 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
     for t_edge in fb_hole_stats_IDs:
         t_times                 = fb_hole_stats['times'         ][t_edge]
         t_area_min,t_area_max   = fb_hole_stats['area_min_max'  ][t_edge]
-        t_nodes_active = [t_node for t_node in G.nodes if G.nodes[t_node]['time'] in t_times]
+        t_nodes_active = [t_node for t_node in G.nodes if G_time(t_node) in t_times]
         (t_from,t_to) = t_edge
         t_centroid_target = 0.5*(segments_small_displ_mean_centroids[t_from] + segments_small_displ_mean_centroids[t_to])
         for t_node in t_nodes_active:
-            t_dist = np.linalg.norm(t_centroid_target - G.nodes[t_node]['centroid'])
-            t_area = G.nodes[t_node]['area']
-            if t_dist <= fb_radiuss and (t_area_min <= t_area <= t_area_max):
+            t_dist = np.linalg.norm(t_centroid_target - G_centroid(t_node))
+            if t_dist <= fb_radiuss and (t_area_min <= G_area(t_node) <= t_area_max):
                 fb_remove_nodes_inter.append(t_node)
     a = 1
     t_remove_nodes = []
@@ -797,9 +805,30 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
         for t_node in t_segment:
             G.nodes[t_node]["owner"] = t
 
-    #lr_missingNodes = [node for node in allIDs if node not in sum(segments2,[])] # !! may be same as &skipped !!
-    lr_missingNodes = [node for node in G.nodes if node not in sum(segments2,[])] # !! may be same as &skipped !!
-    #assert set(skipped)==set(lr_missingNodes), "set(skipped) is not same as set(lr_missingNodes)" #EDIT 13.10.23 due to "LIMIT MIN LENGTH" some nodes are dropped and this fails
+    lr_nodes_non_segment = [node for node in G.nodes if G_owner(node) is None] # !! may be same as &skipped !!
+    #assert set(skipped)==set(lr_nodes_non_segment), "set(skipped) is not same as set(lr_nodes_non_segment)" #EDIT 13.10.23 due to "LIMIT MIN LENGTH" some nodes are dropped and this fails
+
+
+    # add segment abstraction level graph (no individual G nodes)
+    G2 = nx.Graph()
+    for t_seg_index in range(len(segments2)):
+
+        G2.add_node(t_seg_index)
+
+        G2.nodes()[t_seg_index]["t_start"   ] = G_time(segments2[t_seg_index][0])
+        G2.nodes()[t_seg_index]["t_end"     ] = G_time(segments2[t_seg_index][-1])
+
+    G2_t_start  = lambda node, graph = G2 : graph.nodes[node]['t_start' ]
+    G2_t_end    = lambda node, graph = G2 : graph.nodes[node]['t_end'   ]
+    G2_edge_dist= lambda edge, graph = G2 : graph.edges[edge]['dist'   ]
+
+    lr_time_active_segments = defaultdict(list)
+    for t_segment_index, t_segment_nodes in enumerate(segments2):
+        t_times = [G_time(node) for node in t_segment_nodes]
+        for t_time in t_times:
+            lr_time_active_segments[t_time].append(t_segment_index)
+    # sort keys in lr_time_active_segments
+    lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
 
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
@@ -810,162 +839,61 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
     # ===============================================================================================
     # REMARK: it is expected that INTER segment space is limited, so no point searching paths from
     # REMARK: one segment to each other in graph. instead inspect certain intervals of set length 
-    # REMARK: lr_maxDT. Caveat is that inter-space can include smaller segments.. its dealt with after
+    # REMARK: lr_maxDT. Caveat is that space between can include other segments.. its dealt with after
 
     # get start and end of good segments
-    lr_start_end    = [[segm[0],segm[-1]] for segm in segments2]
-    lr_all_start    = np.array([a[0][0] for a in lr_start_end])
-    lr_all_end      = np.array([a[1][0] for a in lr_start_end])
+    lr_seg_nodes_start_end  = [[t[0],t[-1]] for t in segments2]
+    lr_all_start            = np.array([a[0][0] for a in lr_seg_nodes_start_end])
+    lr_seg_end_all              = np.array([a[1][0] for a in lr_seg_nodes_start_end])
 
     # get nodes that begin not as a part of a segment = node with no prior neigbors
     lr_nodes_other = []
     lr_nodes_solo = []
-    for node in lr_missingNodes:
-        #neighbors = list(G.neighbors(node))
-        #oldNeigbors = [n for n in neighbors if n[0] < node[0]]
-        #newNeigbors = [n for n in neighbors if n[0] > node[0]]
-        oldNeigbors = list(G.predecessors(  node))
-        newNeigbors = list(G.successors(    node))
-        if len(oldNeigbors) == 0 and len(newNeigbors) == 0: lr_nodes_solo.append(node)
-        elif len(oldNeigbors) == 0:                         lr_nodes_other.append(node)
+    for t_node in lr_nodes_non_segment:
+        oldNeigbors = list(G.predecessors(  t_node))
+        newNeigbors = list(G.successors(    t_node))
+        if      len(oldNeigbors) == 0 and len(newNeigbors) == 0:lr_nodes_solo.append(   t_node)
+        elif    len(oldNeigbors) == 0:                          lr_nodes_other.append(  t_node)
 
     # find which segements are separated by small number of time steps
     #  might not be connected, but can check later
     lr_maxDT = 20
 
-    # test non-segments
-    lr_DTPass_other = {}
-    for k,node in enumerate(lr_nodes_other):
-        timeDiffs = lr_all_start - node[0]
-        goodDTs = np.where((1 <= timeDiffs) & (timeDiffs <= lr_maxDT))[0]
-        if len(goodDTs) > 0:
-            lr_DTPass_other[k] = goodDTs
-
-
     # test segments. search for endpoint-to-startpoint DT
 
     lr_DTPass_segm = {}
-    for k,endTime in enumerate(lr_all_end):
+    for k,endTime in enumerate(lr_seg_end_all):
         timeDiffs = lr_all_start - endTime
         goodDTs = np.where((1 <= timeDiffs) & (timeDiffs <= lr_maxDT))[0]
         if len(goodDTs) > 0:
             lr_DTPass_segm[k] = goodDTs
-
+    
+    # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # ===============================================================================================
     # ===============================================================================================
     # === find ACTUAL interval start-end connectedness: get all connected paths if there are any ==
     # ===============================================================================================
     # REMARK: refine previously acquired potential segment connectedness by searching paths between
 
-    # check connection between "time-localized" segments
-    # isolate all nodes on graph that are active in unresolved time between segment existance
-    # find all paths from one segment end to other start
-    lr_paths_segm   = {}
-    for startID,endIDs in lr_DTPass_segm.items():
-        startNode = lr_start_end[startID][1]
-        startTime = startNode[0]
-        for endID in endIDs:
-            endNode = lr_start_end[endID][0]
-            endTime = lr_all_end[endID]
-            #activeNodes = [node for node in allIDs if startTime <= node[0] <= endTime]
-            activeNodes = [node for node, time_attr in G.nodes(data='time') if startTime <= time_attr <= endTime]
-            subgraph = G.subgraph(activeNodes)
+    for t_ID_form, t_IDs_to in lr_DTPass_segm.items():
+        # analyze graph for paths between segment connection that satisfy DT criterium.
+        # to avoid paths though different segments, nodes with 2 criterium are isolated on a subgraph:
+        # 1) nodes that exist on (time_min , time_min + DT) interval (not really DT, but to start of a  next segment)
+        # 2) nodes that are not part of segments (owner is None)
+        node_from = segments2[t_ID_form][-1]
+        time_from = G_time(node_from)
+        for t_ID_to in t_IDs_to:
+            node_to         = segments2[t_ID_to][0]
+            time_to         = G_time(node_to)
+            t_nodes_keep    = [node for node in G.nodes() if time_from <= G_time(node) <= time_to and G_owner(node) is None] 
+            t_nodes_keep.extend([node_from,node_to])
+            G_sub = G.subgraph(t_nodes_keep)
+            hasPath = nx.has_path(G_sub, source = node_from, target = node_to)
+            if hasPath:
+                shortest_path = list(nx.all_shortest_paths(G_sub, node_from, node_to))
+                G2.add_edge(t_ID_form, t_ID_to, dist = time_to - time_from + 1) # include end points =  inter + 2
 
-            try:
-                shortest_path = list(nx.all_shortest_paths(subgraph, startNode, endNode))
-            
-            except nx.NetworkXNoPath:
-                shortest_path = []
-        
-            if len(shortest_path)>0: lr_paths_segm[tuple([startID,endID])] = shortest_path
-
-    lr_paths_other  = {}
-    for startID,endIDs in lr_DTPass_other.items():
-        startNode = lr_nodes_other[startID]
-        startTime = startNode[0]
-        for endID in endIDs:
-            endNode = lr_start_end[endID][0]
-            endTime = lr_all_end[endID]
-            #activeNodes = [node for node in allIDs if startTime <= node[0] <= endTime]
-            activeNodes = [node for node, time_attr in G.nodes(data='time') if startTime <= time_attr <= endTime]
-            subgraph = G.subgraph(activeNodes)
-            try:
-                shortest_path = list(nx.all_shortest_paths(subgraph, startNode, endNode))
-            except nx.NetworkXNoPath:
-                shortest_path = []
-        
-            if len(shortest_path)>0: lr_paths_other[tuple([str(startID),str(endID)])] = shortest_path
-
-    lr_paths_segm2 = {a:[b[0][0],b[0][-1]] for a,b in lr_paths_segm.items()}
-    a = 1
-
-    # remember which segment indicies are active at each time step
-    lr_time_active_segments = {t:[] for t in lessRoughBRs}
-    for k,t_segment in enumerate(segments2):
-        t_times = [a[0] for a in t_segment]
-        for t in t_times:
-            lr_time_active_segments[t].append(k)
-
-    # extract trusted segments.
-    # high length might indicate high trust
-
-    lr_segments_lengths = {}
-    for k,t_segment in enumerate(segments2):
-        lr_segments_lengths[k]  = len(t_segment)
-
-
-    lr_trusted_segment_length = 7
-    lr_trusted_segments_by_length = []
-
-    for k,t_segment in enumerate(segments2):
-
-        lr_segments_lengths[k]  = len(t_segment)
-
-        if len(t_segment) >= lr_trusted_segment_length:
-            lr_trusted_segments_by_length.append(k)
-
-    # small paths between segments might mean that longer, thus thrusted, segment is present
-
-    # store interval lentghs
-    lr_intervals_lengths = {}
-
-    for t_conn, intervals in lr_paths_segm.items():
-
-        lr_intervals_lengths[t_conn] = len(intervals[0])
-
-    # extract possible good intervals
-
-    lr_trusted_max_interval_length_prio = 5
-    lr_trusted_max_interval_length      = 3
-
-    lr_trusted_interval_test_prio   = []
-    lr_trusted_interval_test        = []
-    for t_conn, t_interval_length in lr_intervals_lengths.items():
-
-        if t_interval_length > lr_trusted_max_interval_length_prio: continue
-
-        t_from,t_to = t_conn
-
-        t_good_from = t_from in lr_trusted_segments_by_length
-        t_good_to   = t_to in lr_trusted_segments_by_length
-
-        if (t_good_from and t_good_to):
-            lr_trusted_interval_test_prio.append(t_conn)
-        elif t_interval_length <= lr_trusted_max_interval_length:
-            lr_trusted_interval_test.append(t_conn)
-  
-
-    # check interconnectedness of segments
-    G2 = nx.Graph()
-    G2.add_nodes_from(range(len(segments2))) # segment might not interact via edges, so need to add to graph explicitly
-    # Iterate over the dictionary and add edges with weights
-    for (node1, node2), weight in lr_intervals_lengths.items():
-        G2.add_edge(node1, node2, weight=weight)
-
-    for g in G2.nodes():
-          G2.nodes()[g]["t_start"] = segments2[g][0][0]
-          G2.nodes()[g]["t_end"] = segments2[g][-1][0]
-
+    # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # ===============================================================================================
     # ===============================================================================================
     # === extract closest neighbors of segments ===
@@ -981,13 +909,13 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
         for node in t_nodes:
             # Get the neighboring nodes
             t_neighbors     = list(G2.neighbors(node))
-            t_time_start    = G2.nodes()[node]["t_start"]#segments2[node][0][0]
-            t_time_end      = G2.nodes()[node]["t_end"]#segments2[node][-1][0]
+            t_time_start    = G2_t_start(   node)
+            t_time_end      = G2_t_end(     node)
             t_neighbors_prev = []
             t_neighbors_next = []
             for t_neighbor in t_neighbors:
-                t_time_neighbor_start    = G2.nodes()[t_neighbor]["t_start" ]#segments2[t_neighbor][0][0]
-                t_time_neighbor_end      = G2.nodes()[t_neighbor]["t_end"   ]#segments2[t_neighbor][-1][0]
+                t_time_neighbor_start    = G2_t_start(  t_neighbor)
+                t_time_neighbor_end      = G2_t_end(    t_neighbor)
 
                 if t_time_end < t_time_neighbor_start:
                     t_neighbors_next.append(t_neighbor)
@@ -1000,27 +928,23 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
             t_neighbors_weights_next = {}
     
             for t_neighbor in t_neighbors_prev: # back weights are negative
-                t_neighbors_weights_prev[t_neighbor] = -1*G2[node][t_neighbor]['weight']
+                t_neighbors_weights_prev[t_neighbor] = -1*G2_edge_dist((node,t_neighbor))
             for t_neighbor in t_neighbors_next:
-                t_neighbors_weights_next[t_neighbor] = G2[node][t_neighbor]['weight']
+                t_neighbors_weights_next[t_neighbor] = G2_edge_dist((node,t_neighbor))
             t_neighbors_time_prev = {tID:segments2[tID][-1][0]  for tID in t_neighbors_weights_prev}
             t_neighbors_time_next = {tID:segments2[tID][0][0]   for tID in t_neighbors_weights_next}
     
             if len(t_neighbors_weights_prev)>0:
                 # neg weights, so max, get time of nearset branch t0. get all connections within [t0 - 2, t0] in case of split
-                t_val_min = max(t_neighbors_weights_prev.values())
                 t_key_min_main = max(t_neighbors_weights_prev, key = t_neighbors_weights_prev.get)
                 t_key_main_ref_time = t_neighbors_time_prev[t_key_min_main]
                 t_sol = [key for key,t in t_neighbors_time_prev.items() if t_key_main_ref_time - 1 <= t <=  t_key_main_ref_time] #not sure why-+2, changed to -1 
-                #t_sol = [key for key, value in t_neighbors_weights_prev.items() if t_val_min - 1 <= value <=  t_val_min]
                 for t_node in t_sol:t_neighbor_sol_all_prev[node][t_node] = t_neighbors_weights_prev[t_node]
         
             if len(t_neighbors_weights_next)>0:
-                t_val_min = min(t_neighbors_weights_next.values())
                 t_key_min_main = min(t_neighbors_weights_next, key = t_neighbors_weights_next.get)
                 t_key_main_ref_time = t_neighbors_time_next[t_key_min_main]
                 t_sol = [key for key,t in t_neighbors_time_next.items() if t_key_main_ref_time <= t <=  t_key_main_ref_time + 1] # not sure why +2, changed to +1 
-                #t_sol = [key for key, value in t_neighbors_weights_next.items() if t_val_min +1 >= value >= t_val_min]          # cause i was overextending minimal segment lenght of 2
                 for t_node in t_sol: t_neighbor_sol_all_next[node][t_node] = t_neighbors_weights_next[t_node]
             a = 1
 
@@ -1029,15 +953,17 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
     # === wipe inter-segement edges from G2 graph and replot only nearest connections ===
     # ===============================================================================================
     # ===============================================================================================
+
+    # THIS MIGHT BE NEEDED 21.10.23 !!!
     # prepare plot for segment interconnectedness
-    G2.remove_edges_from(list(G2.edges()))
-    for node, t_conn in t_neighbor_sol_all_prev.items():
-        for node2, weight in t_conn.items():
-            G2.add_edge(node, node2)
-    for node, t_conn in t_neighbor_sol_all_next.items():
-        for node2, weight in t_conn.items():
-            G2.add_edge(node, node2)
-    #for_graph_plots(G)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    #G2.remove_edges_from(list(G2.edges()))
+    #for node, t_conn in t_neighbor_sol_all_prev.items():
+    #    for node2, weight in t_conn.items():
+    #        G2.add_edge(node, node2)
+    #for node, t_conn in t_neighbor_sol_all_next.items():
+    #    for node2, weight in t_conn.items():
+    #        G2.add_edge(node, node2)
+    # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     #aa = G.is_directed();print(f'G s directed:{aa}')
     # ===============================================================================================
@@ -1367,13 +1293,13 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
         print(f'Working on joining all continious 121s together: {lr_big_121s_chains}')
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<        
     # big 121s terminate at zero neighbors, real or pseudo merges/splits 
-        # both cannot easily tell the difference between real and pseudo. have search for recombination
-        # pseudo events means start/end of a big 121 contain only part of bubble and cannot
-        # be used to determine history. For the real m/s start/end segments can be used. 
+        # both cannot easily tell the difference between real and pseudo. have search for recombination 
+        # pseudo events means start/end of a big 121 contain only part of bubble and cannot 
+        # be used to determine history. For the real m/s start/end segments can be used.  
         # how to tell real and pseudo apart? 
-        # since pseudo m/s is one bubble:
-        # 1) split branches have limited and rather short length before pseudo merge.
-        # 2) ! area is recovered after pseudo branch
+        # since pseudo m/s is one bubble: 
+        # 1) split branches have limited and rather short length before pseudo merge. 
+        # 2) ! area is recovered after pseudo branch 
 
         # -----------------------------------------------------------------------------------------------
         # PSEUDO MERGE/SPLIT ON EDGES: DETECT BIG 121S WITH M/S
@@ -1804,11 +1730,20 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
         for t_slave, t_master in t_zp_redirect_inheritance.items():
             lr_C0_condensed_connections_relations[t_slave] = lr_C0_condensed_connections_relations[t_master]
         # at this time some segments got condenced into big 121s. right connection might be changed.
-        lr_time_active_segments = {t:[] for t in lr_time_active_segments}
-        for k,t_segment in enumerate(t_segments_new):
-            t_times = [a[0] for a in t_segment]
-            for t in t_times:
-                lr_time_active_segments[t].append(k)
+
+        lr_time_active_segments = defaultdict(list)
+        for t_segment_index, t_segment_nodes in enumerate(t_segments_new):
+            t_times = [G_time(node) for node in t_segment_nodes]
+            for t_time in t_times:
+                lr_time_active_segments[t_time].append(t_segment_index)
+        # sort keys in lr_time_active_segments
+        lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
+
+        #lr_time_active_segments = {t:[] for t in lr_time_active_segments}
+        #for k,t_segment in enumerate(t_segments_new):
+        #    t_times = [a[0] for a in t_segment]
+        #    for t in t_times:
+        #        lr_time_active_segments[t].append(k)
 
         #for_graph_plots(G, segs = t_segments_new) 
 
@@ -2641,6 +2576,10 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
             save_connections_splits(t_segments_new, t_extrapolate_sol_comb[t_conn], None,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
         else:
             t_to = ms_mixed_completed['full'][t_conn]['targets'][0]
+            # remove other edges from mixed connection segment graph
+            t_from_other_predecessors = [lr_C1_condensed_connections_relations(t) for t in extractNeighborsPrevious(G2, t_to, func_prev_neighb) if t != t_conn[0]]
+            t_edges = [(t, t_to) for t in t_from_other_predecessors]
+            G2.remove_edges_from(t_edges)
             save_connections_two_ways(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
         
     aaa = defaultdict(set)
@@ -2701,11 +2640,19 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
         #    lr_time_active_segments[t_time].append(t_new_ID)
 
 
-    lr_time_active_segments = {t:[] for t in lr_time_active_segments}
-    for k,t_segment in enumerate(t_segments_new):
-        t_times = [a[0] for a in t_segment]
-        for t in t_times:
-            lr_time_active_segments[t].append(k)
+    #lr_time_active_segments = {t:[] for t in lr_time_active_segments}
+    #for k,t_segment in enumerate(t_segments_new):
+    #    t_times = [a[0] for a in t_segment]
+    #    for t in t_times:
+    #        lr_time_active_segments[t].append(k)
+
+    lr_time_active_segments = defaultdict(list)
+    for t_segment_index, t_segment_nodes in enumerate(t_segments_new):
+        t_times = [G_time(node) for node in t_segment_nodes]
+        for t_time in t_times:
+            lr_time_active_segments[t_time].append(t_segment_index)
+    # sort keys in lr_time_active_segments
+    lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
 
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # for_graph_plots(G, segs = t_segments_fin)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -3045,9 +2992,9 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
         if len(t_combs) == 0: continue                              # no extension, skip.
 
         if t_state == 'forward':
-            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[t_conn], t_ID,  None, G, G2, lr_C1_condensed_connections_relations, g0_contours)
+            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[t_conn], t_ID,  None, G, G2_dir, lr_C1_condensed_connections_relations, g0_contours)
         elif t_state == 'back':
-            save_connections_splits(t_segments_new, t_extrapolate_sol_comb[t_conn], None,  t_ID, G, G2, lr_C1_condensed_connections_relations, g0_contours)
+            save_connections_splits(t_segments_new, t_extrapolate_sol_comb[t_conn], None,  t_ID, G, G2_dir, lr_C1_condensed_connections_relations, g0_contours)
 
 
 
@@ -3291,12 +3238,14 @@ for doX in [19]:#range(len(connected_components_unique_0)):#[30,60,56,18]:# [63]
 
     trajectories_all_dict[doX]  = t_segments_new
     graphs_all_dict[doX]        = [G,G2_dir]
-    contours_all_dict[doX]['contours']      = g0_contours
+
+contours_all_dict      = g0_contours
 
 if 1 == 1:
-
+    t_merges_splits_rects = {'merge':defaultdict(list), 'split': defaultdict(list), 'mixed':defaultdict(list)}
+    minTime = 100000000; maxTime = 0
     for doX, [G,G2] in graphs_all_dict.items():
-        contours  = contours_all_dict[doX]['contours']
+        #contours  = contours_all_dict[doX]['contours']
         for node in G.nodes():
             [cx,cy] = G.nodes[node]['centroid']
             del G.nodes[node]['centroid']
@@ -3304,8 +3253,7 @@ if 1 == 1:
             G.nodes[node]['cy'] = cy
             if G.nodes[node]['owner'] == None: G.nodes[node]['owner'] = -1
             t_time, *t_subIDs = node
-            contours_all_dict[doX]['hulls'] = cv2.convexHull(np.vstack([contours[t_time][subID] for subID in t_subIDs]))
-            
+            #contours_all_dict[doX]['hulls'] = cv2.convexHull(np.vstack([contours_all_dict[t_time][subID] for subID in t_subIDs]))
 
         if len(trajectories_all_dict[doX]) > 0:
             all_nodes_pos, edge_width, edge_color, node_size = for_graph_plots(G, segs = trajectories_all_dict[doX], show = False, node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7)
@@ -3322,9 +3270,50 @@ if 1 == 1:
 
             file_path = os.path.join(graphsFolder, f'G_{doX}.gexf')
             nx.write_gexf(G, file_path)
-            
+
+        for t_seg in G2.nodes():
+
+            minTime = min(minTime,  G2.nodes[t_seg]['t_start'   ])
+            maxTime = max(maxTime,  G2.nodes[t_seg]['t_end'     ])
+
+            state_to    = G2.nodes[t_seg]["to_state"   ]
+            state_from  = G2.nodes[t_seg]["from_state" ]
+
+            if state_from == 'merge':
+                t_predecessors  = list(G2.predecessors(t_seg))
+                t_nodes_min_max = [trajectories_all_dict[doX][t_seg][0]] + [trajectories_all_dict[doX][t_pred][-1] for t_pred in t_predecessors] 
+                t_combine_contours = []
+                for t_time,*t_subIDs in t_nodes_min_max:
+                    for t_subID in t_subIDs:
+                        t_combine_contours.append(contours_all_dict[t_time][t_subID])
+                t_rb_params = cv2.boundingRect(np.vstack(t_combine_contours))
+
+                t_time_max  = G2.nodes[t_seg]["t_start"]
+                t_time_min  = min([G2.nodes[t]["t_end"] for t in t_predecessors])
+                
+                for t in np.arange(t_time_min, t_time_max + 1):
+                    t_merges_splits_rects[state_from][t].append(t_rb_params)
+
+            if state_to == 'split':
+                t_successors  = list(G2.successors(t_seg))
+                t_nodes_min_max = [trajectories_all_dict[doX][t_seg][-1]] + [trajectories_all_dict[doX][t_pred][0] for t_pred in t_successors]
+                t_combine_contours = []
+                for t_time,*t_subIDs in t_nodes_min_max:
+                    for t_subID in t_subIDs:
+                        t_combine_contours.append(contours_all_dict[t_time][t_subID])
+                t_rb_params = cv2.boundingRect(np.vstack(t_combine_contours))
+
+                t_time_max  = max([G2.nodes[t]["t_start"] for t in t_successors])
+                t_time_min  = G2.nodes[t_seg]["t_end"]
+                
+                for t in np.arange(t_time_min, t_time_max + 1):
+                    t_merges_splits_rects[state_to][t].append(t_rb_params)
+
+
+
+
     
-    
+    print(f"{timeHMS()}: Saving Archives...")
     with open(graphsPath,   'wb') as handle:
         pickle.dump(graphs_all_dict,        handle) 
 
@@ -3333,25 +3322,38 @@ if 1 == 1:
 
     with open(contoursHulls,'wb') as handle:
         pickle.dump(contours_all_dict,      handle) 
-       
+    print(f"{timeHMS()}: Saving Archives... Done")  
     a = 1
     # image export needs edited graphs
     if 1 == 1:
-
+        print(f"{timeHMS()}: Processing output images...")
         binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
-        imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(binarizedMaskArr.shape[0])]
+        imgs = [None]*binarizedMaskArr.shape[0]
+        relevant_times = np.arange(minTime,maxTime + 1,1)
+        for k in relevant_times:
+            imgs[k] = convertGray2RGB(binarizedMaskArr[k].copy())
+        #imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(binarizedMaskArr.shape[0])]
         font = cv2.FONT_HERSHEY_SIMPLEX
         fontScale = 0.7; thickness = 4;
         fontScale2 = 0.5; thickness2 = 4;
-        for doX, t_segments_new in trajectories_all_dict.items():
-            for n, case in tqdm(enumerate(t_segments_new)):
+        for doX, t_segments_new in tqdm(trajectories_all_dict.items()):
+            for n, case in enumerate(t_segments_new):
                 case    = sorted(case, key=lambda x: x[0])
                 for k,subCase in enumerate(case):
                     t_time,*subIDs = subCase
+
+                    if t_time in t_merges_splits_rects['merge']:
+                        for x,y,w,h in t_merges_splits_rects['merge'][t_time]:
+                            cv2.rectangle(imgs[t_time], (x, y), (x + w, y + h), (0,0,255), 3)
+                    if t_time in t_merges_splits_rects['split']:
+                        for x,y,w,h in t_merges_splits_rects['split'][t_time]:
+                            cv2.rectangle(imgs[t_time], (x, y), (x + w, y + h), (0,255,0), 1)
+
+
                     for subID in subIDs:
-                        cv2.drawContours(  imgs[t_time],   g0_contours[t_time], subID, cyclicColor(n), 2)
+                        cv2.drawContours(  imgs[t_time],   contours_all_dict[t_time], subID, cyclicColor(n), 2)
             
-                    t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t_subID] for t_subID in subIDs]))
+                    t_hull = cv2.convexHull(np.vstack([contours_all_dict[t_time][t_subID] for t_subID in subIDs]))
                     x,y,w,h = cv2.boundingRect(t_hull)
                     str_ID = f'{n}({doX})'
                     cv2.drawContours(  imgs[t_time],  [t_hull], -1, cyclicColor(n), 2)
@@ -3372,17 +3374,18 @@ if 1 == 1:
                     [cv2.circle(imgs[t_time], tuple(p), 3, cyclicColor(n), -1) for [p] in pts]
 
                     for subID in subIDs:
-                        startPos2 = g0_contours[t_time][subID][-30][0] 
+                        startPos2 = contours_all_dict[t_time][subID][-30][0] 
                         [cv2.putText(imgs[t_time], str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
-
-        for k,img in enumerate(imgs):
+        print(f"{timeHMS()}: Processing output images...Done")
+        print(f"{timeHMS()}: Saving {len(relevant_times)} Images...")
+        for k in tqdm(relevant_times):
             
             webp_parameters = [int(cv2.IMWRITE_WEBP_QUALITY), 20]
             filepath = os.path.join(imageFolder_output, f"{str(k).zfill(4)}.webp")
-            cv2.imwrite(filepath, img, webp_parameters)
+            cv2.imwrite(filepath, imgs[k], webp_parameters)
 
             #cv2.imshow('a',imgs[time])
-
+        print(f"{timeHMS()}: Saving {len(relevant_times)} Images... Done")
     
     
 # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

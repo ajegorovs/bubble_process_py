@@ -223,7 +223,7 @@ def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_se
     else: return connected_edges
 
 
-def drawH(H, paths, node_positions, fixed_nodes = [], show = True, figsize = ( 10,5), node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
+def drawH(H, paths, node_positions, fixed_nodes = [], show = True, suptitle = "drawH", figsize = ( 10,5), node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
     colors = {i:np.array(cyclicColor(i))/255 for i in paths}
     colors = {i:np.array([R,G,B]) for i,[B,G,R] in colors.items()}
     colors_edges2 = {}
@@ -251,6 +251,7 @@ def drawH(H, paths, node_positions, fixed_nodes = [], show = True, figsize = ( 1
     labels      = {node: f"{node}" for node in H.nodes()}
 
     fig, ax = plt.subplots(figsize=figsize)
+    fig.suptitle(suptitle, fontsize=10)
     edge_width = list(width2.values())
     edge_color = list(colors_edges2.values())
     nx.draw_networkx_edges( H, pos, alpha=0.7, width = edge_width, edge_color = edge_color)
@@ -264,7 +265,7 @@ def drawH(H, paths, node_positions, fixed_nodes = [], show = True, figsize = ( 1
     if show: plt.show()
     return edge_width, edge_color, node_size
 
-def for_graph_plots(G, segs = [], show = False, node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
+def for_graph_plots(G, segs = [], show = False, suptitle = "drawH", node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
     if len(segs) == 0:
         segments3, skipped = graph_extract_paths(G,lambda x : x[0])
     else:
@@ -298,7 +299,7 @@ def for_graph_plots(G, segs = [], show = False, node_size = 30, edge_width_path 
             t_node = tuple([t_time,t_subID])
             all_nodes_pos[t_node][1] = 0.28*(t_k - 0.5)
     #G = G.to_undirected()
-    edge_width, edge_color, node_size = drawH(G.to_undirected(), paths, all_nodes_pos, show = show,  node_size = node_size, edge_width_path = edge_width_path, edge_width = edge_width, font_size = font_size)
+    edge_width, edge_color, node_size = drawH(G.to_undirected(), paths, all_nodes_pos, show = show, suptitle = suptitle, node_size = node_size, edge_width_path = edge_width_path, edge_width = edge_width, font_size = font_size)
     #drawH(G, paths, all_nodes_pos, fixed_nodes = all_segments_nodes)
     #drawH(G, paths, node_positions = all_nodes_pos, fixed_nodes = all_segments_nodes)
 

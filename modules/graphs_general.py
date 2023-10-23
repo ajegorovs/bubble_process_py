@@ -347,6 +347,127 @@ def set_custom_node_parameters(graph, contour_data, nodes_list, owner, calc_hull
         graph.nodes[node]["owner"]      = owner
 
     return 
+
+
+def get_event_types_from_segment_graph(graph_input):
+
+    # create a directed graph copy of an input graph.
+    graph = nx.DiGraph()
+
+    for seg_ID in graph_input.nodes():                                  # copy node parametes
+        graph.add_node(seg_ID, **dict(graph_input.nodes[seg_ID]))
+    for seg_from, seg_to in graph_input.edges():                        # copy edges parametes
+        graph.add_edge(seg_from, seg_to, **dict(graph_input.edges[(seg_from, seg_to)]))
+        graph.edges[(seg_from,seg_to)]["in_events"] = set()
+
+    # determine type of connections (edges) between nodes.
+    #  it depends on number of successors and predecessors
+    for seg_ID in graph.nodes(): 
+        seg_successors = list(graph.successors(seg_ID))
+        if len(seg_successors) == 0 :
+            graph.nodes[seg_ID]["state_to"] = 'end'
+        elif len(seg_successors) == 1: 
+            graph.nodes[seg_ID]["state_to"] = 'solo'
+            graph.edges[(seg_ID,seg_successors[0])]["in_events"].add('solo')
+        else:
+            graph.nodes[seg_ID]["state_to"] = 'split'
+            [graph.edges[(seg_ID,t)]["in_events"].add('split') for t in seg_successors]
+
+        seg_predecessors = list(graph.predecessors(seg_ID))
+        if len(seg_predecessors) == 0 :
+            graph.nodes[seg_ID]["state_from"] = 'start'
+        elif len(seg_predecessors) == 1: 
+            graph.nodes[seg_ID]["state_from"] = 'solo'
+            graph.edges[(seg_predecessors[0],seg_ID)]["in_events"].add('solo')
+        else:
+            graph.nodes[seg_ID]["state_from"] = 'merge'
+            [graph.edges[(t,seg_ID)]["in_events"].add('merge') for t in seg_predecessors]
+
+
+    # edge is visited twice as a successor and as a predecessor. type of edge will depend on context
+
+    # if both tests result in 'solo' type edge, its a part of segement chain
+    connections_solo = [t_conn for t_conn in graph.edges() if graph.edges[t_conn]["in_events"] == {'solo'}]
+
+    # for classic merges and splits situation is different. from point of view a branch, it 
+    # is coming/going in only into merge/split node, so this connection is 'solo'. same edge from 
+    # point of view merge/split node is 'merge'/'split' respectivelly, due to many predecessors/successors
+    connections_other = {'merge':{}, 'split':{}, 'mixed':{}}
+    type_split = {'split','solo'}
+    type_merge = {'merge','solo'}
+    # some edges may act as both split and merge branches, these are mixed type events
+    type_mixed = {'split','merge'}
+    edges_mixed = set()
+    for seg_ID in graph.nodes():
+        # solo state are ruled out in 'connections_solo'
+
+        if graph.nodes[seg_ID]["state_to"] == 'split':      
+            # check forward connections and check their types
+            edge_types  = {(seg_ID,t): graph.edges[(seg_ID,t)]["in_events"] for t in graph.successors(seg_ID)}
+            type_pass   = [edge_type == type_split for edge_type in edge_types.values()]
+            if all(type_pass):  
+                # all branches are classic split
+                connections_other['split'][seg_ID] = [t for _, t in edge_types.keys()]
+            else:
+                # check if branches are of mixed type.
+                [edges_mixed.add(edge) for edge,edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
+
+        if graph.nodes[seg_ID]["state_from"] == 'merge':
+            edge_types  = {(t, seg_ID): graph.edges[(t, seg_ID)]["in_events"] for t in graph.predecessors(seg_ID)}
+            type_pass   = [edge_type == type_merge for edge_type in edge_types.values()]
+            if all(type_pass):
+                connections_other['merge'][seg_ID] = [t for t,_ in edge_types.keys()]
+            else:
+                [edges_mixed.add(edge) for edge,edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
+     
+    # try to isolate event containing mixed branch. to avoid connectendess to far neighbor segments, which is possible 
+    # from edge of event, try to find event nodes from gathering predecessors of successors of 'from' mixed edge node
+    # and similarly, but inverse, for 'to' of mixed event. event may hold multiple mixed nodes, but hopefully clusters are the same
+    # IT IS A WEAK assumption. But it forces path to cross this event, and connections are made in a way
+    # to not use other segments, only stray nodes, which are, most likely, a part of this local event.
+    ID_clusters = set()
+    for seg_from,seg_to in edges_mixed:
+        # start a cluster associated with this mixed edge nodes
+        t_node_cluster = {seg_from,seg_to}
+        # add connecteness sweep results to this cluster
+        for t in graph.successors(seg_from):
+            t_node_cluster.update(list(graph.predecessors(t)))
+        for t in graph.predecessors(seg_to):
+            t_node_cluster.update(list(graph.successors(t)))
+        # add this cluster to set of other clusters, frozenset is required to set of sets, its hashable.
+        ID_clusters.add(frozenset(t_node_cluster))
+    
+    # mixed events also have different sub-cases.  but all are later partially solved by extrapolating 'in' branches.
+    # clean mixed event happens when multiple branches interact and come out multiple
+    # during this event out branches are only connected with incoming branches
+    #
+    # dirty mixed event is when there is an internal event, but ~one branch goes around it.
+    # otherwise you would be able to isolate and process this internal event separately.
+    #
+    # clean event = no internal events, incoming branches go to their successors (outgoing branches)
+    #               predecessors of outgoing branches are incoming branches.
+    # dirty event = incoming branches go to outgoing, but also to internal event branches.
+    #               inc branch successors --> their predecessors =  not only incoming, but also internal branches.
+    # events are isolated on the graph, so only incoming and internal branches have successors,
+    # and similarly, only outgoing and internal branches have predecessors
+    # internal branches are, simply, an intersection of those two.
+    for k, t_cluster in enumerate(ID_clusters):
+        subgraph = graph.subgraph(t_cluster)
+        successors_all = set()
+        predecessors_all = set()
+        successors    = {t:list(subgraph.successors(t)) for t in t_cluster}
+        predecessors  = {t:list(subgraph.predecessors(t)) for t in t_cluster}
+        branches_out  = tuple(sorted([t for t in successors      if len(successors[t]  ) == 0]))
+        branches_in   = tuple(sorted([t for t in predecessors    if len(predecessors[t]) == 0]))
+        [successors_all.update(t)     for t in successors.values()  ]
+        [predecessors_all.update(t)   for t in predecessors.values()]
+        intersection = successors_all.intersection(predecessors_all)
+        if len(intersection) > 0:
+            branches_in = tuple(sorted(list(branches_in) + list(intersection)))  # it will be extrapolated
+        connections_other['mixed'][branches_in] = branches_out
+
+    return graph, connections_solo, connections_other
+
 if 1 == -1:
     
     def graph_extract_paths_backup_unidir(H,f):

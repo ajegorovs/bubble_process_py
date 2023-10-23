@@ -96,7 +96,7 @@ from bubble_params  import (centroid_area_cmomzz, centroid_area)
 
 from graphs_general import (extractNeighborsNext, extractNeighborsPrevious, graph_extract_paths, find_paths_from_to_multi,
                             comb_product_to_graph_edges, for_graph_plots, extract_graph_connected_components, extract_graph_connected_components_autograph,
-                            find_segment_connectivity_isolated,  graph_sub_isolate_connected_components, set_custom_node_parameters)
+                            find_segment_connectivity_isolated,  graph_sub_isolate_connected_components, set_custom_node_parameters, get_event_types_from_segment_graph)
 
 from interpolation import (interpolate_trajectory, interpolate_find_k_s, extrapolate_find_k_s, interpolateMiddle2D_2, interpolateMiddle1D_2)
 
@@ -499,9 +499,9 @@ graphs_all_dict = {}
 contours_all_dict = {}
 
 issues_all_dict = defaultdict(dict) #[2]:#[19]:#
-temp = [95]
+#temp = [95]
 #temp = [k for k, seg in enumerate(connected_components_unique_0) if len(seg) > 70]
-#temp = range(len(connected_components_unique_0))
+temp = range(len(connected_components_unique_0))
 for doX in temp:
 
     #contours_all_dict[doX] = {'contours':{},'hulls':{}}
@@ -967,257 +967,181 @@ for doX in temp:
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     #aa = G.is_directed();print(f'G s directed:{aa}')
-    # ===============================================================================================
-    # ====== rudamentary split/merge analysis based on nearest neighbor connectedness symmetry ======
-    # ===============================================================================================
-    # REMARK: nearest neighbors elliminates unidirectional connectedness between split/merge branches
+    if 1 == -1:
+        # ===============================================================================================
+        # ====== rudamentary split/merge analysis based on nearest neighbor connectedness symmetry ======
+        # ===============================================================================================
+        # REMARK: nearest neighbors elliminates unidirectional connectedness between split/merge branches
 
-    # by analyzing nearest neighbors you can see anti-symmetry in case of splits and merges.
-    # if one branch of merge is closer to merge product, it will have strong connection both ways
-    # further branches will only have unidirectional connection
-    if 1==1:
-        lr_connections_unidirectional   = []
-        lr_connections_forward          = []
-        lr_connections_backward         = []
-        for t_from, t_forward_conns in t_neighbor_sol_all_next.items():
-            for t_to in t_forward_conns.keys():
-                lr_connections_forward.append(tuple(sorted([t_from,t_to])))
-        for t_to, t_backward_conns in t_neighbor_sol_all_prev.items():
-            for t_from in t_backward_conns.keys():
-                lr_connections_backward.append(tuple(sorted([t_from,t_to])))
-
-        lr_connections_unidirectional   = sorted(list(set(lr_connections_forward) & set(lr_connections_backward)), key = lambda x: x[0])
-        lr_connections_directed         = [t_conn for t_conn in lr_connections_forward + lr_connections_backward if t_conn not in lr_connections_unidirectional]
-        lr_connections_directed         = sorted(list(set(lr_connections_directed)), key = lambda x: x[0])
-
-        # lr_connections_directed contain merges/splits, but also lr_connections_unidirectional contain part of splits/merges.
-        # unidirectional means last/next segment is connected via unidirectional ege
-        t_merge_split_culprit_edges = []
-        for t_conn in lr_connections_directed:
-            if t_conn in lr_connections_forward:    t_from, t_to = t_conn  
-            else:                                   t_to, t_from = t_conn
-            # by knowing direction of direactional connection, i can tell that opposite direction connection is absent.
-            # there are other connection/s in that opposite (time-wise) directions which are other directional connectsions or unidir
-            t_time_to   = segments2[t_to    ][0][0]
-            t_time_from = segments2[t_from  ][0][0]
-            # if directed connection i time-forward, then unidir connections are from t_to node back in time
-            t_forward = True if t_time_to - t_time_from > 0 else False
-            if t_forward:
-                t_unidir_neighbors = list(t_neighbor_sol_all_prev[t_to].keys())
-            else:
-                t_unidir_neighbors = list(t_neighbor_sol_all_next[t_to].keys())
-            t_unidir_conns = [tuple(sorted([t_to,t])) for t in t_unidir_neighbors]
-            t_merge_split_culprit_edges += [t_conn]
-            t_merge_split_culprit_edges += t_unidir_conns
-            a = 1
-            #if t_to in t_neighbor_sol_all_prev[t_from]:
-        t_merge_split_culprit_edges = sorted(t_merge_split_culprit_edges, key = lambda x: x[0])
-
-
-        # simply extract nodes and their neigbors if there are multiple neighbors
-        t_merge_split_culprit_edges2 = []
-        for t_from, t_forward_conns in t_neighbor_sol_all_next.items():
-            if len(t_forward_conns)>1:
+        # by analyzing nearest neighbors you can see anti-symmetry in case of splits and merges.
+        # if one branch of merge is closer to merge product, it will have strong connection both ways
+        # further branches will only have unidirectional connection
+        if 1==1:
+            lr_connections_unidirectional   = []
+            lr_connections_forward          = []
+            lr_connections_backward         = []
+            for t_from, t_forward_conns in t_neighbor_sol_all_next.items():
                 for t_to in t_forward_conns.keys():
-                    t_merge_split_culprit_edges2.append(tuple(sorted([t_from,t_to])))
-
-        for t_to, t_backward_conns in t_neighbor_sol_all_prev.items():
-            if len(t_backward_conns) > 1:
+                    lr_connections_forward.append(tuple(sorted([t_from,t_to])))
+            for t_to, t_backward_conns in t_neighbor_sol_all_prev.items():
                 for t_from in t_backward_conns.keys():
-                    t_merge_split_culprit_edges2.append(tuple(sorted([t_from,t_to])))
+                    lr_connections_backward.append(tuple(sorted([t_from,t_to])))
 
-        t_merge_split_culprit_edges2 = sorted(t_merge_split_culprit_edges2, key = lambda x: x[0])
+            lr_connections_unidirectional   = sorted(list(set(lr_connections_forward) & set(lr_connections_backward)), key = lambda x: x[0])
+            lr_connections_directed         = [t_conn for t_conn in lr_connections_forward + lr_connections_backward if t_conn not in lr_connections_unidirectional]
+            lr_connections_directed         = sorted(list(set(lr_connections_directed)), key = lambda x: x[0])
+
+            # lr_connections_directed contain merges/splits, but also lr_connections_unidirectional contain part of splits/merges.
+            # unidirectional means last/next segment is connected via unidirectional ege
+            t_merge_split_culprit_edges = []
+            for t_conn in lr_connections_directed:
+                if t_conn in lr_connections_forward:    t_from, t_to = t_conn  
+                else:                                   t_to, t_from = t_conn
+                # by knowing direction of direactional connection, i can tell that opposite direction connection is absent.
+                # there are other connection/s in that opposite (time-wise) directions which are other directional connectsions or unidir
+                t_time_to   = segments2[t_to    ][0][0]
+                t_time_from = segments2[t_from  ][0][0]
+                # if directed connection i time-forward, then unidir connections are from t_to node back in time
+                t_forward = True if t_time_to - t_time_from > 0 else False
+                if t_forward:
+                    t_unidir_neighbors = list(t_neighbor_sol_all_prev[t_to].keys())
+                else:
+                    t_unidir_neighbors = list(t_neighbor_sol_all_next[t_to].keys())
+                t_unidir_conns = [tuple(sorted([t_to,t])) for t in t_unidir_neighbors]
+                t_merge_split_culprit_edges += [t_conn]
+                t_merge_split_culprit_edges += t_unidir_conns
+                a = 1
+                #if t_to in t_neighbor_sol_all_prev[t_from]:
+            t_merge_split_culprit_edges = sorted(t_merge_split_culprit_edges, key = lambda x: x[0])
+
+
+            # simply extract nodes and their neigbors if there are multiple neighbors
+            t_merge_split_culprit_edges2 = []
+            for t_from, t_forward_conns in t_neighbor_sol_all_next.items():
+                if len(t_forward_conns)>1:
+                    for t_to in t_forward_conns.keys():
+                        t_merge_split_culprit_edges2.append(tuple(sorted([t_from,t_to])))
+
+            for t_to, t_backward_conns in t_neighbor_sol_all_prev.items():
+                if len(t_backward_conns) > 1:
+                    for t_from in t_backward_conns.keys():
+                        t_merge_split_culprit_edges2.append(tuple(sorted([t_from,t_to])))
+
+            t_merge_split_culprit_edges2 = sorted(t_merge_split_culprit_edges2, key = lambda x: x[0])
     
-        t_merge_split_culprit_edges_all = sorted(list(set(t_merge_split_culprit_edges + t_merge_split_culprit_edges2)), key = lambda x: x[0])
-        t_merge_split_culprit_node_combos = segment_conn_end_start_points(t_merge_split_culprit_edges_all, segment_list = segments2, nodes = 1)
+            t_merge_split_culprit_edges_all = sorted(list(set(t_merge_split_culprit_edges + t_merge_split_culprit_edges2)), key = lambda x: x[0])
+            t_merge_split_culprit_node_combos = segment_conn_end_start_points(t_merge_split_culprit_edges_all, segment_list = segments2, nodes = 1)
 
-        # find clusters of connected nodes of split/merge events. this way instead of sigment IDs, because one
-        # segment may be sandwitched between any of these events and two cluster will be clumped together
+            # find clusters of connected nodes of split/merge events. this way instead of sigment IDs, because one
+            # segment may be sandwitched between any of these events and two cluster will be clumped together
 
-        T = nx.Graph()
-        T.add_edges_from(t_merge_split_culprit_node_combos)
-        connected_components_unique = extract_graph_connected_components(T, sort_function = lambda x: x)
+            T = nx.Graph()
+            T.add_edges_from(t_merge_split_culprit_node_combos)
+            connected_components_unique = extract_graph_connected_components(T, sort_function = lambda x: x)
     
-        # relate connected node families ^ to segments
-        lr_merge_split_node_families = []
-        for t_node_cluster in connected_components_unique:
-            t_times_active = [t_node[0] for t_node in t_node_cluster]
-            t_active_segments = set(sum([lr_time_active_segments[t_time] for t_time in t_times_active],[]))
-            t_sol = []
-            for t_node in t_node_cluster:
-                for t_segment_ID in t_active_segments:
-                    if t_node in segments2[t_segment_ID]:
-                        t_sol.append(t_segment_ID)
-                        break
-            lr_merge_split_node_families.append(sorted(t_sol))
+            # relate connected node families ^ to segments
+            lr_merge_split_node_families = []
+            for t_node_cluster in connected_components_unique:
+                t_times_active = [t_node[0] for t_node in t_node_cluster]
+                t_active_segments = set(sum([lr_time_active_segments[t_time] for t_time in t_times_active],[]))
+                t_sol = []
+                for t_node in t_node_cluster:
+                    for t_segment_ID in t_active_segments:
+                        if t_node in segments2[t_segment_ID]:
+                            t_sol.append(t_segment_ID)
+                            break
+                lr_merge_split_node_families.append(sorted(t_sol))
 
-    # ===============================================================================================
-    # merge/split classification will be here
-    # ===============================================================================================
-    # REMARK: if a node has MULTIPLE neighbors from one of side (time-wise)
-    # REMARK: then split or merge happened, depending which side it is
-    # REMARK: if cluster has both split and merge of nodes, its classified separately
-    # REMARK: edges of these 3 events are stored for further analysis
-    lr_conn_edges_splits                = []
-    lr_conn_edges_merges                = []
-    lr_conn_edges_splits_merges_mixed   = []    # not used yet
+        # ===============================================================================================
+        # merge/split classification will be here
+        # ===============================================================================================
+        # REMARK: if a node has MULTIPLE neighbors from one of side (time-wise)
+        # REMARK: then split or merge happened, depending which side it is
+        # REMARK: if cluster has both split and merge of nodes, its classified separately
+        # REMARK: edges of these 3 events are stored for further analysis
+        lr_conn_edges_splits                = []
+        lr_conn_edges_merges                = []
+        lr_conn_edges_splits_merges_mixed   = []    # not used yet
 
-    lr_conn_merges_to_nodes             = []
-    lr_conn_splits_from_nodes           = []    # not used yet
+        lr_conn_merges_to_nodes             = []
+        lr_conn_splits_from_nodes           = []    # not used yet
 
-    if 1 == 1:
+        if 1 == 1:
     
-        for t_cluster in lr_merge_split_node_families:
+            for t_cluster in lr_merge_split_node_families:
 
-            t_neighbors_prev = {tID:[] for tID in t_cluster}
-            t_neighbors_next = {tID:[] for tID in t_cluster}
+                t_neighbors_prev = {tID:[] for tID in t_cluster}
+                t_neighbors_next = {tID:[] for tID in t_cluster}
 
-            for tID in t_cluster:
-                t_neighbors_all = [t for t in list(G2.neighbors(tID)) if t in t_cluster]
-                t_node_start    = G2.nodes[tID]["t_start"]
-                t_node_end      = G2.nodes[tID]["t_end"]
-                for t_neighbor in t_neighbors_all:
-                    t_neighbor_start    = G2.nodes[t_neighbor]["t_start"]
-                    t_neighbor_end      = G2.nodes[t_neighbor]["t_end"]
-                    if t_neighbor_start > t_node_end:
-                        t_neighbors_next[tID].append(t_neighbor)
-                    elif t_neighbor_end < t_node_start:
-                        t_neighbors_prev[tID].append(t_neighbor)
+                for tID in t_cluster:
+                    t_neighbors_all = [t for t in list(G2.neighbors(tID)) if t in t_cluster]
+                    t_node_start    = G2.nodes[tID]["t_start"]
+                    t_node_end      = G2.nodes[tID]["t_end"]
+                    for t_neighbor in t_neighbors_all:
+                        t_neighbor_start    = G2.nodes[t_neighbor]["t_start"]
+                        t_neighbor_end      = G2.nodes[t_neighbor]["t_end"]
+                        if t_neighbor_start > t_node_end:
+                            t_neighbors_next[tID].append(t_neighbor)
+                        elif t_neighbor_end < t_node_start:
+                            t_neighbors_prev[tID].append(t_neighbor)
     
-            t_neighbors_prev_large = {tID:t_neighbors for tID,t_neighbors in t_neighbors_prev.items() if len(t_neighbors) > 1}
-            t_neighbors_next_large = {tID:t_neighbors for tID,t_neighbors in t_neighbors_next.items() if len(t_neighbors) > 1}
+                t_neighbors_prev_large = {tID:t_neighbors for tID,t_neighbors in t_neighbors_prev.items() if len(t_neighbors) > 1}
+                t_neighbors_next_large = {tID:t_neighbors for tID,t_neighbors in t_neighbors_next.items() if len(t_neighbors) > 1}
     
-            t_edges_merge =  sum([[tuple(sorted([id1,id2])) for id2 in subIDs] for id1,subIDs in t_neighbors_prev_large.items()],[])
-            t_edges_split =  sum([[tuple(sorted([id1,id2])) for id2 in subIDs] for id1,subIDs in t_neighbors_next_large.items()],[])
+                t_edges_merge =  sum([[tuple(sorted([id1,id2])) for id2 in subIDs] for id1,subIDs in t_neighbors_prev_large.items()],[])
+                t_edges_split =  sum([[tuple(sorted([id1,id2])) for id2 in subIDs] for id1,subIDs in t_neighbors_next_large.items()],[])
     
-            if len(t_neighbors_next_large) == 0 and len(t_neighbors_prev_large) > 0:
-                lr_conn_edges_merges += t_edges_merge
-            elif len(t_neighbors_prev_large) == 0 and len(t_neighbors_next_large) > 0:
-                lr_conn_edges_splits += t_edges_split
-            else:
-                lr_conn_edges_splits_merges_mixed += (t_edges_merge + t_edges_split)
+                if len(t_neighbors_next_large) == 0 and len(t_neighbors_prev_large) > 0:
+                    lr_conn_edges_merges += t_edges_merge
+                elif len(t_neighbors_prev_large) == 0 and len(t_neighbors_next_large) > 0:
+                    lr_conn_edges_splits += t_edges_split
+                else:
+                    lr_conn_edges_splits_merges_mixed += (t_edges_merge + t_edges_split)
+                a = 1
+
+            lr_conn_merges_to_nodes     = sorted(list(set([t_node[1] for t_node in lr_conn_edges_merges])))
+            lr_conn_splits_from_nodes   = sorted(list(set([t_node[0] for t_node in lr_conn_edges_splits])))
+
+            # gather successors for mixed m/s in a dict for further trajectory extension 21.09.23
+            lr_conn_splits_merges_mixed_dict = defaultdict(list)
+            for t_from,t_to in  lr_conn_edges_splits_merges_mixed:
+                lr_conn_splits_merges_mixed_dict[t_from].append(t_to)
+
+            for t_from, t in lr_conn_splits_merges_mixed_dict.items():
+                lr_conn_splits_merges_mixed_dict[t_from] = sorted(set(t))
+    
+            # 10.10.2023 bonus for branch extension with conservative subID redistribution
+            # get small connected clusters [from1, from2,..] -> [to1,to2,..]. 
+            t_compair_pairs = list(itertools.combinations(lr_conn_splits_merges_mixed_dict, 2))
+            t_from_connected = defaultdict(set)#{t:set([t]) for t in t_from_IDs}
+            for t1,t2 in t_compair_pairs:
+                t_common_elems = set(lr_conn_splits_merges_mixed_dict[t1]).intersection(set(lr_conn_splits_merges_mixed_dict[t2]))
+                if len(t_common_elems) > 0:
+                    t_from_connected[t1].add(t2)
+            lr_conn_mixed_from_to = {}
+            for t_ID_main, t_subIDs in t_from_connected.items():
+                t_from_subIDs = sorted([t_ID_main] + list(t_subIDs))
+                t_to_subIDs = sorted(set([t_to for t in t_from_subIDs for t_to in lr_conn_splits_merges_mixed_dict[t]]))
+                lr_conn_mixed_from_to[tuple(t_from_subIDs)] = tuple(t_to_subIDs)
             a = 1
 
-        lr_conn_merges_to_nodes     = sorted(list(set([t_node[1] for t_node in lr_conn_edges_merges])))
-        lr_conn_splits_from_nodes   = sorted(list(set([t_node[0] for t_node in lr_conn_edges_splits])))
-
-        # gather successors for mixed m/s in a dict for further trajectory extension 21.09.23
-        lr_conn_splits_merges_mixed_dict = defaultdict(list)
-        for t_from,t_to in  lr_conn_edges_splits_merges_mixed:
-            lr_conn_splits_merges_mixed_dict[t_from].append(t_to)
-
-        for t_from, t in lr_conn_splits_merges_mixed_dict.items():
-            lr_conn_splits_merges_mixed_dict[t_from] = sorted(set(t))
-    
-        # 10.10.2023 bonus for branch extension with conservative subID redistribution
-        # get small connected clusters [from1, from2,..] -> [to1,to2,..]. 
-        t_compair_pairs = list(itertools.combinations(lr_conn_splits_merges_mixed_dict, 2))
-        t_from_connected = defaultdict(set)#{t:set([t]) for t in t_from_IDs}
-        for t1,t2 in t_compair_pairs:
-            t_common_elems = set(lr_conn_splits_merges_mixed_dict[t1]).intersection(set(lr_conn_splits_merges_mixed_dict[t2]))
-            if len(t_common_elems) > 0:
-                t_from_connected[t1].add(t2)
-        lr_conn_mixed_from_to = {}
-        for t_ID_main, t_subIDs in t_from_connected.items():
-            t_from_subIDs = sorted([t_ID_main] + list(t_subIDs))
-            t_to_subIDs = sorted(set([t_to for t in t_from_subIDs for t_to in lr_conn_splits_merges_mixed_dict[t]]))
-            lr_conn_mixed_from_to[tuple(t_from_subIDs)] = tuple(t_to_subIDs)
-        a = 1
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # ===============================================================================================
-    
-    # copy G2 (segment point of view graph)
-    G2_dir = nx.DiGraph()
-
-    for t_node in G2.nodes():
-        G2_dir.add_node(t_node, **dict(G2.nodes[t_node]))
-    for t_from, t_to in G2.edges():
-        G2_dir.add_edge(t_from, t_to, **dict(G2.edges[(t_from, t_to)]))
-        G2_dir.edges[(t_from,t_to)]["in_events"] = set()
-
-
-    # attribute state before and after segment -  it is a part of a split or a merge, 
-    # depending on number of neighbors. neighbors are non overlapping, connected segments before or after.
-    #
-    # process checks each edge twice, from outgoing perspective and incoming perspective.
-    #
-    # if edge is 'solo' (one directed neighbor) from both perspectives, its clearly the same 
-    # bubble with interrupted single-contour trajectory
-    #
-    # for split/merge edges there is an assymetry. e.g event split -> branches 1 & 2. 
-    # outgoing [>split<]->branch edge is branch edge by multiple split successors
-    # but incoming split->[>branch<] edge is likely a solo connection. so its normal for an 
-    # edge to be both 'solo' and 'merge' branch
-
-    for t_node in G2_dir.nodes():
-        t_succ = list(G2_dir.successors(t_node))
-        if len(t_succ) == 0 :
-            G2_dir.nodes[t_node]["state_to"] = 'end'
-        elif len(t_succ) == 1: 
-            G2_dir.nodes[t_node]["state_to"] = 'solo'
-            G2_dir.edges[(t_node,t_succ[0])]["in_events"].add('solo')
-        else:
-            G2_dir.nodes[t_node]["state_to"] = 'split'
-            [G2_dir.edges[(t_node,t)]["in_events"].add('split') for t in t_succ]
-
-        t_pred = list(G2_dir.predecessors(t_node))
-        if len(t_pred) == 0 :
-            G2_dir.nodes[t_node]["state_from"] = 'start'
-        elif len(t_pred) == 1: 
-            G2_dir.nodes[t_node]["state_from"] = 'solo'
-            G2_dir.edges[(t_pred[0],t_node)]["in_events"].add('solo')
-        else:
-            G2_dir.nodes[t_node]["state_from"] = 'merge'
-            [G2_dir.edges[(t,t_node)]["in_events"].add('merge') for t in t_pred]
-
-    
-    # edges which are both 'solo' & 'merge' or 'solo' & 'split' are "clean" and could be part of 
-    # "clean" merge or split event. for "clean" merge/split all event edges should be "clean". 
-    # if one edge of an event is both 'merge' and 'split', it is a "mixed" event - 
-    # means event has multiple ins and outs, not one in (split) and many outs (branches)
-    # or multiple ins (branches) and one out (merge)
-    # "mixed" event is most likely bubbles passing in close proximity.
-
-    # what to do:
-    # isolate two-way solo edges        (interval between segments)
-    # isolate clean merges and splits   (intervak between event node and branches)
-    # isolate mixed event               (get mixed edge, find parallel connected edges)
-    lr_solo_edges = [t_conn for t_conn in G2_dir.edges() if G2_dir.edges[t_conn]["in_events"] == {'solo'}]
-
-    lr_ms_edges_main = {'merge':{}, 'split':{}}
-    
-    for t_node in G2_dir.nodes():
-        state_to = G2_dir.nodes[t_node]["state_to"]
-        if state_to == 'split':
-            t_succ = list(G2_dir.successors(t_node))
-            type_pass = [ G2_dir.edges[(t_node,t)]["in_events"] == {'split','solo'} for t in t_succ]
-            if all(type_pass):
-                lr_ms_edges_main['split'][t_node] = t_succ
-        state_from = G2_dir.nodes[t_node]["state_from"]
-        if state_from == 'merge':
-            t_pred = list(G2_dir.predecessors(t_node))
-            type_pass = [G2_dir.edges[(t, t_node)]["in_events"] == {'merge','solo'} for t in t_pred]
-            if all(type_pass):
-                lr_ms_edges_main['merge'][t_node] = t_pred
-    
-
-    lr_ms_edges_brnch = {'merge':{}, 'split':{}}
-    for ID_main, IDs_branch in  lr_ms_edges_main['merge'].items():
-        for ID_branch in IDs_branch:
-            lr_ms_edges_brnch['merge'][ID_branch] = ID_main
-    for ID_main, IDs_branch in  lr_ms_edges_main['split'].items():
-        for ID_branch in IDs_branch:
-            lr_ms_edges_brnch['split'][ID_branch] = ID_main
-
-
-    #lr_ms_edges_brnch = {'merge':dict(lr_edges_merge_brnch), 'split':dict(lr_edges_split_brnch)}
-    
-    
-    a = 1
-    # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    # === PROCESS SEGMENT-SEGMENT CONNECTIONS THAT ARE CONNECTED ONLY TOGETHER (ONE-TO-ONE; 121) ====
     # ===============================================================================================
+    # WHY: long graph segment (which is a chain of nodes that each consists only of one contour) is likely
+    # WHY: a single bubble raising without merges and splits. sometimes, due to optical lighting artifacts
+    # WHY: or other artifacts, next to bubble pops out an unwanted object, or its a same bubble that visually
+    # WHY: splits and recombines. that means that solo contour trajctory is interrupted with a 'hole'
+    # WHY: which is actually an 'explositon' of connections into 'stray' nodes and 'collapse' back to
+    # WHY: a solo trajectory.
+    # WHY: these holes can be easily patched, but first they have to be identified
+    # WHY: if this happens often, then instead of analyzing such 'holes' locally, we can bring 
+    # WHY: whole trajectory with all holes and patch them more effectively using more bubble history.
+    # NOTE: there is also one caveat where we cannot trust end-points of combined bubble trajectories
+    # NITE: because of the effect of 'fake' split or merge -  when object splits, but only optically.
 
-    # FLOWCHART OF PROCESSING 121 SEGMENTS:
+    # FLOWCHART OF PROCESSING 121 (one-to-one) SEGMENTS:
     #
     # (121.A) isolate 121 connections
     # (121.B) extract inter-segment nodes as time slices : {t1:[*subIDs],...}
@@ -1236,12 +1160,28 @@ for doX in temp:
     # ===============================================================================================
     # === extract segment-segment connections that are connected only together (one-to-one; 121) ====
     # ===============================================================================================
-    # REMARK: as discussed before directed connections are part of merges, but in unidirectional
-    # REMARK: connectios exists an associated (main) connection that makes other a directional
-    # REMARK: it was a result of performing nearest neighbor refinement.
-    # REMARK: so non split/merge connection is refinement of unidir connection list with info of merge/split
+    #
+    # ===============================================================================================
+    # === DETERMINE EDGE TYPES OF EVENTS (PREP FOR FAKE EVENT DETECTION ON EDGES OF 121 CHAINS) =====
+    # ===============================================================================================
+    # WHAT: extract all 121 type connections, additinally, info on merges/splits is needed for 'fake' stuff
+   
+    G2_dir, lr_solo_edges, lr_ms_edges_main = get_event_types_from_segment_graph(G2)
+    lr_conn_edges_merges = [(t_from,t_to) for t_to,t_froms in lr_ms_edges_main['merge'].items() for t_from in t_froms]
+    lr_conn_edges_splits = [(t_from,t_to) for t_from,t_tos in lr_ms_edges_main['split'].items() for t_to in t_tos]
+    lr_conn_edges_splits_merges_mixed = []
+    for t_froms, t_tos in lr_ms_edges_main['mixed'].items():
+        t_edges = [t_edge for t_edge in itertools.product(t_froms,t_tos) if t_edge in G2_dir.edges]
+        lr_conn_edges_splits_merges_mixed.extend(t_edges)
 
-    #t_conn_121 = [t_conn for t_conn in lr_connections_unidirectional if t_conn not in t_merge_split_culprit_edges_all]
+    lr_ms_edges_brnch = {'merge':{}, 'split':{}}
+    for ID_main, IDs_branch in  lr_ms_edges_main['merge'].items():
+        for ID_branch in IDs_branch:
+            lr_ms_edges_brnch['merge'][ID_branch] = ID_main
+    for ID_main, IDs_branch in  lr_ms_edges_main['split'].items():
+        for ID_branch in IDs_branch:
+            lr_ms_edges_brnch['split'][ID_branch] = ID_main
+
     t_conn_121 = lr_solo_edges
     # ===================================================================================================
     # ==================== SLICE INTER-SEGMENT (121) NOTE-SUBID SPACE W.R.T TIME ========================
@@ -1382,7 +1322,7 @@ for doX in temp:
         # them into bigger one and recover using more data.
         lr_big_121s_chains = extract_graph_connected_components(G_seg_view_1.to_undirected(), lambda x: x)
 
-        print(f'Working on joining all continious 121s together: {lr_big_121s_chains}')
+        print(f'\n{timeHMS()}: Working on joining all continious 121s together: {lr_big_121s_chains}')
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<        
     # big 121s terminate at zero neighbors, real or pseudo merges/splits 
         # both cannot easily tell the difference between real and pseudo. have search for recombination 
@@ -1461,7 +1401,7 @@ for doX in temp:
         # 4)    other branch spans larger times. kind of meh crit. cannot know in case of random bubble popping out.
         # 5)    check area change right near an event. this will rule out random neighbor bubble.
         #       this will also rule out if your segment is a random bubble.
-        print('Determining if end points of big 121s are pseudo events: ')
+        print(f'\n{timeHMS()}: Determining if end points of big 121s are pseudo events: ')
         if 1 == 1:
             t_big121s_merge_conn_fake = []
             t_big121s_split_conn_fake = []
@@ -1617,7 +1557,7 @@ for doX in temp:
             assert len(t_only_merge_split_fake) == 0, "case yet unexplored, written without test"        
 
 
-        print(f'Fake merges: {t_big121s_merge_conn_fake}, Fake splits: {t_big121s_split_conn_fake}')
+        print(f'\n{timeHMS()}: Fake merges: {t_big121s_merge_conn_fake}, Fake splits: {t_big121s_split_conn_fake}')
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # -----------------------------------------------------------------------------------------------
         # PSEUDO MERGE/SPLIT ON EDGES: TRIM BIG 121S AS TO DROP FAKE M/S.
@@ -1652,7 +1592,7 @@ for doX in temp:
                         if t_to in t_subIDs:
                             lr_big121s_conn_121.append(t_conn)
                             break
-        print(f'Trimmed big 121s: {lr_big121s_conn_121}\nInterpolating whole big 121s...')
+        print(f'\n{timeHMS()}: Trimmed big 121s: {lr_big121s_conn_121}\nInterpolating whole big 121s...')
 
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # -----------------------------------------------------------------------------------------------
@@ -1712,7 +1652,7 @@ for doX in temp:
         # WHY:  Bubble may be any combination of contour subIDs at a given time. 
         # HOW:  itertools combinations of varying lenghts
 
-        print('Computing contour element permutations for each time step...')
+        print(f'\n{timeHMS()}: Computing contour element permutations for each time step...')
         if 1 == 1:
             # if "lr_zp_redirect" is not trivial, drop resolved zp edges
             
@@ -1733,7 +1673,7 @@ for doX in temp:
         # =================  PRE-CALCULATE HULL CENTROIDS AND AREAS FOR EACH PERMUTATION ================
         # ===============================================================================================
         # WHY: these will be reused alot in next steps, store them to avoid need of recalculation
-        print('Calculating parameters for possible contour combinations...')
+        print(f'\n{timeHMS()}: Calculating parameters for possible contour combinations...')
         if 1 == 1:    
             lr_big121s_perms_areas      = AutoCreateDict()
             lr_big121s_perms_centroids  = AutoCreateDict()
@@ -1758,7 +1698,7 @@ for doX in temp:
         # WHY:  each branch represents a bubbles contour ID evolution through unresolved intervals.
         # HOW: either though itertools product, or if number of branches is big, dont consider
         # HOW: branches where area changes more than set threshold. 
-        print('Generating possible bubble evolution paths from prev combinations...')
+        print(f'\n{timeHMS()}: Generating possible bubble evolution paths from prev combinations...')
 
         rel_area_thresh = 2
         def edge_crit_func(conn,edge):
@@ -1794,7 +1734,7 @@ for doX in temp:
         # ===============================================================================================
         # WHAT: calculate how area and centroids behave for each evolution
         # WHY:  evolutions with least path length and area changes should be right ones
-        print('Determining evolutions thats are closest to interpolated missing data...')
+        print(f'\n{timeHMS()}: Determining evolutions thats are closest to interpolated missing data...')
         
         t_temp_centroids = {t_conn:t_dict['centroids'] for t_conn,t_dict in lr_big121s_interpolation.items()}
         t_args = [lr_big121s_conn_121, lr_big121s_perms_cases,t_temp_centroids,lr_big121s_perms_times,
@@ -1812,7 +1752,7 @@ for doX in temp:
 
         lr_C0_condensed_connections_relations = lr_zp_redirect.copy()
         t_zp_redirect_inheritance = {a:b for a,b in lr_zp_redirect.items() if a != b}
-        print('Saving results for restored parts of big 121s')
+        print(f'\n{timeHMS()}: Saving results for restored parts of big 121s')
         t_last_seg_ID_in_big_121s   = [t[-1]    for t in t_big121s_edited if t is not None]
         t_big121s_edited_clean      = [t        for t in t_big121s_edited if t is not None]
 
@@ -1844,135 +1784,18 @@ for doX in temp:
         #        lr_time_active_segments[t].append(k)
 
         #for_graph_plots(G, segs = t_segments_new) 
+        print(f'\n{timeHMS()}: Working on real and fake events (merges/splits):\nPreparing data...')
+        # ===============================================================================================
+        # ============ RECALCULATE MERGE/SPLIT/MIXED EVENTS (FOR ACTUAL EVENT PROCESSING) ===============
+        # ===============================================================================================
+        # NOTE: same as process before 121 recovery. except now mixed type is calculated.
+        # NOTE: describtion is in "get_event_types_from_segment_graph" body/
 
-        # ===============================================================================================
-        # ==== EVALUATE HULL CENTROIDS AND AREAS FOR EACH EVOLUTION, FIND CASES WITH LEAST DEVIATIONS====
-        # ===============================================================================================
-        # WHAT: calculate how area and centroids behave for each evolution
-        # -----------------------------------------------------------------------------------------------
-        # prep permutations for merges/splits fake and real
-        # -----------------------------------------------------------------------------------------------
-        print('Working on real and fake events (merges/splits):\nPreparing data...')
+
         if 1 == 1: # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-            G2_dir = nx.DiGraph()
 
-            for t_node in G2.nodes():
-                G2_dir.add_node(t_node, **dict(G2.nodes[t_node]))
-            for t_from, t_to in G2.edges():
-                G2_dir.add_edge(t_from, t_to, **dict(G2.edges[(t_from, t_to)]))
-                G2_dir.edges[(t_from,t_to)]["in_events"] = set()
-
-            for t_node in G2_dir.nodes():
-                t_succ = list(G2_dir.successors(t_node))
-                if len(t_succ) == 0 :
-                    G2_dir.nodes[t_node]["state_to"] = 'end'
-                elif len(t_succ) == 1: 
-                    G2_dir.nodes[t_node]["state_to"] = 'solo'
-                    G2_dir.edges[(t_node,t_succ[0])]["in_events"].add('solo')
-                else:
-                    G2_dir.nodes[t_node]["state_to"] = 'split'
-                    [G2_dir.edges[(t_node,t)]["in_events"].add('split') for t in t_succ]
-
-                t_pred = list(G2_dir.predecessors(t_node))
-                if len(t_pred) == 0 :
-                    G2_dir.nodes[t_node]["state_from"] = 'start'
-                elif len(t_pred) == 1: 
-                    G2_dir.nodes[t_node]["state_from"] = 'solo'
-                    G2_dir.edges[(t_pred[0],t_node)]["in_events"].add('solo')
-                else:
-                    G2_dir.nodes[t_node]["state_from"] = 'merge'
-                    [G2_dir.edges[(t,t_node)]["in_events"].add('merge') for t in t_pred]
-
-            lr_solo_edges = [t_conn for t_conn in G2_dir.edges() if G2_dir.edges[t_conn]["in_events"] == {'solo'}]
-
-            lr_ms_edges_main = {'merge':{}, 'split':{}, 'mixed':{}}
-            t_ms_failed_test = {'merge':[], 'split':[]}
-            for t_node in G2_dir.nodes():
-                state_to = G2_dir.nodes[t_node]["state_to"]
-                if state_to == 'split':
-                    t_succ = list(G2_dir.successors(t_node))
-                    type_pass = [ G2_dir.edges[(t_node,t)]["in_events"] == {'split','solo'} for t in t_succ]
-                    if all(type_pass):
-                        lr_ms_edges_main['split'][t_node] = t_succ
-                    else:
-                        t_ms_failed_test['split'].append(t_node)
-                state_from = G2_dir.nodes[t_node]["state_from"]
-                if state_from == 'merge':
-                    t_pred = list(G2_dir.predecessors(t_node))
-                    type_pass = [G2_dir.edges[(t, t_node)]["in_events"] == {'merge','solo'} for t in t_pred]
-                    if all(type_pass):
-                        lr_ms_edges_main['merge'][t_node] = t_pred
-                    else:
-                        t_ms_failed_test['merge'].append(t_node)
-    
-            # isolate mixed events. find mixed edge and determine sides if this event
-            t_mixed_edges = []
-            for t_conn in G2_dir.edges():
-                edge_in_events = G2_dir.edges[t_conn]["in_events"]
-                mixed_type = {'split','merge'}
-                if edge_in_events.intersection(mixed_type) == mixed_type:
-                    t_mixed_edges.append(t_conn)
-
-            t_clusters = set()
-            for t_from,t_to in t_mixed_edges:
-                t_node_cluster = {t_from,t_to}
-                t_from_succ_all = list(G2_dir.successors(    t_from  ))
-                t_to_pred_all = list(G2_dir.predecessors(  t_to    ))
-
-                for t in t_from_succ_all:
-                    t_node_cluster.update(list(G2_dir.predecessors(t)))
-                for t in t_to_pred_all:
-                    t_node_cluster.update(list(G2_dir.successors(t)))
-
-                t_clusters.add(frozenset(t_node_cluster))
-
-            # clean mixed event happens when multiple branches interact and come out multiple
-            # during this event out branches are only connected with incoming branches
-            #
-            # dirty mixed event is when there is an internal event, but ~one branch goes around it.
-            # otherwise you would be able to isolate and process this internal event separately.
-            #
-            # clean event = no internal events, incoming branches go to their successors (outgoing branches)
-            #               predecessors of outgoing branches are incoming branches.
-            # dirty event = incoming branches go to outgoing, but also to internal event branches.
-            #               inc branch successors --> their predecessors =  not only incoming, but also internal branches.
-            # events are isolated on the graph, so only incoming and internal branches have successors,
-            # and similarly, only outgoing and internal branches have predecessors
-            # internal branches are, simply, an intersection of those two.
-            t_mixed_clean = []
-            t_mixed_dirty = {}
-            for k, t_cluster in enumerate(t_clusters):
-                t_subgraph = G2_dir.subgraph(t_cluster)
-                t_successors_all = set()
-                t_predecessors_all = set()
-                t_successors    = {t:list(t_subgraph.successors(t)) for t in t_cluster}
-                t_predecessors  = {t:list(t_subgraph.predecessors(t)) for t in t_cluster}
-                t_branches_out  = tuple(sorted([t for t in t_successors      if len(t_successors[t]  ) == 0]))
-                t_branches_in   = tuple(sorted([t for t in t_predecessors    if len(t_predecessors[t]) == 0]))
-                [t_successors_all.update(t)     for t in t_successors.values()  ]
-                [t_predecessors_all.update(t)   for t in t_predecessors.values()]
-                #for t in t_cluster:
-                #    t_successors.update(list(t_subgraph.successors(t)))
-                #    t_predecessors.update(list(t_subgraph.predecessors(t)))
-                t_intersection = t_successors_all.intersection(t_predecessors_all)
-                if len(t_intersection) == 0: 
-                    t_mixed_clean.append(k)
-                    #lr_ms_edges_main['mixed'][t_branches_in] = t_branches_out
-                else:
-                    t_mixed_dirty[k] = t_intersection
-                    t_branches_in = tuple(sorted(list(t_branches_in) + list(t_intersection)))
-                lr_ms_edges_main['mixed'][t_branches_in] = t_branches_out
-                a = 1
-
-            
-            lr_ms_edges_brnch = {'merge':{}, 'split':{}}
-            for ID_main, IDs_branch in lr_ms_edges_main['merge'].items():
-                for ID_branch in IDs_branch:
-                    lr_ms_edges_brnch['merge'][ID_branch] = ID_main
-            for ID_main, IDs_branch in  lr_ms_edges_main['split'].items():
-                for ID_branch in IDs_branch:
-                    lr_ms_edges_brnch['split'][ID_branch] = ID_main
+            G2_dir, _, lr_ms_edges_main = get_event_types_from_segment_graph(G2)
 
             a = 1
 
@@ -1989,17 +1812,12 @@ for doX in temp:
             t_merge_fake_conns  = [t_conn for t_conn in lr_conn_edges_merges if t_conn[1] in t_merge_fake_to_ID]    # grab all edges with that node. e.g [(8, 10), (9, 10)]
             t_split_fake_conns  = [t_conn for t_conn in lr_conn_edges_splits if t_conn[0] in t_split_fake_from_ID]
 
-            #t_merge_real_conns  = [t_conn for t_conn in lr_conn_edges_merges if t_conn not in t_merge_fake_conns]   # extract real from rest of conns. e.g [(15, 16), (15, 17)]
-            #t_split_real_conns  = [t_conn for t_conn in lr_conn_edges_splits if t_conn not in t_split_fake_conns]
-    
             t_merge_fake_dict   = {t_ID:[t_conn for t_conn in  lr_conn_edges_merges if t_conn[1] == t_ID] for t_ID in t_merge_fake_to_ID}       # e.g {10:[(8, 10), (9, 10)]}
             t_split_fake_dict   = {t_ID:[t_conn for t_conn in  lr_conn_edges_splits if t_conn[0] == t_ID] for t_ID in t_split_fake_from_ID}     # e.g {15:[(15, 16), (15, 17)]} 
 
-            #t_merge_real_dict   = {t_ID:[t_conn for t_conn in  lr_conn_edges_merges if t_conn[1] == t_ID] for t_ID in t_merge_real_to_ID}
-            #t_split_real_dict   = {t_ID:[t_conn for t_conn in  lr_conn_edges_splits if t_conn[0] == t_ID] for t_ID in t_split_real_from_ID}
-
             t_merge_real_to_ID_resolved = []
             t_split_real_from_ID_resolved = []
+
             # ----------------------------------------------------------------------------------------------
             # ------ GENERATE INFORMATON ABOUT REAL AND FAKE MERGE/SPLIT EVENTS----
             # ----------------------------------------------------------------------------------------------
@@ -2103,7 +1921,7 @@ for doX in temp:
 
                 t_split_real_from_ID_resolved.append(t_from_new)
 
-            print(f'Real merges({lr_ms_edges_main["merge"]})/splits({lr_ms_edges_main["split"]})... Done')
+            print(f'\n{timeHMS()}: Real merges({lr_ms_edges_main["merge"]})/splits({lr_ms_edges_main["split"]})... Done')
 
             # ------------------------------------- FAKE MERGE/SPLIT -------------------------------------
             t_state = 'merge'
@@ -2244,7 +2062,7 @@ for doX in temp:
     # we are interested in segments that are not part of psuedo branches (because they will be integrated into path)
     # pre merge segments will be extended, post split branches also, but backwards. 
     # for pseudo event can take an average paramets for prev and post segments.
-    print('Determining interpolation parameters k and s for segments...')
+    print(f'\n{timeHMS()}: Determining interpolation parameters k and s for segments...')
     t_fake_branches_IDs = []
     for t_ID in t_merge_fake_to_ID:
         t_fake_branches_IDs += t_event_start_end_times['merge'][t_ID]['branches']
@@ -2302,7 +2120,7 @@ for doX in temp:
     # ===============================================================================================
     # ====  deal with fake event recovery ====
     # ===============================================================================================
-    print('Working on fake events...')
+    print(f'\n{timeHMS()}: Working on fake events...')
     # -------------- determine segment start and end, find k_s, store info --------------------------
 
     def get_k_s(t_from_k_s, t_to_k_s, backup = (1,5)):
@@ -2340,7 +2158,7 @@ for doX in temp:
     # ----------------------- interpolate missing events with known history-----------------------
     # interpolate
     # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    print('Performing interpolation on data without fake branches')
+    print(f'\n{timeHMS()}: Performing interpolation on data without fake branches')
     a = 1
     for t_ID,t_param_dict in t_fake_events_k_s_edge_master.items():
         t_state         = t_param_dict['state'  ] 
@@ -2370,7 +2188,7 @@ for doX in temp:
             lr_big121s_interpolation[t_conn]['areas'    ] = np.array(t_interpolation_areas_0    )   
             lr_big121s_interpolation[t_conn]['times'    ] = t_times_missing_all
     # ----------------- Evaluate and find most likely evolutions of path -------------------------
-    print('Finding most possible path evolutions...')
+    print(f'\n{timeHMS()}: Finding most possible path evolutions...')
     if 1 == 1:
         t_temp_centroids = {}           # generate temp interpolation data storage
         t_temp_cases = {}
@@ -2395,7 +2213,7 @@ for doX in temp:
         lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems =  lr_weighted_sols(t_temp_cases, t_weights, t_sols, t_temp_cases )
     a = 1 # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # ----------------- Save recovered fake event paths -------------------------
-    print('Saving fake event data...')
+    print(f'\n{timeHMS()}: Saving fake event data...')
     if  1 == 1:
             for t_ID_old,t_param_dict in t_fake_events_k_s_edge_master.items():
                 t_ID = lr_C0_condensed_connections_relations[t_ID_old]
@@ -2459,7 +2277,7 @@ for doX in temp:
     ms_mixed_completed      = {'full': defaultdict(dict),'partial': defaultdict(dict)} 
     lr_post_branch_rec_info = {}
     ms_early_termination = {}
-    print(f'Analyzing real merge/split events. extending branches: {ms_branch_extend_IDs} ... ')
+    print(f'\n{timeHMS()}: Analyzing real merge/split events. extending branches: {ms_branch_extend_IDs} ... ')
     for t_ID, t_state in ms_branch_extend_IDs:
         if t_state in ('merge','split'):
             t_branches = t_event_start_end_times[t_state][t_ID]['branches']
@@ -2826,9 +2644,9 @@ for doX in temp:
 
 
     # ===============================================================================================
-    # ============== Final passes. finding new straight segments after refinement ====================
+    # ============== Final passes. New straight segments. ===================
     # ===============================================================================================
-    # WHY: after merge extension and mixed extension there may be branches left over in interaction area
+    # WHY: after merge/split/merge extensions there may be explicit branches left over in event area
     # HOW: analyze recent graph for straight segments and determine which segments are different from old
     t_segments_fin_dic, skipped = graph_extract_paths(G,lambda x : x[0])
     t_segments_fin = [t for t in t_segments_fin_dic.values() if len(t) > 2]
@@ -2867,15 +2685,7 @@ for doX in temp:
         G2.nodes()[t_new_ID]["t_start"] = t_segments_new[t_new_ID][0][0]
         G2.nodes()[t_new_ID]["t_end"]   = t_segments_new[t_new_ID][-1][0]
         set_custom_node_parameters(G, g0_contours_hulls, t_segments_fin[t_ID], t_new_ID, calc_hull = 0) # straight hulls since solo nodes 
-        #for t_time, *t_subIDs in  t_segments_fin[t_ID]:
-        #    lr_time_active_segments[t_time].append(t_new_ID)
 
-
-    #lr_time_active_segments = {t:[] for t in lr_time_active_segments}
-    #for k,t_segment in enumerate(t_segments_new):
-    #    t_times = [a[0] for a in t_segment]
-    #    for t in t_times:
-    #        lr_time_active_segments[t].append(k)
 
     lr_time_active_segments = defaultdict(list)
     for t_segment_index, t_segment_nodes in enumerate(t_segments_new):
@@ -2888,15 +2698,13 @@ for doX in temp:
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # for_graph_plots(G, segs = t_segments_fin)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-    # ===============================================================================================
-    # ============== Final passes. new straight. update connectivity ====================
-    # ===============================================================================================
+    # ============== Final passes. New straight segments. Update connectivity ===================
     G2.add_edges_from(G2.edges())
     fin_connectivity_graphs = defaultdict(list) #fin_additional_segments_IDs
     t_segments_relevant = [t for t,t_seg in enumerate(t_segments_new) if len(t_seg) > 0]
-    for t_ID in t_segments_relevant: # check left and right connected neighbors. path only though free nodes.
-        t_DT = 20                            # first subgraph contains nodes up to, but not including source (*)
-                                             # as to drop segments that end in same time, so connections are not made in reverse. 
+    for t_ID in t_segments_relevant:        # check left and right connected neighbors. path only though free nodes.
+        t_DT = lr_maxDT                     # first subgraph contains nodes up to, but not including source (*)
+                                            # as to drop segments that end in same time, so connections are not made in reverse. 
         t_t_min = G2.nodes[t_ID]["t_start" ]
         t_start = t_t_min - t_DT                
         t_end   = t_t_min - 1
@@ -2927,115 +2735,46 @@ for doX in temp:
 
     if 1 == 1:
         # ===============================================================================================
+        # ========================= Final passes. recompute split/merge/mixed info ======================
         # ===============================================================================================
-        # ================================ Final passes. recompute split/merge/mixed info ===============================
-        # ===============================================================================================
-
-        # create new directed graph so its easier to analyze events. add dist parameter, which will be useful 
-        # to decide whether to extend segment
+        # NOTE 0: same as pre- merge/split/mixed extension (which was same as pre 121 recovery)
+        # NOTE 1: extension of branches requires more or equal number contours than branches.
+        # NOTE 1: thats why there is no point in recovering branches past this stage. recover only to earliest case.
         fin_extend_info = defaultdict(dict)
-    
-        G2_dir = nx.DiGraph()
-
-        fin_seg_conns_forward = defaultdict(dict)
-        fin_seg_conns_backward = defaultdict(dict)
-        for t_node in G2.nodes():
-            G2_dir.add_node(t_node, **dict(G2.nodes[t_node]))
-            for t_targ in G2.neighbors(t_node):
-                if G2.nodes[t_node]["t_start"] > G2.nodes[t_targ]["t_end"]:
-                    t_attr = {'dist': G2.nodes[t_node]["t_start"] - G2.nodes[t_targ]["t_end"]}
-                    G2_dir.add_edge(t_targ, t_node,  **t_attr)
-                else:
-                    t_attr = {'dist': G2.nodes[t_targ]["t_start"] - G2.nodes[t_node]["t_end"]}
-                    G2_dir.add_edge(t_node, t_targ,  **t_attr)
-            a = 1
-        # analyze state of each segments start & end. info is one-sided, does not represent true events
-        for t_node in G2_dir.nodes():
-            t_succ = list(G2_dir.successors(t_node))
-            if len(t_succ) == 0 :
-                G2_dir.nodes[t_node]["to_state"] = 'end'
-            elif len(t_succ) == 1: 
-                G2_dir.nodes[t_node]["to_state"] = 'solo'
-            else:
-                G2_dir.nodes[t_node]["to_state"] = 'split'
-
-            t_pred = list(G2_dir.predecessors(t_node))
-            if len(t_pred) == 0 :
-                G2_dir.nodes[t_node]["from_state"] = 'start'
-            elif len(t_pred) == 1: 
-                G2_dir.nodes[t_node]["from_state"] = 'solo'
-            else:
-                G2_dir.nodes[t_node]["from_state"] = 'merge'
-
-        # now we consider edges as parts of proper events. compare two ends and their view of events. still not competely true
-        for t_conn in G2_dir.edges():
-            t_from, t_to = t_conn
-            if G2_dir.nodes[t_from]["to_state"] == 'solo':
-                if G2_dir.nodes[t_to]["from_state"] == 'solo':
-                    G2_dir.edges[t_conn]['event'] = 'solo'
-                elif G2_dir.nodes[t_to]["from_state"] == 'merge':
-                    G2_dir.edges[t_conn]['event'] = 'merge'
-                else: assert 1 == -1, 'not encountered'
-            elif G2_dir.nodes[t_from]["to_state"] == 'split':
-                if G2_dir.nodes[t_to]["from_state"] == 'solo':
-                    G2_dir.edges[t_conn]['event'] = 'split'
-                elif G2_dir.nodes[t_to]["from_state"] == 'merge':
-                    G2_dir.edges[t_conn]['event'] = 'mixed'
-                else: assert 1 == -1, 'not encountered'
-
-        # if one edge in event is mixed split-merge, all edges in event should be marked as mixed
-        t_events_mixed = [t_conn for t_conn in G2_dir.edges() if G2_dir.edges[t_conn]['event'] == 'mixed']
-        #assert len(t_events_mixed) == 0, 'havent yet dealt with mixed events at this stage'
-        for t_conn in t_events_mixed:
-            t_from, t_to = t_conn
-            t_successors = list(G2_dir.successors(t_from))
-            t_predecessors = list(G2_dir.predecessors(t_to))
-            for t_succ in t_successors:
-                G2_dir.edges[(t_from, t_succ)]['event'] = 'mixed'
-            for t_pred in t_predecessors:
-                G2_dir.edges[(t_pred, t_to  )]['event'] = 'mixed'
-
-        fin_events_dict = {'merge':set(), 'split':set(), 'mixed':set(), 'solo':set()}
-
-        for (t_from, t_to) in G2_dir.edges():
-            t_event_type = G2_dir.edges[(t_from, t_to)]['event']
-            if      t_event_type == 'merge': fin_events_dict[t_event_type].add(t_to)
-            elif    t_event_type == 'split': fin_events_dict[t_event_type].add(t_from)   
-            else:                            fin_events_dict[t_event_type].add((t_from, t_to)) 
-        a = 1
+            
+        G2_dir, _, fin_edges_main = get_event_types_from_segment_graph(G2)    
+        
         t_state = 'merge'
-        t_all_event_IDs = [lr_C1_condensed_connections_relations[t_ID] for t_ID in t_event_start_end_times[t_state]]
-        for t_to in fin_events_dict[t_state]:
-            if t_to not in t_all_event_IDs: continue # event was already resolved without extrapolation
-            t_time_to = G2_dir.nodes[t_to]['t_start']
-            t_predecessors = list(G2_dir.predecessors(t_to))
-            t_times_from = {t:G2_dir.nodes[t]['t_end'] for t in t_predecessors}
-            t_time_from = min(t_times_from.values())
-            t_times_subIDs = t_event_start_end_times[t_state][t_to]['t_subIDs']
-            t_times_subIDs_slice = {t_time:t_subIDs for t_time, t_subIDs in t_times_subIDs.items() if t_time_from <= t_time <= t_time_to}
+        t_all_event_IDs             = [lr_C1_condensed_connections_relations[t_ID] for t_ID in t_event_start_end_times[t_state]]
+        for t_to, t_predecessors in fin_edges_main[t_state].items():
+            if t_to not in t_all_event_IDs: continue # event was already resolved without extrapolation. edit-comment it was not added/deleted from list
+            t_time_to               = G2_dir.nodes[t_to]['t_start']
+            t_times_from            = {t:G2_dir.nodes[t]['t_end'] for t in t_predecessors}
+            t_time_from             = min(t_times_from.values())
+            t_times_subIDs          = t_event_start_end_times[t_state][t_to]['t_subIDs']
+            t_times_subIDs_slice    = {t_time:t_subIDs for t_time, t_subIDs in t_times_subIDs.items() if t_time_from <= t_time <= t_time_to}
             # below not correct. for general case, should check number of branches. OR there is nothing to do except checking for == 1.
             t_times_solo = [t_time for t_time,t_subIDs in t_times_subIDs_slice.items() if len(t_subIDs) == 1] 
             if len(t_times_solo)>0:
                 t_time_solo_min = min(t_times_solo) # min to get closer to branches
                 if t_time_to - t_time_solo_min > 1:
-                    t_times = np.flip(np.arange(t_time_solo_min, t_time_to , 1))
+                    t_times     = np.flip(np.arange(t_time_solo_min, t_time_to , 1))
                     fin_extend_info[(t_to,'back')] = {t_time: combs_different_lengths(t_times_subIDs_slice[t_time]) for t_time in t_times}
 
 
         t_state = 'split'
-        t_all_event_IDs = [lr_C1_condensed_connections_relations[t_ID] for t_ID in t_event_start_end_times[t_state]]
-        for t_from in fin_events_dict[t_state]:
+        t_all_event_IDs             = [lr_C1_condensed_connections_relations[t_ID] for t_ID in t_event_start_end_times[t_state]]
+        for t_from, t_successors in fin_edges_main[t_state].items():
             if t_from not in t_all_event_IDs: continue # event was already resolved without extrapolation
-            t_time_from = G2_dir.nodes[t_from]['t_end']
-            t_successors = list(G2_dir.successors(t_from))
-            t_times_from = {t:G2_dir.nodes[t]['t_start'] for t in t_successors}
-            t_time_to = max(t_times_from.values())
-            t_from_old = None
+            t_time_from             = G2_dir.nodes[t_from]['t_end']
+            t_times_from            = {t:G2_dir.nodes[t]['t_start'] for t in t_successors}
+            t_time_to               = max(t_times_from.values())
+            t_from_old              = None
             for t in t_event_start_end_times[t_state]: # this field uses old IDs. have to recover it.
                 if t_event_start_end_times[t_state][t]['t_start'] == t_time_from: t_from_old = t
             
             if t_from_old is not None:
-                t_times_subIDs = t_event_start_end_times[t_state][t_from_old]['t_subIDs']
+                t_times_subIDs      = t_event_start_end_times[t_state][t_from_old]['t_subIDs']
                 t_times_subIDs_slice = {t_time:t_subIDs for t_time, t_subIDs in t_times_subIDs.items() if t_time_from <= t_time <= t_time_to}
                 # below not correct. for general case, should check number of branches. OR there is nothing to do except checking for == 1.
                 t_times_solo = [t_time for t_time,t_subIDs in t_times_subIDs_slice.items() if len(t_subIDs) == 1] 
@@ -3050,18 +2789,23 @@ for doX in temp:
     # ===============================================================================================
     # =========== Final passes. examine edges of terminated segments. retrieve nodes  ===============
     # ===============================================================================================
+    # WHAT: segments not connected to any other segments, on one or both sides, may still have 
+    # WHAT: stray nodes on ends. These cases were not explored previously.
+    # HOW: find segments with no successors or predecessors. Using Depth Search extract trailing nodes...
     # NOTE: element order in t_conn now is fixed (from, to), numbering hierarchy does not represent order anymore.
     t_start_points  = []
     t_end_points    = []
 
+    # detect terminated segments
     for t_ID in G2.nodes():
         t_successors    = extractNeighborsNext(     G2, t_ID, func_next_neighb)
         t_predecessors  = extractNeighborsPrevious( G2, t_ID, func_prev_neighb)
         if len(t_successors)    == 0: t_end_points.append(t_ID)
         if len(t_predecessors)  == 0: t_start_points.append(t_ID)
-
+    
+    # 
+    # ============= Final passes. Terminated segments. extract trailing nodes =================
     if 1 == 1:
-
         t_back = defaultdict(set)
         for t_ID in t_start_points:
             t_node_from = t_segments_new[t_ID][0]
@@ -3073,7 +2817,7 @@ for doX in temp:
             dfs_succ(G, t_node_from, time_lim = t_node_from[0] + 10, node_set = t_forw[t_ID])
         t_forw = {t:v for t,v in t_forw.items() if len(v) > 1}
 
-
+    # == Final passes. Terminated segments. Generate disperesed node dictionary for extrapolation ==
     for t_ID , t_nodes in t_back.items():
         t_perms = disperse_nodes_to_times(t_nodes)
         t_sorted = sorted(t_perms)[:-1]
@@ -3090,9 +2834,9 @@ for doX in temp:
         fin_extend_info[(t_ID,'forward')] = {t:v for t,v in zip(t_perms, t_values)}
 
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # ===============================================================================================
-    # =========== Final passes. examine edges of terminated segments. extrapolate ===============
-    # ===============================================================================================
+    
+    # ============= Final passes. Terminated segments. Extrapolate segments =================
+    
     t_out                   = defaultdict(dict)
     t_extrapolate_sol       = defaultdict(dict)
     t_extrapolate_sol_comb  = defaultdict(dict)
@@ -3507,8 +3251,8 @@ if 1 == 1:
             minTime = min(minTime,  G2.nodes[t_seg]['t_start'   ])
             maxTime = max(maxTime,  G2.nodes[t_seg]['t_end'     ])
 
-            state_to    = G2.nodes[t_seg]["to_state"   ]
-            state_from  = G2.nodes[t_seg]["from_state" ]
+            state_to    = G2.nodes[t_seg]["state_to"   ]
+            state_from  = G2.nodes[t_seg]["state_from" ]
 
             if state_from == 'merge':
                 t_predecessors  = list(G2.predecessors(t_seg))

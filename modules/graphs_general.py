@@ -383,16 +383,16 @@ def get_event_types_from_segment_graph(graph_input):
             graph.nodes[seg_ID]["state_from"] = 'merge'
             [graph.edges[(t,seg_ID)]["in_events"].add('merge') for t in seg_predecessors]
 
-
+    connections_together = {'solo':[], 'merge':{}, 'split':{}, 'mixed':{}}
     # edge is visited twice as a successor and as a predecessor. type of edge will depend on context
 
     # if both tests result in 'solo' type edge, its a part of segement chain
-    connections_solo = [t_conn for t_conn in graph.edges() if graph.edges[t_conn]["in_events"] == {'solo'}]
+    connections_together['solo'] = [t_conn for t_conn in graph.edges() if graph.edges[t_conn]["in_events"] == {'solo'}]
 
     # for classic merges and splits situation is different. from point of view a branch, it 
     # is coming/going in only into merge/split node, so this connection is 'solo'. same edge from 
     # point of view merge/split node is 'merge'/'split' respectivelly, due to many predecessors/successors
-    connections_other = {'merge':{}, 'split':{}, 'mixed':{}}
+    
     type_split = {'split','solo'}
     type_merge = {'merge','solo'}
     # some edges may act as both split and merge branches, these are mixed type events
@@ -407,7 +407,7 @@ def get_event_types_from_segment_graph(graph_input):
             type_pass   = [edge_type == type_split for edge_type in edge_types.values()]
             if all(type_pass):  
                 # all branches are classic split
-                connections_other['split'][seg_ID] = [t for _, t in edge_types.keys()]
+                connections_together['split'][seg_ID] = [t for _, t in edge_types.keys()]
             else:
                 # check if branches are of mixed type.
                 [edges_mixed.add(edge) for edge,edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
@@ -416,7 +416,7 @@ def get_event_types_from_segment_graph(graph_input):
             edge_types  = {(t, seg_ID): graph.edges[(t, seg_ID)]["in_events"] for t in graph.predecessors(seg_ID)}
             type_pass   = [edge_type == type_merge for edge_type in edge_types.values()]
             if all(type_pass):
-                connections_other['merge'][seg_ID] = [t for t,_ in edge_types.keys()]
+                connections_together['merge'][seg_ID] = [t for t,_ in edge_types.keys()]
             else:
                 [edges_mixed.add(edge) for edge,edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
      
@@ -464,9 +464,9 @@ def get_event_types_from_segment_graph(graph_input):
         intersection = successors_all.intersection(predecessors_all)
         if len(intersection) > 0:
             branches_in = tuple(sorted(list(branches_in) + list(intersection)))  # it will be extrapolated
-        connections_other['mixed'][branches_in] = branches_out
+        connections_together['mixed'][branches_in] = branches_out
 
-    return graph, connections_solo, connections_other
+    return graph, connections_together
 
 if 1 == -1:
     

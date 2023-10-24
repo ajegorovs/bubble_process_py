@@ -200,6 +200,7 @@ def unique_active_segments(start, end, segments_active_dict):
     # filter dict by time : {t_min:[*subIDs_min]..., t_max:[*subIDs_max]}; gather [[*subIDs_min],...,[*subIDs_max]]
     # flatten using sum(_,[]) and gather uniques by set()
     return set(sum([vals for t,vals in segments_active_dict.items() if start <= t <= end],[]))
+
 def lr_reindex_masters(relations, connections, remove_solo_ID = 0):
     output = None
     if type(connections) == list:

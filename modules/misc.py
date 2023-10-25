@@ -221,7 +221,17 @@ def prep_combs_clusters_from_nodes(t_nodes):
         t_return[t_time] += [min(t_subIDs)] # <<<<<<<< in case of many IDs inside, take only minimal, as representative >><<< its not really used currently!!!
     return {t_time:sorted(t_subIDs) for t_time,t_subIDs in t_return.items()}
 
-        
+   
+rel_area_thresh = 2        
+def edge_crit_func(conn,edge,lr_big121s_perms_areas):
+    time1,*subIDs1 = edge[0]; time2,*subIDs2 = edge[1]
+                
+    area1 = lr_big121s_perms_areas[conn][time2][tuple(subIDs2)] 
+    area2 = lr_big121s_perms_areas[conn][time1][tuple(subIDs1)]
+    rel_change = abs(area2-area1)/max(area2, 0.0001)
+    out = True if rel_change < rel_area_thresh else False
+    return out
+
 def split_into_bins(L, num_bins):
     n = len(L)
     
@@ -343,7 +353,56 @@ def order_segment_levels(t_segments, debug = 0):
 
     return t_pos
 
+rescale_linear = lambda x,minX,maxX: (x-minX)/(maxX - minX)
+def two_crit_many_branches(setA,setB,numObjects):
+    # input setA = { crit combination option 1: [branch 1 crit A value 1, branch 2 ...]}. similarly for setB.
+    # e.g setA is a displacement crit for multiple objects. we want to find case where all objects have lowest total crit.
+    # naturally, you would get a "crit combination option X" where sum([branch 1 crit A value 1, branch 2 ...]) is the least.
+    # when other crit is introduced - setB, you would want to do a weighted sum of branch values of A and B.
+    # means you have to rescale each "branch 1 crit A value X" to min-max of all options of branch 1s values X.
 
+    # NOTE: if only 2 options and they are cross- mixed, if none option is simultaneously better 
+    # than other, take setB min as a sol
+    minMaxA = []
+    minMaxB = []
+                
+    # collect all crit values for object with index i. find min and max that object shows.
+    for i in range(numObjects): 
+        temp1 = []
+        temp2 = []
+        for t,vals in setA.items():
+            temp1.append(vals[i])
+        for t,vals in setB.items():
+            temp2.append(vals[i])
+                    
+        minMaxA.append((min(temp1),max(temp1)))
+        minMaxB.append((min(temp2),max(temp2)))
+                
+    # combine setA and setB comb options into single mean & rescaled value.
+    weightedSum = {}
+    for t in setA:
+        weightedSum[t] = []
+        for i in range(numObjects):
+            weightedSum[t].append(0.5*(rescale_linear(setA[t][i], *minMaxA[i]) + rescale_linear(setB[t][i],*minMaxB[i])))
+    weightedSumMean= {t:np.mean(vals) for t, vals in weightedSum.items()}
+    minID = min(weightedSumMean, key = weightedSumMean.get)
+
+    if len(setA) == 2: # with 2 options, with cross crit pass, rescaling breaks and weights become 0.5 and 0.5
+        if np.diff(list(weightedSumMean.values()))[0] == 0.0:
+            maxB = {t:max(vals) for t,vals in setB.items()}
+            minID = min(maxB, key = maxB.get)
+            weightedSumMean = {minID:-1}
+            #A,B = list(setA.keys())
+            #mixedA = True if np.any(setA[A] > setA[B]) else False  
+            #mixedB = True if np.any(setB[A] > setB[B]) else False
+            #if mixedA and mixedB:                                  # logic does not work for 1 object.
+            #    maxB = {t:max(vals) for t,vals in setB.items()}
+            #    minID = min(maxB, key = maxB.get)
+            #    weightedSumMean = {minID:-1}
+            #else:
+            #    assert 1 == -1, 'havent seen this one yet'
+                            
+    return minID, weightedSumMean 
 
 def dfs_pred(graph, node, time_lim, node_set):
     node_set.add(node)

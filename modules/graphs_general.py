@@ -112,23 +112,32 @@ def graph_extract_paths(H,f):
     
     return segments2, skipped
 
-def find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = False, G = None, edges = None, only_subIDs = False):
+def find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = False, G = None, edges = None, only_subIDs = False, max_paths = 20000):
     # extract all possible paths from set of nodes nodes_start to set of nodes nodes_end
     # give edges and set construct_graph = True to create a graph, alternatively supply graph G
-
+    fail = None
+    #many_paths = False
     if construct_graph:
         G = nx.DiGraph()
         G.add_edges_from(edges)
 
     all_paths = []
+    fail_all = {t:False for t in nodes_start}
     for start_node in nodes_start:
         for end_node in nodes_end:
             if nx.has_path(G, source = start_node, target = end_node):
-                paths = list(nx.all_simple_paths(G, source = start_node, target = end_node))
+                paths = []
+                for path in nx.all_simple_paths(G, source = start_node, target = end_node):
+                    paths.append(path)
+                    if len(paths) >= max_paths:
+                        fail = 'to_many_paths'
+                        break
                 if only_subIDs:
                     paths = [[tuple(subIDs) for t,*subIDs in node] for node in paths]
                 all_paths.extend(paths)
-    return all_paths
+            else: fail_all[start_node] = True
+    if all(fail_all.values()): fail = 'no_path'       # if all paths failed seq = []      
+    return all_paths, fail
 
 def comb_product_to_graph_edges(choices_list, thresh_func):
     # to construct all possible branches from list of choices use itertools.product(*choices_list)
@@ -223,7 +232,7 @@ def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_se
     else: return connected_edges
 
 
-def drawH(H, paths, node_positions, fixed_nodes = [], show = True, suptitle = "drawH", figsize = ( 10,5), node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
+def drawH(H, paths, node_positions, fixed_nodes = [], show = False, suptitle = "drawH", figsize = ( 10,5), node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
     colors = {i:np.array(cyclicColor(i))/255 for i in paths}
     colors = {i:np.array([R,G,B]) for i,[B,G,R] in colors.items()}
     colors_edges2 = {}

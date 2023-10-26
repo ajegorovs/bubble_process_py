@@ -85,6 +85,19 @@ def combs_different_lengths(elements_list):
 def unique_sort_list(arg, sort_function = lambda x: x):
     return sorted(list(set(arg)), key = sort_function)
 
+
+def sort_len_diff_f(edge):
+    # i want to sort edges so most massive come first
+    # in addition give prio to least len diff. e.g ((1,2,3),(4,)) worse than ((1,2),(3,4))
+    # choices2 = [[(1,), (2,), (1, 2)], [(4,), (5,), (4, 5)]]
+    # edges = list(itertools.product(*choices2))
+    # --> edges = [ ((1,),(4,)),..., ((1, 2),(4, 5))]
+    node1_length = len(edge[0])
+    node2_length = len(edge[1])
+    total_length = node1_length + node2_length
+    length_difference = abs(node1_length - node2_length)
+    return (total_length, -length_difference)  
+
 def disperse_nodes_to_times(nodes):
     t_perms = defaultdict(list)
     for t, *t_subIDs in nodes:

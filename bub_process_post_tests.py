@@ -2,11 +2,11 @@ import numpy as np, itertools, networkx as nx, sys, copy,  cv2, os, glob, re, pi
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from collections import defaultdict
-from multiprocessing import Pool, log_to_stderr, get_logger
+#from multiprocessing import Pool, log_to_stderr, get_logger
 
-log_to_stderr()
-logger = get_logger()
-logger.setLevel('INFO')
+#log_to_stderr()
+#logger = get_logger()
+#logger.setLevel('INFO')
 
 #import multiprocessing, datetime, random, timeit, time as time_lib, enum
 #from PIL import Image
@@ -18,16 +18,16 @@ logger.setLevel('INFO')
 # ========================================================================================================
 # ============== SET NUMBER OF IMAGES ANALYZED =================
 # ========================================================================================================
-inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\100 sccm' #
-inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\Field OFF\Series 7\300 sccm' #
-inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 265 mT\Series 4\200 sccm' #
+inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\200 sccm' #
+#inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\Field OFF\Series 7\300 sccm' #
+#inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 265 mT\Series 4\200 sccm' #
 # image data subsets are controlled by specifying image index, which is part of an image. e.g image1, image2, image20, image3
 intervalStart   = 1                            # start with this ID
-numImages       = 500                          # how many images you want to analyze.
+numImages       = 3000                          # how many images you want to analyze.
 intervalStop    = intervalStart + numImages     # images IDs \elem [intervalStart, intervalStop); start-end will be updated depending on available data.
 
 exportArchive       = 0                         # implies there are no results that can be reused, of you want to force data initialization stage.
-useIntermediateData = 1 if not exportArchive else 0 # will reuse data if not doing initiale export
+useIntermediateData = 0 
 
 useMeanWindow   = 0                             # averaging intervals will overlap half widths, read more below
 N               = 700                           # averaging window width
@@ -59,8 +59,7 @@ if 1 == 1:                               # prep image links, get min/max image i
 
 mainOutputFolder            = r'.\post_tests'                           # descritive project name e.g [gallium_bubbles, water_bubbles]
 if not os.path.exists(mainOutputFolder): os.mkdir(mainOutputFolder)  
-mainOutputSubFolders =  ['HFS 265 mT',
-                         'sccm200-meanFix_test', 
+mainOutputSubFolders =  ['HFS 200 mT Series 4', 'sccm200-meanFix', 
                          f"{intervalStart:05}-{intervalStop:05}"]       # sub-project folder hierarhy e.g [exp setup, parameter, subset of data]
 
 for folderName in mainOutputSubFolders:     
@@ -135,6 +134,7 @@ binarizedArrPath    = os.path.join(stagesFolder,        "-".join(["binarizedImag
 graphsPath          = os.path.join(dataArchiveFolder,   "-".join(["graphs"              ]+mainOutputSubFolders)+".pickle")
 segmentsPath        = os.path.join(dataArchiveFolder,   "-".join(["segments"            ]+mainOutputSubFolders)+".pickle")
 contoursHulls       = os.path.join(dataArchiveFolder,   "-".join(["contorus"            ]+mainOutputSubFolders)+".pickle")
+mergeSplitEvents    = os.path.join(dataArchiveFolder,   "-".join(["ms-events"           ]+mainOutputSubFolders)+".pickle")
 
 exportArchive = 1 if not os.path.exists(archivePath) else 0 
 
@@ -143,7 +143,7 @@ if exportArchive == 1:
     # ======== CROP USING A MASK (DRAW RED RECTANGLE ON EXPORTED SAMPLE IN MANUAL MASK FOLDER) ==========
     # IF MASK IS MISSING YOU CAN DRAW IT USING GUI
     if cropMaskMissing: # search for a mask at cropMaskPath (project -> setup -> parameter)
-        print(f"No crop mask in {mainOutputFolder} folder!, creating mask : {cropMaskName}.png")
+        print(f"\nNo crop mask in {mainOutputFolder} folder!, creating mask : {cropMaskName}.png")
         mapXY           = (np.load('./mapx.npy'), np.load('./mapy.npy'))
         cv2.imwrite(cropMaskPath, convertGray2RGB(undistort(cv2.imread(imageLinks[0],0), mapXY)))
 
@@ -171,7 +171,7 @@ if exportArchive == 1:
     # =========================== CROP/UNSISTORT AND STORE DATA INTO ARCHIVES ===========================
     # ---------------------------------------------------------------------------------------------------
 
-    print(f"{timeHMS()}: Processing and saving archive data on drive...")
+    print(f"\n{timeHMS()}: Processing and saving archive data on drive...")
     
     if rotateImageBy % 2 == 0 and rotateImageBy != -1: W,H = H,W            # for cv2.XXX rotation commands
 
@@ -179,47 +179,47 @@ if exportArchive == 1:
 
     mapXY       = (np.load('./mapx.npy'), np.load('./mapy.npy'))            # fish-eye correction map
 
-    for i,imageLink in tqdm(enumerate(imageLinks)):
+    for i,imageLink in tqdm(enumerate(imageLinks), total=len(imageLinks)):
         image = undistort(cv2.imread(imageLink,0), mapXY)[Y:Y+H, X:X+W]
         if rotateImageBy != -1:
             dataArchive[i]    = cv2.rotate(image, rotateImageBy)
         else:
             dataArchive[i]    = image
 
-    print(f"{timeHMS()}: Processing and saving archive data on drive...saving compressed")
+    print(f"\n{timeHMS()}: Processing and saving archive data on drive...saving compressed")
     np.savez_compressed(archivePath,dataArchive)
     
-    print(f"{timeHMS()}: Exporting mean image...calculating mean")
+    print(f"\n{timeHMS()}: Exporting mean image...calculating mean")
 
     meanImage = np.mean(dataArchive, axis=0)
-    print(f"{timeHMS()}: Exporting mean image...saving compressed")
+    print(f"\n{timeHMS()}: Exporting mean image...saving compressed")
     np.savez_compressed(meanImagePath,meanImage)
       
-    print(f"{timeHMS()}: Processing and saving archive data on drive... Done!")
+    print(f"\n{timeHMS()}: Processing and saving archive data on drive... Done!")
 
     useIntermediateData = 0           # no need to re-read data you have just created
 
 elif not os.path.exists(archivePath): # did not find ropped image array.
-    print(f"{timeHMS()}: No archive detected! Please generate it from project images. set exportArchive = 1")
+    print(f"\n{timeHMS()}: No archive detected! Please generate it from project images. set exportArchive = 1")
 
 elif useIntermediateData:
-    print(f"{timeHMS()}: Existing archive found! Importing data...")
+    print(f"\n{timeHMS()}: Existing archive found! Importing data...")
     dataArchive = np.load(archivePath)['arr_0']
 
-    print(f"{timeHMS()}: Existing archive found! Importing data... Done!")
+    print(f"\n{timeHMS()}: Existing archive found! Importing data... Done!")
 
     if not os.path.exists(meanImagePath):
-        print(f"{timeHMS()}: No mean image found... Calculating mean")
+        print(f"\n{timeHMS()}: No mean image found... Calculating mean")
 
         meanImage = np.mean(dataArchive, axis=0)
-        print(f"{timeHMS()}: No mean image found... Saving compressed")
+        print(f"\n{timeHMS()}: No mean image found... Saving compressed")
         np.savez_compressed(meanImagePath,meanImage)
 
-        print(f"{timeHMS()}: No mean image found... Done")
+        print(f"\n{timeHMS()}: No mean image found... Done")
     else:
         meanImage = np.load(meanImagePath)['arr_0']
 else:
-    print(f"{timeHMS()}: Did not generate new data, nor imported existing... set exportArchive = 1 or useIntermediateData = 1")
+    print(f"\n{timeHMS()}: Did not generate new data, nor imported existing... set exportArchive = 1 or useIntermediateData = 1")
 
 #cv2.imshow(f'mean',meanImage.astype(np.uint8))
 
@@ -246,19 +246,19 @@ if useMeanWindow == 1 and not useIntermediateData:
     print(intervalIndecies)
 
     if not os.path.exists(meanImagePathArr):
-        print(f"{timeHMS()}: Mean window is enabled. No mean image array found. Generating and saving new...")
+        print(f"\n{timeHMS()}: Mean window is enabled. No mean image array found. Generating and saving new...")
         masksArr = np.array([np.mean(dataArchive[start:stop], axis=0) for start,stop in meanWindows.values()])   # array of discrete averages
 
         with open(meanImagePathArr, 'wb') as handle:
             pickle.dump(masksArr, handle)
-        print(f"{timeHMS()}: Mean window is enabled. No mean image array found. Generating and saving new... Done")
+        print(f"\n{timeHMS()}: Mean window is enabled. No mean image array found. Generating and saving new... Done")
                                                      
 
     else:
-        print(f"{timeHMS()}: Mean window is enabled. Mean image array found. Importing data...")
+        print(f"\n{timeHMS()}: Mean window is enabled. Mean image array found. Importing data...")
         with open(meanImagePathArr, 'rb') as handle:
                 masksArr = pickle.load(handle)
-        print(f"{timeHMS()}: Mean window is enabled. Mean image array found. Importing data... Done!")
+        print(f"\n{timeHMS()}: Mean window is enabled. Mean image array found. Importing data... Done!")
 
 def whichMaskInterval(t,order):                                                                          # as frames go 0,1,..numImgs
     times = np.array(list(order))                                                                        # mean should be taken form the left
@@ -279,30 +279,39 @@ if not useIntermediateData:           # this will pre-calculate some stuff in ca
             return 1
         return ratio    #cv2.convertScaleAbs(image, alpha = 1 / ratio, beta = 0)
         
-
+    do_stage = False
     if useMeanWindow and not os.path.exists(binarizedArrPath): # want mean window and archive does not exist.
         binarizedMaskArr = np.zeros(dataArchive.shape)
         for k in range(dataArchive.shape[0]):
             blurMean = cv2.blur(masksArr[whichMaskInterval(k,intervalIndecies)], (5,5),cv2.BORDER_REFLECT)
             binarizedMaskArr[k] = dataArchive[k] - blurMean   
         #meanImage = masksArr[whichMaskInterval(globalCounter,intervalIndecies)] # copied from diff code
+        do_stage = True
 
     elif not os.path.exists(binarizedArrPath):                # dont want mean window and archive does not exist
         blurMean = cv2.blur(meanImage, (5,5),cv2.BORDER_REFLECT)
+        #cv2.imshow('1',np.uint8(blurMean))
         binarizedMaskArr = dataArchive - blurMean             # substract mean image from stack -> float
+        #cv2.imshow('1',np.uint8(binarizedMaskArr[20]))
+        do_stage = True
 
-    if not os.path.exists(binarizedArrPath):                  # archive does not exist
-        ratio = adjustBrightness(np.uint8(blurMean))
-        binarizedMaskArr = np.array([cv2.convertScaleAbs(img, alpha = ratio, beta = 0) for img in binarizedMaskArr])
+    if do_stage:                  # archive does not exist
+        ratio = 1 #adjustBrightness(np.uint8(blurMean))
+        #binarizedMaskArr = np.array([cv2.convertScaleAbs(img, alpha = ratio, beta = 0) for img in binarizedMaskArr])
+        #cv2.imshow('2',np.uint8(binarizedMaskArr[20]))
         imgH,imgW = blurMean.shape
         thresh0 = 10
         binarizedMaskArr = np.where(binarizedMaskArr < thresh0, 0, 255).astype(np.uint8)                        # binarize stack
+        #cv2.imshow('3',np.uint8(binarizedMaskArr[20]))
         binarizedMaskArr = np.uint8([cv2.morphologyEx(img, cv2.MORPH_OPEN, np.ones((5,5),np.uint8)) for img in binarizedMaskArr])    # delete white objects
+        #cv2.imshow('4',np.uint8(binarizedMaskArr[20]))
         binarizedMaskArr = np.uint8([cv2.dilate(img, np.ones((8,8), np.uint8) ) for img in binarizedMaskArr])    
+        #cv2.imshow('5',np.uint8(binarizedMaskArr[20]))
         binarizedMaskArr = np.uint8([cv2.erode(img, np.ones((5,5), np.uint8) ) for img in binarizedMaskArr]) 
+        #cv2.imshow('6',np.uint8(binarizedMaskArr[20]))
         print(f"{timeHMS()}: Removing small and edge contours...")
         topFilter, bottomFilter, leftFilter, rightFilter, minArea    = 80, 40, 100, 100, 180
-        for i in tqdm(range(binarizedMaskArr.shape[0])):
+        for i in tqdm(range(binarizedMaskArr.shape[0]), total=binarizedMaskArr.shape[0]):
             contours            = cv2.findContours(binarizedMaskArr[i], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[0] #cv2.RETR_EXTERNAL; cv2.RETR_LIST; cv2.RETR_TREE
             areas               = np.array([int(cv2.contourArea(contour)) for contour in contours])
             boundingRectangles  = np.array([cv2.boundingRect(contour) for contour in contours])
@@ -327,17 +336,17 @@ if not useIntermediateData:           # this will pre-calculate some stuff in ca
                 
 
         print(f"\n{timeHMS()}: Removing small and edge contours... Done")
-        print(f"{timeHMS()}: Binarized Array archive not found... Saving")
+        print(f"\n{timeHMS()}: Binarized Array archive not found... Saving")
         np.savez_compressed(binarizedArrPath,binarizedMaskArr)
-        print(f"{timeHMS()}: Binarized Array archive not found... Done")
+        print(f"\n{timeHMS()}: Binarized Array archive not found... Done")
     else:
-        print(f"{timeHMS()}: Binarized Array archive located... Loading")
+        print(f"\n{timeHMS()}: Binarized Array archive located... Loading")
         binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
-        print(f"{timeHMS()}: Binarized Array archive located... Done")
+        print(f"\n{timeHMS()}: Binarized Array archive located... Done")
 
     #err             = cv2.morphologyEx(err.copy(), cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
 
-    print(f"{timeHMS()}: First Pass: obtaining rough clusters using bounding rectangles...")
+    print(f"\n{timeHMS()}: First Pass: obtaining rough clusters using bounding rectangles...")
     t_range              = range(binarizedMaskArr.shape[0])
     g0_bigBoundingRect   = {t:[] for t in t_range}
     g0_bigBoundingRect2  = {t:{} for t in t_range}
@@ -349,7 +358,12 @@ if not useIntermediateData:           # this will pre-calculate some stuff in ca
     g0_contours_centroids= {t:{} for t in t_range} 
     g0_contours_areas    = {t:{} for t in t_range}
 
-    for i in tqdm(range(binarizedMaskArr.shape[0])):
+    # stage 1: extract contours on each binary image. delete small and internal contours.
+    # check for proximity between contours on frame using overlap of bounding rectangles
+    # small objects are less likely to overlap, boost their bounding rectangle to 100x100 pix size
+    # overlapping objects are clusters with ID (time_step,) + tuple(subIDs). contour params are stored
+
+    for i in tqdm(range(binarizedMaskArr.shape[0]), total = binarizedMaskArr.shape[0]):
         # find all local contours
         #contours            = cv2.findContours(binarizedMaskArr[i], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[0]
         contours, hierarchy = cv2.findContours(binarizedMaskArr[i], cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE) #cv2.RETR_EXTERNAL; cv2.RETR_LIST; cv2.RETR_TREE
@@ -404,7 +418,10 @@ if not useIntermediateData:           # this will pre-calculate some stuff in ca
         #a = 1
     print(f"\n{timeHMS()}: First Pass: obtaining rough clusters using bounding rectangles...Done!")
 
-    print(f"{timeHMS()}: First Pass: forming inter-frame relations for rough clusters...")
+
+    # stage 2: check overlap of clusters on two consequetive frames
+    # inter-frame connections are stored
+    print(f"\n{timeHMS()}: First Pass: forming inter-frame relations for rough clusters...")
 
     debug = 0
     g0_clusterConnections  = {ID:[] for ID in range(binarizedMaskArr.shape[0]-1)}
@@ -441,7 +458,9 @@ if not useIntermediateData:           # this will pre-calculate some stuff in ca
             cv2.imshow(f'iter:{t}',img)
 
         a = 1
-
+    # stage 3: create a graph from inter-frame connections and extract connected components
+    # these are bubble trail families which contains bubbles that came into close contact
+    # which can be roughly considered to have merged/split. but its refined later.
     allIDs = sum([list(g0_bigBoundingRect2[t].keys()) for t in g0_bigBoundingRect2],[])
 
     # form a graph from all IDs and pairwise connections
@@ -449,8 +468,10 @@ if not useIntermediateData:           # this will pre-calculate some stuff in ca
     #H = nx.DiGraph()
     H.add_nodes_from(allIDs)
     H.add_edges_from(g0_pairConnections)
-    connected_components_unique = extract_graph_connected_components(H, sort_function = lambda x: (x[0], x[1]))
-
+    connected_components_unique = [sorted(c, key = lambda x: (x[0], x[1])) for c in nx.connected_components(H)]
+    connected_components_unique = sorted(connected_components_unique, key = lambda x: x[0][0])
+    #connected_components_unique = extract_graph_connected_components(H, sort_function = lambda x: (x[0], x[1]))
+    print(f"\n{timeHMS()}: Storing intermediate data...")
     if 1 == 1:
         storeDir = os.path.join(stagesFolder, "intermediateData.pickle")
         with open(storeDir, 'wb') as handle:
@@ -459,7 +480,7 @@ if not useIntermediateData:           # this will pre-calculate some stuff in ca
                 g0_bigBoundingRect2, g0_clusters2, g0_contours,g0_contours_hulls, g0_contours_centroids,
                 g0_contours_areas, g0_pairConnections, H, connected_components_unique, g0_contours_children
             ], handle) 
-
+        print(f"\n{timeHMS()}: Storing intermediate data...Done")
 else:
     print(f"\n{timeHMS()}: Begin loading intermediate data...")
     storeDir = os.path.join(stagesFolder, "intermediateData.pickle")
@@ -473,7 +494,8 @@ else:
 connected_components_unique_0 = copy.deepcopy(connected_components_unique)
 H_0 = copy.deepcopy(H)
 # ======================
-if 1 == 1:
+if 1 == -1:
+    print(f"\n{timeHMS()}: Pre - run images: Generating images")
     segments2 = connected_components_unique_0
     binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
     imgs = [convertGray2RGB(binarizedMaskArr[k].copy()) for k in range(binarizedMaskArr.shape[0])]
@@ -494,13 +516,13 @@ if 1 == 1:
                 startPos2 = g0_contours[time][subID][-30][0] 
                 [cv2.putText(imgs[time], str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
         
-
-    for k,img in enumerate(imgs):
+    print(f"\n{timeHMS()}:  Pre - run images: Saving images")
+    for k,img in tqdm(enumerate(imgs)):
         webp_parameters = [int(cv2.IMWRITE_WEBP_QUALITY), 20]
         filepath = os.path.join(imageFolder_pre_run, f"{str(k).zfill(4)}.webp")
         cv2.imwrite(filepath, img, webp_parameters)
         #cv2.imshow('a',img)
-
+    print(f"\n{timeHMS()}:  Pre - run images: stage is completed.")
 t_all_areas = []
 for t_areas in g0_contours_areas.values():
     t_all_areas += t_areas.tolist()
@@ -537,9 +559,11 @@ temp = [15]
 #temp = [k for k, seg in enumerate(connected_components_unique_0) if len(seg) > 70]
 #temp = [k for k, seg in enumerate(connected_components_unique_0) if len(seg) < 70]
 temp = range(len(connected_components_unique_0))
-for doX in temp:
+max_width = len(str(temp[-1]))
 
-    print(f'\n\n\n{timeHMS()}: working on family {doX}')
+for doX in temp:
+    doX_s = f"{doX:0{max_width}}"
+    print(f'\n\n\n{timeHMS()}:({doX_s}) working on family {doX}')
     test = connected_components_unique_0[doX]                       # specific family of nodes
 
     # isolate a family of nodes into new graph. i avoid using graph.subgraph here because it will still store old data.
@@ -578,6 +602,7 @@ for doX in temp:
     lessRoughBRs = {time: {tuple([time, ID]):cv2.boundingRect(g0_contours[time][ID]) for ID in subIDs} for time, subIDs in lessRoughIDs.items()}
 
      # grab this and next frame cluster bounding boxes
+    print(f'\n{timeHMS()}:({doX_s}) generating rough contour overlaps')
     g0_pairConnections2  = []
     for t in tqdm(activeTimes[:-2]):
         oldBRs = lessRoughBRs[t]
@@ -592,64 +617,65 @@ for doX in temp:
             pairCons2 = sorted(pairCons, key=lambda x: [a[0] for a in x])
             [g0_pairConnections2.append(x) for x in pairCons2]
 
-    print(f"\n{timeHMS()}: Refining small BR overlap with c-c distance...")
-    # ===============================================================================================
-    # ===============================================================================================
-    # ================ Refine two large close passing bubble pre-merge connection ===================
-    # ===============================================================================================
-    # REMARK: to reduce stress future node permutation computation we can detect cases where two
-    # REMARK: bubbles pass in close proximity. bounding rectangle method connects them due to higher
-    # REMARK: bounding rectange overlap chance. Characteristics of these cases are: bubble (node) is
-    # REMARK: connected to future itself and future neighbor. Difference is that distance to itself
-    # REMARK: is much smaller. Proper distance is closest contour-contour distance (which is slow)
+    if 1 == -1:
+        print(f"\n{timeHMS()}:({doX_s}) Refining small BR overlap with c-c distance...")
+        # ===============================================================================================
+        # ===============================================================================================
+        # ================ Refine two large close passing bubble pre-merge connection ===================
+        # ===============================================================================================
+        # REMARK: to reduce stress future node permutation computation we can detect cases where two
+        # REMARK: bubbles pass in close proximity. bounding rectangle method connects them due to higher
+        # REMARK: bounding rectange overlap chance. Characteristics of these cases are: bubble (node) is
+        # REMARK: connected to future itself and future neighbor. Difference is that distance to itself
+        # REMARK: is much smaller. Proper distance is closest contour-contour distance (which is slow)
 
-    t_temp_dists = {t_edge:0 for t_edge in g0_pairConnections2}
-    for t_edge in tqdm(g0_pairConnections2):                                                        # examine all edges
-        t_node_from , t_node_to   = t_edge                                                           
+        t_temp_dists = {t_edge:0 for t_edge in g0_pairConnections2}
+        for t_edge in tqdm(g0_pairConnections2):                                                        # examine all edges
+            t_node_from , t_node_to   = t_edge                                                           
 
-        t_time_from , t_ID_from   = t_node_from                                                      
-        t_time_to   , t_ID_to     = t_node_to                                                        
+            t_time_from , t_ID_from   = t_node_from                                                      
+            t_time_to   , t_ID_to     = t_node_to                                                        
                                                                                                  
-        t_contour_from_area = g0_contours_areas[t_time_from ][t_ID_from ]                           # grab contour are of node_from 
-        t_contour_to_area   = g0_contours_areas[t_time_to   ][t_ID_to   ]                           
-        if t_contour_from_area >= 0.5*g0_area_mean and t_contour_to_area >= 0.5*g0_area_mean:       # if both are relatively large
-            t_contour_from  = g0_contours[t_time_from ][t_ID_from ]                                 # grab contours
-            t_contour_to    = g0_contours[t_time_to   ][t_ID_to   ]                                  
-            t_temp_dists[t_edge] = closes_point_contours(t_contour_from,t_contour_to, step = 5)[1]  # find closest contour-contour distance
+            t_contour_from_area = g0_contours_areas[t_time_from ][t_ID_from ]                           # grab contour are of node_from 
+            t_contour_to_area   = g0_contours_areas[t_time_to   ][t_ID_to   ]                           
+            if t_contour_from_area >= 0.5*g0_area_mean and t_contour_to_area >= 0.5*g0_area_mean:       # if both are relatively large
+                t_contour_from  = g0_contours[t_time_from ][t_ID_from ]                                 # grab contours
+                t_contour_to    = g0_contours[t_time_to   ][t_ID_to   ]                                  
+                t_temp_dists[t_edge] = closes_point_contours(t_contour_from,t_contour_to, step = 5)[1]  # find closest contour-contour distance
                                                                                                  
-    t_temp_dists_large  = [t_edge   for t_edge, t_dist      in t_temp_dists.items() if t_dist >= 7] # extract edges with large dist
-    t_edges_from        = [t_node_1 for t_node_1, _         in t_temp_dists_large]                  # extract 'from' node, it may fork into multiple
-    t_duplicates_pre    = [t_edge   for t_edge in t_temp_dists if t_edge[0] in t_edges_from]        # find edges that start from possible forking nodes
-    t_duplicates_edges_pre_from = [t_node_1 for t_node_1, _ in t_duplicates_pre]                    # extract 'from' node, to count fork branches
+        t_temp_dists_large  = [t_edge   for t_edge, t_dist      in t_temp_dists.items() if t_dist >= 7] # extract edges with large dist
+        t_edges_from        = [t_node_1 for t_node_1, _         in t_temp_dists_large]                  # extract 'from' node, it may fork into multiple
+        t_duplicates_pre    = [t_edge   for t_edge in t_temp_dists if t_edge[0] in t_edges_from]        # find edges that start from possible forking nodes
+        t_duplicates_edges_pre_from = [t_node_1 for t_node_1, _ in t_duplicates_pre]                    # extract 'from' node, to count fork branches
 
-    from collections import Counter                                                                  
-    t_edges_from_count  = Counter(t_duplicates_edges_pre_from)                                      # count forking edges 
-    t_edges_from_count_two = [t_node for t_node,t_num in t_edges_from_count.items() if t_num == 2]  # extract cases with 2 connections- future-
-                                                                                                    # itself and future neighbor
-    t_edges_combs = {t_node:[] for t_node in t_edges_from_count_two}                                # prep t_from_node:neighbors storage
+        from collections import Counter                                                                  
+        t_edges_from_count  = Counter(t_duplicates_edges_pre_from)                                      # count forking edges 
+        t_edges_from_count_two = [t_node for t_node,t_num in t_edges_from_count.items() if t_num == 2]  # extract cases with 2 connections- future-
+                                                                                                        # itself and future neighbor
+        t_edges_combs = {t_node:[] for t_node in t_edges_from_count_two}                                # prep t_from_node:neighbors storage
 
-    for t_node_1, t_node_2 in t_temp_dists:                                                         # walk though all edges
-        if t_node_1 in t_edges_from_count_two:                                                      # visit relevant
-            t_edges_combs[t_node_1] += [t_node_2]                                                   # store neighbors
-                                                                                                    # filter out cases where big nodes
-    t_edges_combs_dists =   {t_node:                                                                # grab distances for these edges
-                                {t_neighbor:t_temp_dists[(t_node,t_neighbor)] for t_neighbor in t_neighbors} 
-                                    for t_node, t_neighbors in t_edges_combs.items()}
+        for t_node_1, t_node_2 in t_temp_dists:                                                         # walk though all edges
+            if t_node_1 in t_edges_from_count_two:                                                      # visit relevant
+                t_edges_combs[t_node_1] += [t_node_2]                                                   # store neighbors
+                                                                                                        # filter out cases where big nodes
+        t_edges_combs_dists =   {t_node:                                                                # grab distances for these edges
+                                    {t_neighbor:t_temp_dists[(t_node,t_neighbor)] for t_neighbor in t_neighbors} 
+                                        for t_node, t_neighbors in t_edges_combs.items()}
 
-    g0_edges_merge_strong   = [(0,0)]*len(t_edges_combs_dists)                                      # predefine storage (bit faster)
-    g0_edges_merge_weak     = [(0,0)]*len(t_edges_combs_dists)
-    for t_k,(t_node_from, t_neighbor_dists) in enumerate(t_edges_combs_dists.items()):
+        g0_edges_merge_strong   = [(0,0)]*len(t_edges_combs_dists)                                      # predefine storage (bit faster)
+        g0_edges_merge_weak     = [(0,0)]*len(t_edges_combs_dists)
+        for t_k,(t_node_from, t_neighbor_dists) in enumerate(t_edges_combs_dists.items()):
 
-        t_node_dist_small   = min(t_neighbor_dists, key = t_neighbor_dists.get)                     # small distance = most likely connection
-        t_node_dist_big     = max(t_neighbor_dists, key = t_neighbor_dists.get)                     # opposite
+            t_node_dist_small   = min(t_neighbor_dists, key = t_neighbor_dists.get)                     # small distance = most likely connection
+            t_node_dist_big     = max(t_neighbor_dists, key = t_neighbor_dists.get)                     # opposite
 
-        g0_edges_merge_strong[  t_k] = (  t_node_from, t_node_dist_small  )                         # these will be asigned as extra property
-        g0_edges_merge_weak[    t_k] = (  t_node_from, t_node_dist_big    )                         # for future analysis on graph formation
+            g0_edges_merge_strong[  t_k] = (  t_node_from, t_node_dist_small  )                         # these will be asigned as extra property
+            g0_edges_merge_weak[    t_k] = (  t_node_from, t_node_dist_big    )                         # for future analysis on graph formation
 
-    G_e_m = nx.Graph()
-    G_e_m.add_edges_from(g0_edges_merge_strong)
-    g0_edges_merge_strong_clusters = extract_graph_connected_components(G_e_m, lambda x: (x[0],x[1]))
-    print(f"\n{timeHMS()}: Refining small BR overlap with c-c distance... done")                     
+        G_e_m = nx.Graph()
+        G_e_m.add_edges_from(g0_edges_merge_strong)
+        g0_edges_merge_strong_clusters = extract_graph_connected_components(G_e_m, lambda x: (x[0],x[1]))
+        print(f"\n{timeHMS()}:({doX_s}) Refining small BR overlap with c-c distance... done")                     
 
     a = 1
 
@@ -678,58 +704,59 @@ for doX in temp:
     G_centroid  = lambda node, graph = G : graph.nodes[node]['centroid']
     G_owner     = lambda node, graph = G : graph.nodes[node]['owner']
 
-    #for t_edge in g0_edges_merge_strong:                                          # assign previously acquired 2 bubble merge 
-    #    G[t_edge[0]][t_edge[1]]['edge_merge_strong'] = True                       # edge of high of high likelihood
+    if 1 == -1:
+        #for t_edge in g0_edges_merge_strong:                                          # assign previously acquired 2 bubble merge 
+        #    G[t_edge[0]][t_edge[1]]['edge_merge_strong'] = True                       # edge of high of high likelihood
 
-    #for t_edge in g0_edges_merge_weak:
-    #    G[t_edge[0]][t_edge[1]]['edge_merge_strong'] = False
+        #for t_edge in g0_edges_merge_weak:
+        #    G[t_edge[0]][t_edge[1]]['edge_merge_strong'] = False
 
-    for t_edge in G.edges():
-        (t_time_from,t_ID_from),(t_time_to,t_ID_to) = t_edge
-        t_area_before   = g0_contours_areas[t_time_from ][t_ID_from ]
-        t_area_after    = g0_contours_areas[t_time_to   ][t_ID_to   ]
-        t_relative_area_change = np.abs((t_area_after-t_area_before)/t_area_before)
+        for t_edge in G.edges():
+            (t_time_from,t_ID_from),(t_time_to,t_ID_to) = t_edge
+            t_area_before   = g0_contours_areas[t_time_from ][t_ID_from ]
+            t_area_after    = g0_contours_areas[t_time_to   ][t_ID_to   ]
+            t_relative_area_change = np.abs((t_area_after-t_area_before)/t_area_before)
 
-        t_centroids_before  = g0_contours_centroids[t_time_from ][t_ID_from ]
-        t_centroids_after   = g0_contours_centroids[t_time_to   ][t_ID_to   ]
-        t_edge_distance     = np.linalg.norm(t_centroids_after-t_centroids_before)
+            t_centroids_before  = g0_contours_centroids[t_time_from ][t_ID_from ]
+            t_centroids_after   = g0_contours_centroids[t_time_to   ][t_ID_to   ]
+            t_edge_distance     = np.linalg.norm(t_centroids_after-t_centroids_before)
 
-        G[t_edge[0]][t_edge[1]]['edge_rel_area_change'  ] = t_relative_area_change
-        G[t_edge[0]][t_edge[1]]['edge_distance'         ] = t_edge_distance
+            G[t_edge[0]][t_edge[1]]['edge_rel_area_change'  ] = t_relative_area_change
+            G[t_edge[0]][t_edge[1]]['edge_distance'         ] = t_edge_distance
 
 
-    distances       = nx.get_edge_attributes(G, 'edge_distance'         )
-    area_changes    = nx.get_edge_attributes(G, 'edge_rel_area_change'  )
-    tt = []
-    tt2 = []
-    for path in g0_edges_merge_strong_clusters:
-        path_distances      = [distances[edge] for edge in zip(path, path[1:])]
-        path_area_changes   = [area_changes[edge] for edge in zip(path, path[1:])]
-        tt.append(path_distances)
-        tt2.append(path_area_changes)
-    t_edges_strong_2 = []
-    for t_nodes_path, t_dists, t_areas_rel in zip(g0_edges_merge_strong_clusters,tt,tt2):
-        t_dist_mean = np.mean(t_dists)
-        t_dist_std  = np.std( t_dists)
-        t_dist_low_max          = True if max(t_dists)              <  20    else False
-        t_dist_low_dispersion   = True if 2*t_dist_std/t_dist_mean  <= 0.2   else False
-        t_area_rel_low_max      = True if max(t_areas_rel)          <  0.2   else False
-        if t_dist_low_max and t_dist_low_dispersion and t_area_rel_low_max:
-            t_edges = [t_edge for t_edge in zip(t_nodes_path, t_nodes_path[1:])]
-            t_edges_strong_2 += t_edges
+        distances       = nx.get_edge_attributes(G, 'edge_distance'         )
+        area_changes    = nx.get_edge_attributes(G, 'edge_rel_area_change'  )
+        tt = []
+        tt2 = []
+        for path in g0_edges_merge_strong_clusters:
+            path_distances      = [distances[edge] for edge in zip(path, path[1:])]
+            path_area_changes   = [area_changes[edge] for edge in zip(path, path[1:])]
+            tt.append(path_distances)
+            tt2.append(path_area_changes)
+        t_edges_strong_2 = []
+        for t_nodes_path, t_dists, t_areas_rel in zip(g0_edges_merge_strong_clusters,tt,tt2):
+            t_dist_mean = np.mean(t_dists)
+            t_dist_std  = np.std( t_dists)
+            t_dist_low_max          = True if max(t_dists)              <  20    else False
+            t_dist_low_dispersion   = True if 2*t_dist_std/t_dist_mean  <= 0.2   else False
+            t_area_rel_low_max      = True if max(t_areas_rel)          <  0.2   else False
+            if t_dist_low_max and t_dist_low_dispersion and t_area_rel_low_max:
+                t_edges = [t_edge for t_edge in zip(t_nodes_path, t_nodes_path[1:])]
+                t_edges_strong_2 += t_edges
 
-    t_edges_strong_node_start = [t_edge[0] for t_edge in t_edges_strong_2]
-    t_edges_weak_discard = []
-    for t_edge in g0_edges_merge_weak:
-        if t_edge[0] in t_edges_strong_node_start:
-            t_edges_weak_discard.append(t_edge)
+        t_edges_strong_node_start = [t_edge[0] for t_edge in t_edges_strong_2]
+        t_edges_weak_discard = []
+        for t_edge in g0_edges_merge_weak:
+            if t_edge[0] in t_edges_strong_node_start:
+                t_edges_weak_discard.append(t_edge)
 
-    G.remove_edges_from(t_edges_weak_discard)
-    g0_pairConnections2 = [t_edge for t_edge in g0_pairConnections2 if t_edge not in t_edges_weak_discard]
+        G.remove_edges_from(t_edges_weak_discard)
+        g0_pairConnections2 = [t_edge for t_edge in g0_pairConnections2 if t_edge not in t_edges_weak_discard]
 
-    g0_pairConnections2_OG = copy.deepcopy(g0_pairConnections2)
+        g0_pairConnections2_OG = copy.deepcopy(g0_pairConnections2)
     a = 1
-
+    print(f'\n{timeHMS()}:({doX_s}) Detecting frozen bubbles ... ')
     f = lambda x : x[0]
 
     segments_fb, skipped = graph_extract_paths(G, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
@@ -814,6 +841,7 @@ for doX in temp:
 
     allIDs = [t_node for t_node in allIDs if t_node not in t_remove_nodes + fb_remove_nodes_inter]
 
+    print(f'\n{timeHMS()}:({doX_s}) Detecting frozen bubbles ... DONE')
     segments2, skipped = graph_extract_paths(G, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
 
     segments2 = [a for _,a in segments2.items() if len(a) > 2]  # >>>>>>>> LIMIT MIN LENGTH
@@ -847,7 +875,7 @@ for doX in temp:
     lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
 
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
+    print(f'\n{timeHMS()}:({doX_s}) Determining connectivity between segments... ')
     # ===============================================================================================
     # ===============================================================================================
     # === find POSSIBLE interval start-end connectedness: start-end exist within set time interval ==
@@ -860,7 +888,7 @@ for doX in temp:
     # get start and end of good segments
     lr_seg_nodes_start_end  = [[t[0],t[-1]] for t in segments2]
     lr_all_start            = np.array([a[0][0] for a in lr_seg_nodes_start_end])
-    lr_seg_end_all              = np.array([a[1][0] for a in lr_seg_nodes_start_end])
+    lr_seg_end_all          = np.array([a[1][0] for a in lr_seg_nodes_start_end])
 
     # get nodes that begin not as a part of a segment = node with no prior neigbors
     lr_nodes_other = []
@@ -890,8 +918,8 @@ for doX in temp:
     # === find ACTUAL interval start-end connectedness: get all connected paths if there are any ==
     # ===============================================================================================
     # REMARK: refine previously acquired potential segment connectedness by searching paths between
-
-    for t_ID_from, t_IDs_to in lr_DTPass_segm.items():
+    print(f'\n{timeHMS()}:({doX_s}) Checking paths between segments ...')
+    for t_ID_from, t_IDs_to in tqdm(lr_DTPass_segm.items()):
         # analyze graph for paths between segment connection that satisfy DT criterium.
         # to avoid paths though different segments, nodes with 2 criterium are isolated on a subgraph:
         # 1) nodes that exist on (time_min , time_min + DT) interval (not really DT, but to start of a  next segment)
@@ -1122,7 +1150,7 @@ for doX in temp:
                 t_to_subIDs = sorted(set([t_to for t in t_from_subIDs for t_to in lr_conn_splits_merges_mixed_dict[t]]))
                 lr_conn_mixed_from_to[tuple(t_from_subIDs)] = tuple(t_to_subIDs)
             a = 1
-
+    print(f'\n{timeHMS()}:({doX_s}) Working on one-to-one (121) segment connections ... ')
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # ===============================================================================================
     # === PROCESS SEGMENT-SEGMENT CONNECTIONS THAT ARE CONNECTED ONLY TOGETHER (ONE-TO-ONE; 121) ====
@@ -1298,8 +1326,25 @@ for doX in temp:
     lr_conn_edges_merges    = lr_reindex_masters(lr_zp_redirect, lr_conn_edges_merges   )
     lr_conn_edges_splits    = lr_reindex_masters(lr_zp_redirect, lr_conn_edges_splits   )
     lr_conn_edges_splits_merges_mixed = lr_reindex_masters(lr_zp_redirect, lr_conn_edges_splits_merges_mixed   )
-    
+    temp = {}
+    for t_state, t_dict in lr_ms_edges_brnch.items():
+        temp[t_state] = {}
+        for a,b in t_dict.items():
+            c, d = lr_zp_redirect[a], lr_zp_redirect[b]
+            if c != d: temp[t_state][c] = d
+    lr_ms_edges_brnch = temp
     a = 1
+
+    #'fk_event_branchs' inherits 'lr_ms_edges_main', but 'solo' and 'mixed' are not used
+    temp = {}
+    for t_state in ['merge','split']:
+        temp[t_state] = {}
+        for t_ID, t_subIDs in lr_ms_edges_main[t_state].items():
+            t_ID_new = lr_zp_redirect[t_ID]
+            t_subIDs_new = [lr_zp_redirect[t] for t in t_subIDs]
+            temp[t_state][t_ID_new] = t_subIDs_new
+    lr_ms_edges_main = temp
+
 
     fk_time_active_segments = defaultdict(list)                                     
     for k,t_segment in enumerate(segments2):
@@ -1322,9 +1367,10 @@ for doX in temp:
     
         # 121s are connected to other segments, if these segments are other 121s, then we can connect 
         # them into bigger one and recover using more data.
-        lr_big_121s_chains = extract_graph_connected_components(G_seg_view_1.to_undirected(), lambda x: x)
-
-        print(f'\n{timeHMS()}: Working on joining all continious 121s together: {lr_big_121s_chains}')
+        #lr_big_121s_chains = extract_graph_connected_components(G_seg_view_1.to_undirected(), lambda x: x)
+        lr_big_121s_chains = [sorted(c, key = lambda x: x) for c in nx.connected_components(G_seg_view_1.to_undirected())]
+        lr_big_121s_chains = sorted(lr_big_121s_chains, key = lambda x: x[0])
+        print(f'\n{timeHMS()}:({doX_s}) Working on joining all continious 121s together: {lr_big_121s_chains}')
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<        
     # big 121s terminate at zero neighbors, real or pseudo merges/splits 
         # both cannot easily tell the difference between real and pseudo. have search for recombination 
@@ -1343,7 +1389,7 @@ for doX in temp:
         #fk_event_branchs = {'merge':defaultdict(list),'split':defaultdict(list)}
         #[fk_event_branchs['merge'][t_to     ].append(t_from ) for t_from,t_to in lr_conn_edges_merges]    
         #[fk_event_branchs['split'][t_from   ].append(t_to   ) for t_from,t_to in lr_conn_edges_splits]
-        fk_event_branchs = lr_ms_edges_main.copy()
+        fk_event_branchs = lr_ms_edges_main.copy()  #lr_ms_edges_main used last time
         if 1 == 1:
             t_segment_ID_left   = [t_subIDs[0] for t_subIDs in lr_big_121s_chains]
             t_segment_ID_right  = [t_subIDs[-1] for t_subIDs in lr_big_121s_chains]
@@ -1360,7 +1406,7 @@ for doX in temp:
             # find if right is part of merge, and with whom
             for t, t_ID in enumerate(t_segment_ID_right):               # order in big 121s, right segment ID.
                 if t_ID in lr_ms_edges_brnch['merge']:
-                    fk_merge_to[t_ID] = lr_ms_edges_brnch['merge'][t_ID]
+                    fk_merge_to[t_ID] = lr_ms_edges_brnch['merge'][t_ID]    # lr_ms_edges_brnch used last time
                     t_index_has_merge.append(t) 
 
             # extract big 121s that are in no need of real/pseudo m/s analysis.
@@ -1392,7 +1438,7 @@ for doX in temp:
         # 4)    other branch spans larger times. kind of meh crit. cannot know in case of random bubble popping out.
         # 5)    check area change right near an event. this will rule out random neighbor bubble.
         #       this will also rule out if your segment is a random bubble.
-        print(f'\n{timeHMS()}: Determining if end points of big 121s are pseudo events: ')
+        print(f'\n{timeHMS()}:({doX_s}) Determining if end points of big 121s are pseudo events: ')
         if 1 == 1:
             t_big121s_merge_conn_fake = []
             t_big121s_split_conn_fake = []
@@ -1418,6 +1464,7 @@ for doX in temp:
                     continue     
 
                 t_from_other            = [t for t in t_from_branches if t != t_from][0]
+                t_from_other_new = lr_zp_redirect[t_from_other]
                 t_time_from_other_start = G.nodes[  segments2[t_from_other  ][0 ]   ]["time"]
                 t_time_from_from_end    = G.nodes[  segments2[t_from_from   ][-1]   ]["time"]
                 if t_time_from_from_end >= t_time_from_other_start:  # branch overlaps from_from
@@ -1579,7 +1626,7 @@ for doX in temp:
                 
             lr_big121s_perms_pre[(t_from,t_to)] = t_node_subIDs_all
 
-        print(f'\n{timeHMS()}: Fake merges: {t_big121s_merge_conn_fake}, Fake splits: {t_big121s_split_conn_fake}')
+        print(f'\n{timeHMS()}:({doX_s}) Fake merges: {t_big121s_merge_conn_fake}, Fake splits: {t_big121s_split_conn_fake}')
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # -----------------------------------------------------------------------------------------------
         # PSEUDO MERGE/SPLIT ON EDGES: TRIM BIG 121S AS TO DROP FAKE M/S.
@@ -1614,9 +1661,9 @@ for doX in temp:
                         if t_to in t_subIDs:
                             lr_big121s_conn_121.append(t_conn)
                             break
-        print(f'\n{timeHMS()}: Trimmed big 121s: {lr_big121s_conn_121}\nInterpolating whole big 121s...')
+        print(f'\n{timeHMS()}:({doX_s}) Trimmed big 121s: {lr_big121s_conn_121}\nInterpolating whole big 121s...')
 
-        # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        # for_graph_plots(G, segs = segments2, show = False)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # -----------------------------------------------------------------------------------------------
         # BIG 121S INTERPOLATE COMBINED TRAJECTORIES, GIVEN FULL INFO REDISTRIBUTE FOR DATA FOR EACH CONN
         # -----------------------------------------------------------------------------------------------
@@ -1675,7 +1722,7 @@ for doX in temp:
         # WHY:  Bubble may be any combination of contour subIDs at a given time. 
         # HOW:  itertools combinations of varying lenghts
 
-        print(f'\n{timeHMS()}: Computing contour element permutations for each time step...')
+        print(f'\n{timeHMS()}:({doX_s}) Computing contour element permutations for each time step...')
         if 1 == 1:
             # if "lr_zp_redirect" is not trivial, drop resolved zp edges
             lr_big121s_edges_relevant
@@ -1697,7 +1744,7 @@ for doX in temp:
         # =================  PRE-CALCULATE HULL CENTROIDS AND AREAS FOR EACH PERMUTATION ================
         # ===============================================================================================
         # WHY: these will be reused alot in next steps, store them to avoid need of recalculation
-        print(f'\n{timeHMS()}: Calculating parameters for possible contour combinations...')
+        print(f'\n{timeHMS()}:({doX_s}) Calculating parameters for possible contour combinations...')
         if 1 == 1:    
             lr_big121s_perms_areas      = AutoCreateDict()
             lr_big121s_perms_centroids  = AutoCreateDict()
@@ -1722,7 +1769,7 @@ for doX in temp:
         # WHY:  each branch represents a bubbles contour ID evolution through unresolved intervals.
         # HOW: either though itertools product, or if number of branches is big, dont consider
         # HOW: branches where area changes more than set threshold. 
-        print(f'\n{timeHMS()}: Generating possible bubble evolution paths from prev combinations...')
+        print(f'\n{timeHMS()}:({doX_s}) Generating possible bubble evolution paths from prev combinations...')
 
         
 
@@ -1794,7 +1841,7 @@ for doX in temp:
         # ===============================================================================================
         # WHAT: calculate how area and centroids behave for each evolution
         # WHY:  evolutions with least path length and area changes should be right ones
-        print(f'\n{timeHMS()}: Determining evolutions thats are closest to interpolated missing data...')
+        print(f'\n{timeHMS()}:({doX_s}) Determining evolutions thats are closest to interpolated missing data...')
         
         t_temp_centroids = {t_conn:t_dict['centroids'] for t_conn,t_dict in lr_big121s_interpolation.items()}
         t_args = [lr_big121s_conn_121, lr_big121s_perms_cases,t_temp_centroids,lr_big121s_perms_times,
@@ -1811,7 +1858,7 @@ for doX in temp:
 
         lr_C0_condensed_connections_relations = lr_zp_redirect.copy()
         t_zp_redirect_inheritance = {a:b for a,b in lr_zp_redirect.items() if a != b}
-        print(f'\n{timeHMS()}: Saving results for restored parts of big 121s')
+        print(f'\n{timeHMS()}:({doX_s}) Saving results for restored parts of big 121s')
         t_last_seg_ID_in_big_121s   = [t[-1]    for t in t_big121s_edited if t is not None]
         t_big121s_edited_clean      = [t        for t in t_big121s_edited if t is not None]
 
@@ -1850,7 +1897,7 @@ for doX in temp:
         lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
 
         #for_graph_plots(G, segs = t_segments_new) 
-        print(f'\n{timeHMS()}: Working on real and fake events (merges/splits):\nPreparing data...')
+        print(f'\n{timeHMS()}:({doX_s}) Working on real and fake events (merges/splits):\nPreparing data...')
         # ===============================================================================================
         # ============ RECALCULATE MERGE/SPLIT/MIXED EVENTS (FOR ACTUAL EVENT PROCESSING) ===============
         # ===============================================================================================
@@ -1921,10 +1968,15 @@ for doX in temp:
 
                 t_subgraph = G.subgraph(t_nodes_keep)   
 
-                t_segments_keep = t_predecessors + [t_to]  
-                t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_from_min, t_t_to_start, lr_time_active_segments,
-                                                                       t_segments_new, t_segments_keep, ref_node = t_node_to_first) 
-                t_node_subIDs_all = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
+                #t_segments_keep = t_predecessors + [t_to]  
+                #t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_from_min, t_t_to_start, lr_time_active_segments,
+                #                                                       t_segments_new, t_segments_keep, ref_node = t_node_to_first) 
+                #t_node_subIDs_all = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
+
+                t_sol2 = set()
+                dfs_pred(t_subgraph, t_node_to_first, time_lim = t_t_from_min , node_set = t_sol2)
+                t_node_subIDs_all = disperse_nodes_to_times(t_sol2) # reformat sol into time:subIDs
+                t_node_subIDs_all = {t:sorted(t_node_subIDs_all[t]) for t in sorted(t_node_subIDs_all)}
                 
                 t_active_IDs = {t:[] for t in np.arange(t_t_from_min + 1, t_t_to_start)}
                 for t_from, t_times_all in t_times.items():
@@ -1950,24 +2002,29 @@ for doX in temp:
                 t_t_start = G2.nodes[t_from_new]["t_end"]
                 t_times         = {t:np.arange(t_t_start, t_t_end + 1, 1) for t,t_t_end in t_successors_times.items()}
                 
-
+                t_node_from = t_segments_new[t_from_new][-1]
                 # pre-isolate graph segment where all sub-events take place
                 t_t_to_max = max(t_successors_times.values())
 
                 if t_t_to_max - t_t_start <= 1: continue
 
-                t_nodes_keep    = [node for node in G.nodes() if t_t_start <= node[0] <= t_t_to_max and G.nodes[node]['owner'] is None]
+                t_nodes_keep    = [node for node in G.nodes() if t_t_start < G_time(node) < t_t_to_max and G_owner(node) is None]
 
-                for t in t_from_successors:
-                    t_nodes_keep.append(t_segments_new[t][0])
+                #for t in t_from_successors:
+                #    t_nodes_keep.append(t_segments_new[t][0])
                 t_nodes_keep.append(t_segments_new[t_from_new][-1])
 
                 t_subgraph = G.subgraph(t_nodes_keep)   # big subgraph
 
-                t_segments_keep = t_from_successors + [t_from_new]  
-                t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_start, t_t_to_max, lr_time_active_segments,
-                                                                       t_segments_new, t_segments_keep, ref_node = t_segments_new[t_from_new][-1]) 
-                t_node_subIDs_all = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
+                #t_segments_keep = t_from_successors + [t_from_new]  
+                #t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_start, t_t_to_max, lr_time_active_segments,
+                #                                                       t_segments_new, t_segments_keep, ref_node = t_node_from) 
+                #t_node_subIDs_all = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
+
+                t_sol2 = set()
+                dfs_succ(t_subgraph, t_node_from, time_lim = t_t_to_max , node_set = t_sol2)
+                t_node_subIDs_all = disperse_nodes_to_times(t_sol2) # reformat sol into time:subIDs
+                t_node_subIDs_all = {t:sorted(t_node_subIDs_all[t]) for t in sorted(t_node_subIDs_all)}
 
                 t_active_IDs = {t:[] for t in np.arange(t_t_to_max -1, t_t_start, -1)} #>>> reverse for reverse re
 
@@ -1984,7 +2041,7 @@ for doX in temp:
 
                 t_split_real_from_ID_resolved.append(t_from_new)
 
-            print(f'\n{timeHMS()}: Real merges({lr_ms_edges_main["merge"]})/splits({lr_ms_edges_main["split"]})... Done')
+            print(f'\n{timeHMS()}:({doX_s}) Real merges({lr_ms_edges_main["merge"]})/splits({lr_ms_edges_main["split"]})... Done')
 
             # ------------------------------------- FAKE MERGE/SPLIT -------------------------------------
             t_state = 'merge'
@@ -2135,7 +2192,7 @@ for doX in temp:
     # we are interested in segments that are not part of psuedo branches (because they will be integrated into path)
     # pre merge segments will be extended, post split branches also, but backwards. 
     # for pseudo event can take an average paramets for prev and post segments.
-    print(f'\n{timeHMS()}: Determining interpolation parameters k and s for segments...')
+    print(f'\n{timeHMS()}:({doX_s}) Determining interpolation parameters k and s for segments...')
     t_fake_branches_IDs = []
     for t_ID in t_merge_fake_to_ID:
         t_fake_branches_IDs += t_event_start_end_times['merge'][t_ID]['branches']
@@ -2193,7 +2250,7 @@ for doX in temp:
     # ===============================================================================================
     # ====  deal with fake event recovery ====
     # ===============================================================================================
-    print(f'\n{timeHMS()}: Working on fake events...')
+    print(f'\n{timeHMS()}:({doX_s}) Working on fake events...')
     # -------------- determine segment start and end, find k_s, store info --------------------------
 
     def get_k_s(t_from_k_s, t_to_k_s, backup = (1,5)):
@@ -2229,7 +2286,7 @@ for doX in temp:
     # ----------------------- interpolate missing events with known history-----------------------
     # interpolate
     # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    print(f'\n{timeHMS()}: Performing interpolation on data without fake branches')
+    print(f'\n{timeHMS()}:({doX_s}) Performing interpolation on data without fake branches')
     a = 1
     for t_ID,t_param_dict in t_fake_events_k_s_edge_master.items():
         t_state         = t_param_dict['state'  ] 
@@ -2259,7 +2316,7 @@ for doX in temp:
             lr_big121s_interpolation[t_conn]['areas'    ] = np.array(t_interpolation_areas_0    )   
             lr_big121s_interpolation[t_conn]['times'    ] = t_times_missing_all
     # ----------------- Evaluate and find most likely evolutions of path -------------------------
-    print(f'\n{timeHMS()}: Finding most possible path evolutions...')
+    print(f'\n{timeHMS()}:({doX_s}) Finding most possible path evolutions...')
     if 1 == 1:
         t_temp_centroids = {}           # generate temp interpolation data storage
         t_temp_cases = {}
@@ -2284,7 +2341,7 @@ for doX in temp:
         lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems =  lr_weighted_sols(t_temp_cases, t_weights, t_sols, t_temp_cases )
     a = 1 # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # ----------------- Save recovered fake event paths -------------------------
-    print(f'\n{timeHMS()}: Saving fake event data...')
+    print(f'\n{timeHMS()}:({doX_s}) Saving fake event data...')
     if  1 == 1:
             for t_ID_old,t_param_dict in t_fake_events_k_s_edge_master.items():
                 t_ID = lr_C0_condensed_connections_relations[t_ID_old]
@@ -2317,8 +2374,9 @@ for doX in temp:
     G_seg_view_2 = nx.Graph()
     G_seg_view_2.add_edges_from([(x,y) for y,x in lr_C0_condensed_connections_relations.items()])
 
-    lr_C1_condensed_connections = extract_graph_connected_components(G_seg_view_2, lambda x: x)
-
+    #lr_C1_condensed_connections = extract_graph_connected_components(G_seg_view_2, lambda x: x)
+    lr_C1_condensed_connections = [sorted(c, key = lambda x: x) for c in nx.connected_components(G_seg_view_2)]
+    lr_C1_condensed_connections = sorted(lr_C1_condensed_connections, key = lambda x: x[0])
     # lets condense all sub-segments into one with smallest index. EDIT: give each segment index its master. since number of segments will shrink anyway
     t_condensed_connections_all_nodes = sorted(sum(lr_C1_condensed_connections,[])) # neext next
     lr_C1_condensed_connections_relations = {tID: tID for tID in range(len(segments2))} 
@@ -2348,7 +2406,7 @@ for doX in temp:
     ms_mixed_completed      = {'full': defaultdict(dict),'partial': defaultdict(dict)} 
     lr_post_branch_rec_info = {}
     ms_early_termination = {}
-    print(f'\n{timeHMS()}: Analyzing real merge/split events. extending branches: {ms_branch_extend_IDs} ... ')
+    print(f'\n{timeHMS()}:({doX_s}) Analyzing real merge/split events. extending branches: {ms_branch_extend_IDs} ... ')
     for t_ID, t_state in ms_branch_extend_IDs:
         if t_state in ('merge','split'):
             t_branches = t_event_start_end_times[t_state][t_ID]['branches']
@@ -2661,7 +2719,7 @@ for doX in temp:
     print(f'were missing: {tt}')
     
 
-
+    print(f'\n{timeHMS()}:({doX_s}) Final. Recompute new straight segments')
     # ===============================================================================================
     # ============== Final passes. New straight segments. ===================
     # ===============================================================================================
@@ -2717,7 +2775,7 @@ for doX in temp:
 
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # for_graph_plots(G, segs = t_segments_fin)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
+    print(f'\n{timeHMS()}:({doX_s}) Final. Update connectivity')
     # ============== Final passes. New straight segments. Update connectivity ===================
     #G2.add_edges_from(G2.edges())
     G2_new = nx.DiGraph()
@@ -2758,6 +2816,7 @@ for doX in temp:
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     if 1 == 1:
+        print(f'\n{timeHMS()}:({doX_s}) Final. Extrapolate edges. Branches of splits/merges')
         # ===============================================================================================
         # ========================= Final passes. recompute split/merge/mixed info ======================
         # ===============================================================================================
@@ -2813,6 +2872,7 @@ for doX in temp:
                         
         a = 1
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    print(f'\n{timeHMS()}:({doX_s}) Final. Extrapolate edges. Terminated segments')
     # ===============================================================================================
     # =========== Final passes. examine edges of terminated segments. retrieve nodes  ===============
     # ===============================================================================================
@@ -2860,7 +2920,7 @@ for doX in temp:
         fin_extend_info[(t_ID,'forward')] = {t:v for t,v in zip(t_perms, t_values)}
 
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    
+    print(f'\n{timeHMS()}:({doX_s}) Final. Extrapolate edges. Extrapolate')
     # ============= Final passes. Terminated segments. Extrapolate segments =================
     t_report                = set()
     t_out                   = defaultdict(dict)
@@ -3108,7 +3168,7 @@ for doX in temp:
             export_time_active_segments[t].append(k)
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     
-
+    print(f'\n{timeHMS()}:({doX_s}) Final. Recalculate connectivity')
     # ======= EXPORT. RECALCULATE CONNECTIONS BETWEEN SEGMENTS ========================
     G2_new = nx.DiGraph()
 
@@ -3116,7 +3176,7 @@ for doX in temp:
     t_segment_time_start    = np.array([G2.nodes[t]["t_start"] for t in t_segments_relevant])
     
 
-    for t_ID_from in t_segments_relevant:        
+    for t_ID_from in tqdm(t_segments_relevant):        
         G2_new.add_node(t_ID_from)
         G2_new.nodes()[t_ID_from]["t_start"   ] = G_time(t_segments_new[t_ID_from][0] )
         G2_new.nodes()[t_ID_from]["t_end"     ] = G_time(t_segments_new[t_ID_from][-1])
@@ -3234,8 +3294,8 @@ if 1 == 1:
 
 
     
-    print(f"{timeHMS()}: Saving Archives...")
-    with open(graphsPath,   'wb') as handle:
+    print(f"\n{timeHMS()}: Saving Archives...")
+    with open(graphsPath,   'wb')   as handle:
         pickle.dump(graphs_all_dict,        handle) 
 
     with open(segmentsPath, 'wb') as handle:
@@ -3243,11 +3303,15 @@ if 1 == 1:
 
     with open(contoursHulls,'wb') as handle:
         pickle.dump(contours_all_dict,      handle) 
-    print(f"{timeHMS()}: Saving Archives... Done")  
+
+    with open(mergeSplitEvents, 'wb') as handle:
+        pickle.dump(events_split_merge_mixed,        handle) 
+
+    print(f"\n{timeHMS()}: Saving Archives... Done")  
     a = 1
     # image export needs edited graphs
     if 1 == 1:
-        print(f"{timeHMS()}: Processing output images...")
+        print(f"\n{timeHMS()}: Processing output images...")
         binarizedMaskArr = np.load(archivePath)['arr_0']#np.load(binarizedArrPath)['arr_0']
         imgs = [None]*binarizedMaskArr.shape[0]
         relevant_times = np.arange(minTime,maxTime + 1,1)
@@ -3301,7 +3365,7 @@ if 1 == 1:
                     for subID in subIDs:
                         startPos2 = contours_all_dict[t_time][subID][-30][0] 
                         [cv2.putText(imgs[t_time], str(subID), startPos2, font, fontScale, clr,s, cv2.LINE_AA) for s, clr in zip([thickness,1],[(255,255,255),(0,0,0)])]
-        print(f"{timeHMS()}: Processing output images...Done")
+        print(f"\n{timeHMS()}: Processing output images...Done")
         print(f"{timeHMS()}: Saving {len(relevant_times)} Images...")
 
         #def parallel_task(x):

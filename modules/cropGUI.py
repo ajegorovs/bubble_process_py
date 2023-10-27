@@ -41,7 +41,7 @@ def cropGUI(filename, width=1200, height=600):
     #cropped_basename = os.path.basename(cropped_filename)
     # Store a clone of the original image (without selected region annotation).
     clone = image.copy() 
-    print('PRESS C to CROP! Esc to close after')
+    print('Drag mouse to expand rectangle diagonal. PRESS C to CROP! Esc to close after')
     def region_selection(event, x, y, flags, param): 
         """Callback function to handle mouse events related to region selection."""
         global select_coords, selecting, image, clone

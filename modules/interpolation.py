@@ -78,8 +78,8 @@ def extrapolate_find_k_s(trajectory, time, t_k_s_combs, k_all, k_s_buffer_len_ma
     errors_sol_all   = {}
     errors_sol_diff_norms_all   = {}
     # track previous error value for each k and track wheter iterator for set k should skip rest s.
-    t_last_error_k  = {k:0.0 for k in k_all}
-    t_stop_k        = {k:0 for k in k_all}
+    t_last_error_k  = {k:None for k in k_all} # if during first iteration error is rounded to 0.0, you will have trouble.
+    t_stop_k        = {k:0 for k in k_all}    # None should force first iteration for k to be finished
     # MAYBE redo so same trajectory part is ran with different k and s parameters instead of change parts for one comb of k,s
     # EDIT, it does not let you break early if no change is detected. trade off? idk
     for t_comb in t_k_s_combs:
@@ -120,7 +120,7 @@ def extrapolate_find_k_s(trajectory, time, t_k_s_combs, k_all, k_s_buffer_len_ma
         else:
             errors_tot_all[t_comb] = -1
             errors_sol_diff_norms_all[t_comb] = {}
-
+    assert len(errors_tot_all)>0 ,'no iterations happened'
     t_OG_comb_sol = min(errors_tot_all, key=errors_tot_all.get)
 
     if debug:

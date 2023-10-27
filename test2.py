@@ -884,33 +884,43 @@ if 1== -1:
         print(f"Branch: {branch}, Value: {value}")
 
 import itertools
+if 1 == -1:
+    def combs_different_lengths(elements_list):
+        return sum([list(itertools.combinations(elements_list, r)) for r in range(1,len(elements_list)+1)],[])
+    choices = [(1,2,3),(4,5)]
+    choices2 = [combs_different_lengths(t) for t in choices]
+    edges = list(itertools.product(*choices2))
+    #edges = [((1,), (2,)), ((1, 2, 3), (4,)), ((1,), (3, 4, 5)), ((1, 2), (3, 4)),((1,1,1,1),(1,))]
 
-def combs_different_lengths(elements_list):
-    return sum([list(itertools.combinations(elements_list, r)) for r in range(1,len(elements_list)+1)],[])
-choices = [(1,2,3),(4,5)]
-choices2 = [combs_different_lengths(t) for t in choices]
-edges = list(itertools.product(*choices2))
-#edges = [((1,), (2,)), ((1, 2, 3), (4,)), ((1,), (3, 4, 5)), ((1, 2), (3, 4)),((1,1,1,1),(1,))]
+    # Define a custom sorting key function
+    def sorting_key(edge):
+        # i want to sort edges so most massive come first
+        # in addition give prio to least len diff. e.g ((1,2,3),(4,)) worse than ((1,2),(3,4))
+        # choices2 = [[(1,), (2,), (1, 2)], [(4,), (5,), (4, 5)]]
+        # edges = list(itertools.product(*choices2))
+        # --> edges = [ ((1,),(4,)),..., ((1, 2),(4, 5))]
+        node1_length = len(edge[0])
+        node2_length = len(edge[1])
+        total_length = node1_length + node2_length
+        length_difference = abs(node1_length - node2_length)
+        return (total_length, -length_difference)  
 
-# Define a custom sorting key function
-def sorting_key(edge):
-    # i want to sort edges so most massive come first
-    # in addition give prio to least len diff. e.g ((1,2,3),(4,)) worse than ((1,2),(3,4))
-    # choices2 = [[(1,), (2,), (1, 2)], [(4,), (5,), (4, 5)]]
-    # edges = list(itertools.product(*choices2))
-    # --> edges = [ ((1,),(4,)),..., ((1, 2),(4, 5))]
-    node1_length = len(edge[0])
-    node2_length = len(edge[1])
-    total_length = node1_length + node2_length
-    length_difference = abs(node1_length - node2_length)
-    return (total_length, -length_difference)  
+    # Sort the list of edges
+    sorted_edges = sorted(edges, key=sorting_key, reverse=True)  
 
-# Sort the list of edges
-sorted_edges = sorted(edges, key=sorting_key, reverse=True)  
+    # Print the sorted edges
+    for edge in sorted_edges:
+        print(edge)
+import pickle
+pt = r'C:\Users\mhd01\source\repos\ajegorovs\bubble_process_py\post_tests\HFS 200 mT Series 4\sccm100-meanFix\00001-03000\archives'
+storeDir = os.path.join(pt, "ms-events-HFS 200 mT Series 4-sccm100-meanFix-00001-03000.pickle")
+with open(storeDir, 'rb') as handle:
+    events_split_merge_mixed = pickle.load(handle)
 
-# Print the sorted edges
-for edge in sorted_edges:
-    print(edge)
+pt = r'C:\Users\mhd01\source\repos\ajegorovs\bubble_process_py\post_tests\HFS 200 mT Series 4\sccm100-meanFix\00001-03000\archives'
+storeDir = os.path.join(pt, "segments-HFS 200 mT Series 4-sccm100-meanFix-00001-03000.pickle")
+with open(storeDir, 'rb') as handle:
+    trajectories_all_dict = pickle.load(handle)
 
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key

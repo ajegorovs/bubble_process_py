@@ -911,16 +911,29 @@ if 1 == -1:
     # Print the sorted edges
     for edge in sorted_edges:
         print(edge)
-import pickle
-pt = r'C:\Users\mhd01\source\repos\ajegorovs\bubble_process_py\post_tests\HFS 200 mT Series 4\sccm100-meanFix\00001-03000\archives'
-storeDir = os.path.join(pt, "ms-events-HFS 200 mT Series 4-sccm100-meanFix-00001-03000.pickle")
-with open(storeDir, 'rb') as handle:
-    events_split_merge_mixed = pickle.load(handle)
+if 1 == -1:
+    import pickle
+    pt = r'C:\Users\mhd01\source\repos\ajegorovs\bubble_process_py\post_tests\HFS 200 mT Series 4\sccm100-meanFix\00001-03000\archives'
+    storeDir = os.path.join(pt, "ms-events-HFS 200 mT Series 4-sccm100-meanFix-00001-03000.pickle")
+    with open(storeDir, 'rb') as handle:
+        events_split_merge_mixed = pickle.load(handle)
 
-pt = r'C:\Users\mhd01\source\repos\ajegorovs\bubble_process_py\post_tests\HFS 200 mT Series 4\sccm100-meanFix\00001-03000\archives'
-storeDir = os.path.join(pt, "segments-HFS 200 mT Series 4-sccm100-meanFix-00001-03000.pickle")
-with open(storeDir, 'rb') as handle:
-    trajectories_all_dict = pickle.load(handle)
+    pt = r'C:\Users\mhd01\source\repos\ajegorovs\bubble_process_py\post_tests\HFS 200 mT Series 4\sccm100-meanFix\00001-03000\archives'
+    storeDir = os.path.join(pt, "segments-HFS 200 mT Series 4-sccm100-meanFix-00001-03000.pickle")
+    with open(storeDir, 'rb') as handle:
+        trajectories_all_dict = pickle.load(handle)
+
+import random
+def rand_int_inteval():
+    interval_start = random.randint(0, 10)
+    interval_length = random.randint(2, 4)
+    return np.arange(interval_start, interval_start + interval_length)
+
+interval_gen = (rand_int_inteval() for _ in range(1000000000)) 
+first_suitable_interal = next((inteval for inteval in interval_gen if 5 in inteval))
+
+
+
 
 k = cv2.waitKey(0)
 if k == 27:  # close on ESC key

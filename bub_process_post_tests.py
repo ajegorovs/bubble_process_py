@@ -18,16 +18,17 @@ from collections import defaultdict
 # ========================================================================================================
 # ============== SET NUMBER OF IMAGES ANALYZED =================
 # ========================================================================================================
-inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\200 sccm' #
-#inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\Field OFF\Series 7\300 sccm' #
-#inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 265 mT\Series 4\200 sccm' #
+#inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\350 sccm' #
+#inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\Field OFF\Series 7\350 sccm' #
+#inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\VFS 125 mT\Series 5\350 sccm' #
+inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 125 mT\Series 1\150 sccm'
 # image data subsets are controlled by specifying image index, which is part of an image. e.g image1, image2, image20, image3
 intervalStart   = 1                            # start with this ID
 numImages       = 3000                          # how many images you want to analyze.
 intervalStop    = intervalStart + numImages     # images IDs \elem [intervalStart, intervalStop); start-end will be updated depending on available data.
 
 exportArchive       = 0                         # implies there are no results that can be reused, of you want to force data initialization stage.
-useIntermediateData = 0 
+useIntermediateData = 1 
 
 useMeanWindow   = 0                             # averaging intervals will overlap half widths, read more below
 N               = 700                           # averaging window width
@@ -59,7 +60,7 @@ if 1 == 1:                               # prep image links, get min/max image i
 
 mainOutputFolder            = r'.\post_tests'                           # descritive project name e.g [gallium_bubbles, water_bubbles]
 if not os.path.exists(mainOutputFolder): os.mkdir(mainOutputFolder)  
-mainOutputSubFolders =  ['HFS 200 mT Series 4', 'sccm200-meanFix', 
+mainOutputSubFolders =  ['HFS 125 mT Series 1', 'sccm150-meanFix', 
                          f"{intervalStart:05}-{intervalStop:05}"]       # sub-project folder hierarhy e.g [exp setup, parameter, subset of data]
 
 for folderName in mainOutputSubFolders:     
@@ -555,7 +556,7 @@ contours_all_dict = {}
 events_split_merge_mixed = {}
 
 issues_all_dict = defaultdict(dict) #[2]:#[19]:#
-temp = [15]
+temp = [24]
 #temp = [k for k, seg in enumerate(connected_components_unique_0) if len(seg) > 70]
 #temp = [k for k, seg in enumerate(connected_components_unique_0) if len(seg) < 70]
 temp = range(len(connected_components_unique_0))
@@ -2155,7 +2156,7 @@ for doX in temp:
                 t_active_IDs = {t:[] for t in t_times_all[1:]}
 
                 # get non-segment nodes within event time inteval
-                t_nodes_keep    = [node for node in G.nodes() if t_t_from_min < node[0] <= t_t_to_max and G.nodes[node]['owner'] is None] # < excluded edges
+                t_nodes_keep    = [node for node in G.nodes() if t_t_from_min < G_time(node) <= t_t_to_max and G_owner(node) is None] # < excluded edges
                 # add start of t_to segment, which are branch extension targets. 
                 for t in t_to_all:
                     t_nodes_keep.append(t_segments_new[t][0])
@@ -2164,10 +2165,15 @@ for doX in temp:
                 G.add_edges_from(t_fake_edges)
                 t_subgraph = G.subgraph(t_nodes_keep)   
 
-                t_segments_keep = t_from_all_new + list(t_to_all)
+                ref_node = t_segments_new[t_to_all[0]][0]
+
+                t_sols = nx.connected_components(t_subgraph.to_undirected())
                 
-                t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_from_min + 1, t_t_to_max, lr_time_active_segments,
-                                                                t_segments_new, t_segments_keep, ref_node = t_segments_new[t_to_all[0]][0]) 
+                t_sol = next((t for t in t_sols if ref_node in t), None)
+                assert t_sol is not None, 'cannot find connected components'
+                #t_segments_keep = t_from_all_new + list(t_to_all)
+                #t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_from_min + 1, t_t_to_max, lr_time_active_segments,
+                #                                                t_segments_new, t_segments_keep, ref_node = t_segments_new[t_to_all[0]][0]) 
                 G.remove_edges_from(t_fake_edges)
                 t_node_subIDs_all = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
 
@@ -2538,20 +2544,21 @@ for doX in temp:
                     t_perms_distribution2 = [[list(t)] for t in combs_different_lengths(t_subIDs)]  # if only one choice, gen diff perms of contours
                 else:
                     t_perms_distribution2 = list(split_into_bins(t_subIDs,len(t_branch_IDs)))       # multiple choices, get perm distrib options
-
+                t_perms_distribution2 = [[tuple(sorted(b)) for b in a] for a in t_perms_distribution2]
                 t_permutation_params = {}
                 t_permutations = combs_different_lengths(t_subIDs)
+                t_permutations = [tuple(sorted(a)) for a in t_permutations]
                 for t_permutation in t_permutations:
                     t_hull = cv2.convexHull(np.vstack([g0_contours[t_time_next][tID] for tID in t_permutation]))
                     t_permutation_params[t_permutation] = centroid_area(t_hull)
 
                 t_diff_choices      = {}      # holds index key on which entry in t_perms_distribution2 has specifict differences with target values.
                 t_diff_choices_area = {}
-                for t, t_redist_case in enumerate(t_perms_distribution2):
-                    t_centroids = np.array([t_permutation_params[tuple(t)][0] for t in t_redist_case])
-                    t_areas     = np.array([t_permutation_params[tuple(t)][1] for t in t_redist_case])
-                    t_diff_choices[t]   = np.linalg.norm(t_centroids_extrap - t_centroids, axis=1)
-                    t_diff_choices_area[t]    = np.abs(t_areas_extrap - t_areas)/t_areas_extrap
+                for k, t_redist_case in enumerate(t_perms_distribution2):
+                    t_centroids             = np.array([t_permutation_params[t][0] for t in t_redist_case])
+                    t_areas                 = np.array([t_permutation_params[t][1] for t in t_redist_case])
+                    t_diff_choices[k]       = np.linalg.norm(t_centroids_extrap - t_centroids, axis=1)
+                    t_diff_choices_area[k]  = np.abs(t_areas_extrap - t_areas)/t_areas_extrap
                 a = 1
                 # -------------------------------- refine simultaneous solution ---------------------------------------
                 # evaluating sum of diffs is a bad approach, becaues they may behave differently
@@ -2559,9 +2566,9 @@ for doX in temp:
                 t_norms_all     = {t:np.array(  t_all_norm_buffers[t].get_data()) for t in t_branch_IDs}
                 t_max_diff_all  = {t:max(np.mean(n),5) + 5*np.std(n)              for t,n in t_norms_all.items()}
                 t_relArea_all = {}
-                for t in t_branch_IDs:
-                    t_area_hist = t_all_area_buffers[t].get_data()
-                    t_relArea_all[t] = np.abs(np.diff(t_area_hist))/t_area_hist[:-1]
+                for k in t_branch_IDs:
+                    t_area_hist         = t_all_area_buffers[k].get_data()
+                    t_relArea_all[k]    = np.abs(np.diff(t_area_hist))/t_area_hist[:-1]
                 t_max_relArea_all  = {t:max(np.mean(n) + 5*np.std(n), 0.35) for t,n in t_relArea_all.items()}
 
                 
@@ -2642,9 +2649,10 @@ for doX in temp:
 
                             if t_nodes_solution in t_nodes_target.values():
                                 t_target_ID = find_key_by_value(t_nodes_target,t_nodes_solution)         # if this node is in list of target nodes
+
                                 ms_mixed_completed['full'][(t_branch_ID,)]['solution'] = t_nodes_sol_subIDs  # consider path recovered
                                 if 'targets' not in ms_mixed_completed['full'][(t_branch_ID,)]: ms_mixed_completed['full'][(t_branch_ID,)]['targets'] = []
-                                ms_mixed_completed['full'][(t_branch_ID,)]['targets'].append(t_target_ID)
+                                ms_mixed_completed['full'][(t_branch_ID,)]['targets'].append(t_target_ID)    
                                 t_branch_failed.append(t_branch_ID)                                          # add branch to failed list. to stop from extending it further
                             else:                                                                            # if not in list of tar nodes
                                 set1 = set(t_subIDs_target[t_time_next])
@@ -2687,12 +2695,13 @@ for doX in temp:
         # principle of save_connections_X is decribed in "misc.save_connections_two_ways"
         if len(t_conn) == 2:    t_from, t_to = t_conn
         else:                   t_from, t_to = t_conn[0], -1
+        t_from_new = lr_C1_condensed_connections_relations[t_from]
         t_combs = t_extrapolate_sol_comb[t_conn]
 
         if len(t_combs) == 0: continue                              # no extension, skip.
 
         if t_state in ('merge', 'mixed') and t_conn not in ms_mixed_completed['full']:
-            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  None, G, G2, lr_C1_condensed_connections_relations, g0_contours)
+            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from_new,  None, G, G2, lr_C1_condensed_connections_relations, g0_contours)
         elif t_state == 'split':
             save_connections_splits(t_segments_new, t_extrapolate_sol_comb[t_conn], None,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
         else:
@@ -2701,7 +2710,7 @@ for doX in temp:
             t_from_other_predecessors = [lr_C1_condensed_connections_relations[t] for t in extractNeighborsPrevious(G2, t_to, func_prev_neighb) if t != t_conn[0]]
             t_edges = [(t, t_to) for t in t_from_other_predecessors]
             G2.remove_edges_from(t_edges)
-            save_connections_two_ways(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
+            save_connections_two_ways(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from_new,  t_to, G, G2, lr_C1_condensed_connections_relations, g0_contours)
 
 
     # for_graph_plots(G, segs = t_segments_new, suptitle = f'{doX}_after', show = True)        

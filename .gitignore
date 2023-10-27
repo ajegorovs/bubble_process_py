@@ -25,3 +25,6 @@
 /post_tests/Field OFF
 /post_tests/HFS 265 mT
 /post_tests/HFS 200 mT Series 4
+/post_tests/Field OFF Series 7
+/post_tests/HFS 125 mT Series 1
+/post_tests/VFS 125 mT Series 5

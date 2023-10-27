@@ -80,6 +80,7 @@ def rect2contour(rect):
     return np.array([(x,y),(x+w,y),(x+w,y+h),(x,y+h)],int).reshape(-1,1,2)
 
 def combs_different_lengths(elements_list):
+    resort = lambda list_of_tuple: sorted(list_of_tuple, key=lambda x: (x[0], x[1:]))
     return sum([list(itertools.combinations(elements_list, r)) for r in range(1,len(elements_list)+1)],[])
 
 def unique_sort_list(arg, sort_function = lambda x: x):

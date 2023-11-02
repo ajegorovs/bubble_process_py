@@ -1,5 +1,5 @@
 # bubble_process_py
-series of images with raising bubbles -> time series analysis
+
 Algorithm is designed to extract contours from a series of imges depicting bubbles flow. Original case works with images that are of high contrast images as can seen on image below
 ![My Image](README_FILES/img0027.bmp)
 fish-eye correction is applied to images using predefined (mapx.npy,mapy.npy) parameter array (openCV image calibration):
@@ -77,6 +77,51 @@ and we check if extrapolation has led on of exit branch.
 when we do this some nodes may be dropped from event. sometimes these node reveal that there is another, previously hidden branch, is located inside event.
 
 if we do a second iteration of this whole graph refinement process, we can take a second glance at events and achieve additional refinement
+
+> code is not finished. its cleaned in most places, but some stuff is hanging unused.
+> some parts need rework, additional modules, refactoring
+
+WORKFLOW IS AS FOLLOWS (UNFINISHED):
+
+0) do a backflip
+1) launch VS project. might want to create empty and copy on top, instead of cloning. something did not go
+
+2) case setup (input):
+	
+	set inputImageFolder to fodler with images. images have to named as string with order interger.
+	set intervalStart to an intger. this will be the first image in a sequence. int will be extracted from file name.
+	set exportArchive = 1 to output exports such as mean image cropped images and binarize images,...
+	set useIntermediateData = 1 if you plan to restart and want to skip cropping and binarization stages
+	set useMeanWindow = 1 and N, to use moving average like mean image subtraction, where N is mean window width
+	set rotateImageBy to -1= no rotation, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_180 
+
+3) case setup (output):
+	set mainOutputFolder to your project name. 
+	set mainOutputSubFolders  = [case, subcase, f"{intervalStart:05}-{intervalStop:05}"]
+		this will create folder system. i.e case = 'magnetic system 01'; subcase = 'distance = 1 cm'
+	['images', 'stages',  'archives', 'graphs'] will be created in deepest folder for output
+	imageFolder_pre_run is for folder name for pre-analyis output, for debugging
+	imageFolder_output is .. post analysis
+4) 
+	topFilter, bottomFilter, leftFilter, rightFilter, minArea remove contours new FoV according to these dinstances in pix.
+
+	minChildrenArea = drop contours of area less than this
+
+	fb_radiuss set distance which represents min total displacement of a segment. these are for frozen in place bubbles. drop them
+
+	lr_maxDT maximal time steps left and right of segments at which to search connections to other segments. this slows down alot
+		since not optimized well for hard cases. kind of want to keep large. but needs optimization...
+	
+	t_weights are weights for different criteria : t_sols_c, t_sols_c_i, t_sols_a, t_sols_m ( centroids1,2, area, moment if inertia), last same as area
+	
+	k_s_ stuff for inderpolation... idk. it very specific. did not test on anything else
+
+	may be something else
+
+
+
+on run you will be asked to create a crop mask
+
 
 
 

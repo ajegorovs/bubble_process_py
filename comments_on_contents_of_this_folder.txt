@@ -1,0 +1,25 @@
+
+FOLDERS:
+	code_old_version -  	folder with files for old implementation of tracking. it did not use graph approach
+				but did forward extrapolation. merge-split events are more robust there than i current code.
+
+	misc_files	 - 	relocated some files required for tests but are not essential.
+
+	modules          - 	modules that i import into new version of codes
+
+	post_tests       -	it is a main project name for new code output. post implies its for new version code.
+
+	test_formats     - 	did some tests with exporting formats. will delete later.
+FILES:
+	mapx.npy and mapy.npy - contain camera calibration params
+
+	bub_process_post_tests.py - is a new graph based approach code 
+	
+	bub_process_post_tests_results_dump_to_excel.py - processed results of new code and formats them into xlsx files.
+
+	bub_process_post_tests_stray_node_part.py - is removed part of new code where you search for solo
+		nodes in the end and try to check if they belong to some bubbles.
+
+	test.py and test2.py (newest) - are python scripts where i run various tests.
+	
+	

@@ -1,9 +1,9 @@
 {
   "ExpandedNodes": [
     "",
+    "\\modules",
     "\\post_tests",
-    "\\post_tests\\base code examples",
-    "\\post_tests\\modules"
+    "\\post_tests\\base code examples"
   ],
   "SelectedNode": "\\bub_process_post_tests.py",
   "PreviewInSolutionExplorer": false

@@ -20,8 +20,8 @@ from collections import defaultdict
 # ========================================================================================================
 #inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\350 sccm' #
 #inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\Field OFF\Series 7\350 sccm' #
-#inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\VFS 125 mT\Series 5\350 sccm' #
-inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 125 mT\Series 1\150 sccm'
+inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\VFS 125 mT\Series 5\350 sccm' #
+#inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 125 mT\Series 1\350 sccm'
 # image data subsets are controlled by specifying image index, which is part of an image. e.g image1, image2, image20, image3
 intervalStart   = 1                            # start with this ID
 numImages       = 3000                          # how many images you want to analyze.
@@ -60,7 +60,7 @@ if 1 == 1:                               # prep image links, get min/max image i
 
 mainOutputFolder            = r'.\post_tests'                           # descritive project name e.g [gallium_bubbles, water_bubbles]
 if not os.path.exists(mainOutputFolder): os.mkdir(mainOutputFolder)  
-mainOutputSubFolders =  ['HFS 125 mT Series 1', 'sccm150-meanFix', 
+mainOutputSubFolders =  ['VFS 125 mT Series 5', 'sccm350-meanFix', 
                          f"{intervalStart:05}-{intervalStop:05}"]       # sub-project folder hierarhy e.g [exp setup, parameter, subset of data]
 
 for folderName in mainOutputSubFolders:     
@@ -556,7 +556,7 @@ contours_all_dict = {}
 events_split_merge_mixed = {}
 
 issues_all_dict = defaultdict(dict) #[2]:#[19]:#
-temp = [24]
+temp = [59]
 #temp = [k for k, seg in enumerate(connected_components_unique_0) if len(seg) > 70]
 #temp = [k for k, seg in enumerate(connected_components_unique_0) if len(seg) < 70]
 temp = range(len(connected_components_unique_0))
@@ -2156,10 +2156,19 @@ for doX in temp:
                 t_active_IDs = {t:[] for t in t_times_all[1:]}
 
                 # get non-segment nodes within event time inteval
-                t_nodes_keep    = [node for node in G.nodes() if t_t_from_min < G_time(node) <= t_t_to_max and G_owner(node) is None] # < excluded edges
+                t_nodes_keep    = [node for node in G.nodes() if t_t_from_min < G_time(node) < t_t_to_max and G_owner(node) is None] # < excluded edges
                 # add start of t_to segment, which are branch extension targets. 
-                for t in t_to_all:
-                    t_nodes_keep.append(t_segments_new[t][0])
+                #for t in t_to_all:
+                #    t_nodes_keep.append(t_segments_new[t][0])
+
+                # i had problems with nodes due to  internal events. t_node_subIDs_all was missing times.
+                # ill add all relevant segments to subgraph along stray nodes. gather connected components
+                # and then subract all segment nodes, except first target nodes.
+                t_nodes_segments_all = []
+                for t in t_from_all + t_to_all:
+                    t_nodes_segments_all.extend(t_segments_new[t])
+                t_nodes_keep.extend(t_nodes_segments_all)
+
                 # had cases where target nodes are decoupled and are out of connected components. connect them temporary
                 t_fake_edges = list(itertools.combinations(t_target_nodes.values(), 2))
                 G.add_edges_from(t_fake_edges)
@@ -2171,11 +2180,16 @@ for doX in temp:
                 
                 t_sol = next((t for t in t_sols if ref_node in t), None)
                 assert t_sol is not None, 'cannot find connected components'
+                t_sol = [t for t in t_sol if t not in t_nodes_segments_all]
+
+                for t in t_to_all:
+                    t_sol.append(t_segments_new[t][0])
                 #t_segments_keep = t_from_all_new + list(t_to_all)
                 #t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_from_min + 1, t_t_to_max, lr_time_active_segments,
                 #                                                t_segments_new, t_segments_keep, ref_node = t_segments_new[t_to_all[0]][0]) 
                 G.remove_edges_from(t_fake_edges)
                 t_node_subIDs_all = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
+                t_node_subIDs_all = {t:t_node_subIDs_all[t] for t in sorted(t_node_subIDs_all)}
 
                 for t_from in t_from_all_new: # from end of branch time to event max time
                     for t_time in np.arange(t_predecessors_times_end[t_from] + 1, t_t_to_max + 1, 1):
@@ -3119,6 +3133,12 @@ for doX in temp:
         #if there is only one solution by default take it as answer
         if len(variants_possible) == 1:  
             t_choice_evol = variants_possible[0]
+        elif len(variants_possible) == 0:
+            t_problematic_conns = set()
+            [t_problematic_conns.update(t_conns) for t_conns in t_duplicates.values()]
+            for t_conn in t_problematic_conns:
+                t_extrapolate_sol_comb.pop(t_conn, None)
+            t_choice_evol = []
         else:
             # method is not yet constructed, it should be based on criterium minimization for all variants
             # current, trivial solution, is to pick solution at random. at least there is no overlap.

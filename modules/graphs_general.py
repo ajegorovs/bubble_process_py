@@ -125,7 +125,8 @@ def find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = False, G 
     fail_all = {t:False for t in nodes_start}
     for start_node in nodes_start:
         for end_node in nodes_end:
-            if nx.has_path(G, source = start_node, target = end_node):
+            G.add_nodes_from([start_node,end_node]) # for safety. they might not be in. nx.has_path will throw an error
+            if nx.has_path(G, source = start_node, target = end_node):    # otherwise it will fail to find path.
                 paths = []
                 for path in nx.all_simple_paths(G, source = start_node, target = end_node):
                     paths.append(path)

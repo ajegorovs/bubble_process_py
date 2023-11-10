@@ -5,6 +5,7 @@ from collections import defaultdict
 from bubble_params import (centroid_area_cmomzz)
 from misc import (cyclicColor, order_segment_levels, prep_combs_clusters_from_nodes)
 
+#G = None
 def extractNeighborsNext(graph, node, time_from_node_function):
     neighbors = list(graph.neighbors(node))
     return [n for n in neighbors if time_from_node_function(n) > time_from_node_function(node)]
@@ -357,6 +358,57 @@ def set_custom_node_parameters(graph, contour_data, nodes_list, owner, calc_hull
 
     return 
 
+
+def graph_check_paths(graph_node, graph_seg, graph_seg_new, segment_relevant_IDs, times_start_all, time_DT_max, segments_all, report):
+
+    # method to find connected segments. connection can be established only stray nodes = paths though other segments are not considered
+    # connections are checked in forward direction with segments within specific maximum DT time interval (its cheap and fast)
+    # depending on graph and segments there might be a lot of connections to check
+    # connections are determined by searching paths between segments which are using only stray nodes (on an isolated subgraph)
+    # additional method is implemented which drops path checks that are apriori impossible, which can be determined after a short test.
+    # test works on principle: 'you need stray nodes to find pathways instead of consructing subgraph and look for paths, see if 
+    # there are time steps between segments in which there are no stray nodes. paths cannot be constructed over these holes.
+    G_time      = lambda node, graph = graph_node : graph.nodes[node]['time']
+    G_owner     = lambda node, graph = graph_node : graph.nodes[node]['owner']
+
+    available_stray_node_times  = set()
+    for node in graph_node.nodes():
+        if G_owner(node) == None: available_stray_node_times.add(G_time(node))
+
+    for ID_from in segment_relevant_IDs:
+        graph_seg_new.add_node(ID_from)
+        graph_seg_new.nodes()[ID_from]["t_start"   ] = G_time(segments_all[ID_from][0   ])
+        graph_seg_new.nodes()[ID_from]["t_end"     ] = G_time(segments_all[ID_from][-1  ])
+        time_from    = graph_seg.nodes[ID_from]["t_end"]
+        time_diffs   = times_start_all - time_from
+
+        index_pass_DT = np.where((1 <= time_diffs) & (time_diffs <= time_DT_max))[0]
+        IDs_DT_pass   = segment_relevant_IDs[index_pass_DT]
+
+        node_from = segments_all[ID_from][-1]
+        time_from = G_time(node_from)
+
+        for ID_to in IDs_DT_pass:
+            node_to = segments_all[ID_to][0]
+            time_to = G_time(node_to)
+            edge    = (ID_from,ID_to)
+            #  return time of first hole or none = either pass or neighbor segment is right next to it
+            first_hole_time = next((t for t in (k for k in range(time_from +1 , time_to )) if t not in available_stray_node_times), None) 
+            #has_holes =  first_hole_time if first_hole_time is not None else False
+            #has_holes_pass_dict = {edge:first_hole_time} if first_hole_time is not None else {edge:False} 
+            
+            #if not has_holes_pass_dict[edge]:   # pass  = no holes ; not True = False -> dont do if-else. pass = no holes = time
+            if first_hole_time is None:
+                nodes_keep    = [node for node in graph_node.nodes() if time_from <= G_time(node) <= time_to and G_owner(node) is None] 
+                nodes_keep.extend([node_from,node_to])
+                subgraph = graph_node.subgraph(nodes_keep)
+                hasPath = nx.has_path(subgraph, source = node_from, target = node_to)
+                if hasPath:
+                    graph_seg_new.add_edge(ID_from, ID_to, dist = time_to - time_from + 1)
+            else:
+                report[edge] = first_hole_time
+
+    return graph_seg_new
 
 def get_event_types_from_segment_graph(graph_input):
 

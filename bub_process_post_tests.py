@@ -2,7 +2,7 @@ import numpy as np, itertools, networkx as nx, sys, copy,  cv2, os, glob, re, pi
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from collections import defaultdict
-G = nx.Graph()
+
 #from multiprocessing import Pool, log_to_stderr, get_logger
 
 #log_to_stderr()

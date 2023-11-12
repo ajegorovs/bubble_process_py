@@ -376,9 +376,16 @@ def graph_check_paths(graph_node, graph_seg, graph_seg_new, segment_relevant_IDs
         if G_owner(node) == None: available_stray_node_times.add(G_time(node))
 
     for ID_from in segment_relevant_IDs:
-        graph_seg_new.add_node(ID_from)
-        graph_seg_new.nodes()[ID_from]["t_start"   ] = G_time(segments_all[ID_from][0   ])
-        graph_seg_new.nodes()[ID_from]["t_end"     ] = G_time(segments_all[ID_from][-1  ])
+        
+
+        graph_seg_new.add_node(ID_from, **dict(graph_seg.nodes[ID_from])) #copy old parameters
+
+        #graph_seg_new.add_node(ID_from)
+        #graph_seg_new.nodes()[ID_from]["t_start"   ] = G_time(segments_all[ID_from][0   ])
+        #graph_seg_new.nodes()[ID_from]["t_end"     ] = G_time(segments_all[ID_from][-1  ])
+        #graph_seg_new.nodes()[ID_from]["node_start"] = segments_all[ID_from][0   ]
+        #graph_seg_new.nodes()[ID_from]["node_end"  ] = segments_all[ID_from][-1  ]
+
         time_from    = graph_seg.nodes[ID_from]["t_end"]
         time_diffs   = times_start_all - time_from
 

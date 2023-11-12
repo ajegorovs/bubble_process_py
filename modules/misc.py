@@ -672,6 +672,7 @@ def perms_with_branches(t_to_branches,t_segments_new,t_times_contours, return_no
 
 def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_to, graph_nodes, graph_segments, ID_remap, contours_dict):
     from graphs_general import (extractNeighborsNext, set_custom_node_parameters)
+    # NOTE: G_time and such are not implemented
     # *** is used to modify graphs and data storage with info about resolved connections between segments ***
     # ----------------------------------------------------------------------------------------------------
     # (1) drop all edges from last known node going into intermediate solution.
@@ -722,7 +723,8 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
     t_edges = [(segment_from_new,successor) for successor in segment_successors]
     graph_segments.remove_nodes_from([segment_to])
     graph_segments.add_edges_from(t_edges)
-    graph_segments.nodes()[segment_from_new]["t_end"] = node_segments[segment_from_new][-1][0]
+    graph_segments.nodes()[segment_from_new]["t_end"    ] = node_segments[segment_from_new][-1][0]
+    graph_segments.nodes()[segment_from_new]["node_end" ] = node_segments[segment_from_new][-1]
             
     t_common_nodes = set(nodes_solo).intersection(set(nodes_composite))                             # (5)
     t_composite_nodes = set(nodes_composite) - set(nodes_solo)                                      # (5)
@@ -770,8 +772,9 @@ def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to,
 
     node_segments[segment_from_new] += nodes_composite
  
-    graph_segments.nodes()[segment_from_new]["t_end"] = node_segments[segment_from_new][-1][0]
-            
+    graph_segments.nodes()[segment_from_new]["t_end"    ] = node_segments[segment_from_new][-1][0]
+    graph_segments.nodes()[segment_from_new]["node_end" ] = node_segments[segment_from_new][-1]
+     
     t_common_nodes = set(nodes_solo).intersection(set(nodes_composite))                             # (5)
     t_composite_nodes = set(nodes_composite) - set(nodes_solo)                                      # (5)
     t_node_params = {t:dict(graph_nodes.nodes[t]) for t in t_common_nodes}                          # (5)
@@ -820,8 +823,9 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
 
     node_segments[segment_to] = nodes_composite[::-1] + node_segments[segment_to]
     
-    graph_segments.nodes()[segment_to]["t_start"] = nodes_composite[0][0]
-            
+    graph_segments.nodes()[segment_to]["t_start"    ] = nodes_composite[0][0]
+    graph_segments.nodes()[segment_to]["node_start" ] = nodes_composite[0]
+     
     t_common_nodes = set(nodes_solo).intersection(set(nodes_composite))                             # (5)
     t_composite_nodes = set(nodes_composite) - set(nodes_solo)                                      # (5)
     t_node_params = {t:dict(graph_nodes.nodes[t]) for t in t_common_nodes}                          # (5)

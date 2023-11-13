@@ -25,7 +25,7 @@ from collections import defaultdict
 #inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 125 mT\Series 1\350 sccm'
 inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\100 sccm'
 # image data subsets are controlled by specifying image index, which is part of an image. e.g image1, image2, image20, image3
-intervalStart   = 6000                            # start with this ID
+intervalStart   = 4000                            # start with this ID
 numImages       = 2000                          # how many images you want to analyze.
 intervalStop    = intervalStart + numImages     # images IDs \elem [intervalStart, intervalStop); start-end will be updated depending on available data.
 
@@ -570,15 +570,15 @@ for doX in temp:
     test = connected_components_unique_0[doX]                       # specific family of nodes
 
     # isolate a family of nodes into new graph. i avoid using graph.subgraph here because it will still store old data.
-    H = nx.DiGraph()
-    for t_node in test:
-        H.add_node(t_node, **H_0.nodes[t_node])
+    #H = nx.DiGraph()
+    #for t_node in test:
+    #    H.add_node(t_node, **H_0.nodes[t_node])
 
-    segments2, skipped = graph_extract_paths(H, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
+    #segments2, skipped = graph_extract_paths(H, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
 
-    segments2 = [a for _,a in segments2.items() if len(a) > 0]
-    segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
-    paths = {i:vals for i,vals in enumerate(segments2)}
+    #segments2 = [a for _,a in segments2.items() if len(a) > 0]
+    #segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
+    #paths = {i:vals for i,vals in enumerate(segments2)}
     # for_graph_plots(H)    # <<<<<<<<<<<<<<
 
     # ===============================================================================================
@@ -592,7 +592,7 @@ for doX in temp:
 
 
 
-    activeNodes = list(H.nodes())
+    activeNodes = test#list(H.nodes())
     activeTimes = np.unique([a[0] for a in activeNodes])
 
     # extract all contours active at each time step.
@@ -708,66 +708,18 @@ for doX in temp:
     G_centroid  = lambda node, graph = G : graph.nodes[node]['centroid']
     G_owner     = lambda node, graph = G : graph.nodes[node]['owner']
     
-
-    if 1 == -1:
-        #for t_edge in g0_edges_merge_strong:                                          # assign previously acquired 2 bubble merge 
-        #    G[t_edge[0]][t_edge[1]]['edge_merge_strong'] = True                       # edge of high of high likelihood
-
-        #for t_edge in g0_edges_merge_weak:
-        #    G[t_edge[0]][t_edge[1]]['edge_merge_strong'] = False
-
-        for t_edge in G.edges():
-            (t_time_from,t_ID_from),(t_time_to,t_ID_to) = t_edge
-            t_area_before   = g0_contours_areas[t_time_from ][t_ID_from ]
-            t_area_after    = g0_contours_areas[t_time_to   ][t_ID_to   ]
-            t_relative_area_change = np.abs((t_area_after-t_area_before)/t_area_before)
-
-            t_centroids_before  = g0_contours_centroids[t_time_from ][t_ID_from ]
-            t_centroids_after   = g0_contours_centroids[t_time_to   ][t_ID_to   ]
-            t_edge_distance     = np.linalg.norm(t_centroids_after-t_centroids_before)
-
-            G[t_edge[0]][t_edge[1]]['edge_rel_area_change'  ] = t_relative_area_change
-            G[t_edge[0]][t_edge[1]]['edge_distance'         ] = t_edge_distance
-
-
-        distances       = nx.get_edge_attributes(G, 'edge_distance'         )
-        area_changes    = nx.get_edge_attributes(G, 'edge_rel_area_change'  )
-        tt = []
-        tt2 = []
-        for path in g0_edges_merge_strong_clusters:
-            path_distances      = [distances[edge] for edge in zip(path, path[1:])]
-            path_area_changes   = [area_changes[edge] for edge in zip(path, path[1:])]
-            tt.append(path_distances)
-            tt2.append(path_area_changes)
-        t_edges_strong_2 = []
-        for t_nodes_path, t_dists, t_areas_rel in zip(g0_edges_merge_strong_clusters,tt,tt2):
-            t_dist_mean = np.mean(t_dists)
-            t_dist_std  = np.std( t_dists)
-            t_dist_low_max          = True if max(t_dists)              <  20    else False
-            t_dist_low_dispersion   = True if 2*t_dist_std/t_dist_mean  <= 0.2   else False
-            t_area_rel_low_max      = True if max(t_areas_rel)          <  0.2   else False
-            if t_dist_low_max and t_dist_low_dispersion and t_area_rel_low_max:
-                t_edges = [t_edge for t_edge in zip(t_nodes_path, t_nodes_path[1:])]
-                t_edges_strong_2 += t_edges
-
-        t_edges_strong_node_start = [t_edge[0] for t_edge in t_edges_strong_2]
-        t_edges_weak_discard = []
-        for t_edge in g0_edges_merge_weak:
-            if t_edge[0] in t_edges_strong_node_start:
-                t_edges_weak_discard.append(t_edge)
-
-        G.remove_edges_from(t_edges_weak_discard)
-        g0_pairConnections2 = [t_edge for t_edge in g0_pairConnections2 if t_edge not in t_edges_weak_discard]
-
-        g0_pairConnections2_OG = copy.deepcopy(g0_pairConnections2)
-    a = 1
     print(f'\n{timeHMS()}:({doX_s}) Detecting frozen bubbles ... ')
     f = lambda x : x[0]
 
-    segments_fb, skipped = graph_extract_paths(G, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
+   
+         
+    segments_fb = graph_extract_paths(G, min_length = 2)
 
-    segments_fb = [a for _,a in segments_fb.items() if len(a) > 2]  # >>>>>>>> LIMIT MIN LENGTH
-    segments_fb = list(sorted(segments_fb, key=lambda x: x[0][0]))
+    for_graph_plots(G,segments_fb, show = False)
+    #segments_fb, skipped = graph_extract_paths(G, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
+
+    #segments_fb = [a for _,a in segments_fb.items() if len(a) > 2]  # >>>>>>>> LIMIT MIN LENGTH
+    #segments_fb = list(sorted(segments_fb, key=lambda x: x[0][0]))
 
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     # i want to solve frozen bubbles here. how to do it:
@@ -781,12 +733,10 @@ for doX in temp:
     segments_small_displ_areas_mean_std = {}
     for t,t_nodes in enumerate(segments_fb):
         if len(t_nodes) >= 2 :
-            #t_traj = np.array([G.nodes[t_node]['centroid'] for t_node in t_nodes])
             t_traj = np.array([G_centroid(t_node) for t_node in t_nodes])
             t_displ_all = np.linalg.norm(np.diff(t_traj, axis = 0), axis = 1)
             if np.mean(t_displ_all) <= fb_radiuss:
                 segments_small_displ_mean_centroids[t] = np.mean(t_traj, axis = 0)
-                #t_areas = np.array([G.nodes[t_node]['area'] for t_node in t_nodes])
                 t_areas = np.array([G_area(t_node) for t_node in t_nodes])
                 segments_small_displ_areas_mean_std[t] = (np.mean(t_areas),np.std(t_areas))
 
@@ -847,10 +797,11 @@ for doX in temp:
     allIDs = [t_node for t_node in allIDs if t_node not in t_remove_nodes + fb_remove_nodes_inter]
 
     print(f'\n{timeHMS()}:({doX_s}) Detecting frozen bubbles ... DONE')
-    segments2, skipped = graph_extract_paths(G, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
+    segments2 = graph_extract_paths(G, min_length = 2)
+    #segments2, skipped = graph_extract_paths(G, lambda x : x[0]) # 23/06/23 info in "extract paths from graphs.py"
 
-    segments2 = [a for _,a in segments2.items() if len(a) > 2]  # >>>>>>>> LIMIT MIN LENGTH
-    segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
+    #segments2 = [a for _,a in segments2.items() if len(a) > 2]  # >>>>>>>> LIMIT MIN LENGTH
+    #segments2 = list(sorted(segments2, key=lambda x: x[0][0]))
 
     for t,t_segment in enumerate(segments2): # assign owners params
         for t_node in t_segment:
@@ -2425,8 +2376,9 @@ for doX in temp:
     # ===============================================================================================
     # WHY: after merge/split/merge extensions there may be explicit branches left over in event area
     # HOW: analyze recent graph for straight segments and determine which segments are different from old
-    t_segments_fin_dic, skipped = graph_extract_paths(G,lambda x : x[0])
-    t_segments_fin = [t for t in t_segments_fin_dic.values() if len(t) > 2]
+    t_segments_fin = graph_extract_paths(G, min_length = 2)
+    #t_segments_fin_dic, skipped = graph_extract_paths(G,lambda x : x[0])
+    #t_segments_fin = [t for t in t_segments_fin_dic.values() if len(t) > 2]
 
     t_unresolved_new = list(range(len(t_segments_fin)))
     t_unresolved_old = [t for t,t_nodes in enumerate(t_segments_new) if len(t_nodes) > 0]

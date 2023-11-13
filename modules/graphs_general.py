@@ -14,7 +14,31 @@ def extractNeighborsPrevious(graph, node, time_from_node_function):
     neighbors = list(graph.neighbors(node))
     return [n for n in neighbors if time_from_node_function(n) < time_from_node_function(node)]
 
-def graph_extract_paths(H,f):
+
+def graph_extract_paths(G, min_length = 2, f_sort = lambda x: (x[0], x[1:])):
+    solo_edge_forw      = set()
+    one_2_one_edges     = set()
+    for t_from in G.nodes():
+        t_successors = list(G.successors(t_from))
+        if len(t_successors)  == 1:  
+            solo_edge_forw.add((t_from, t_successors[0]))
+
+    for t_from, t_to in solo_edge_forw:
+        t_predecessors = list(G.predecessors(t_to))
+        if len(t_predecessors) == 1:
+            one_2_one_edges.add((t_from, t_to))
+
+    G_chain = nx.Graph()
+    G_chain.add_edges_from(one_2_one_edges)
+
+    return sorted(
+                    [
+                        sorted(c, key = f_sort) for c in nx.connected_components(G_chain) 
+                        if len(c) > min_length
+                    ]
+                , key = f_sort)
+
+def graph_extract_paths_old(H,f):
     nodeCopy = list(H.nodes()).copy()
     segments2 = {a:[] for a in nodeCopy}
     resolved = []
@@ -24,10 +48,7 @@ def graph_extract_paths(H,f):
         nextNode = node
         prevNode = None
         while goForward == True:
-            #neighbors = list(H.neighbors(nextNode))
-            #nextNodes = [a for a in neighbors if f(a) > f(nextNode)]
-                
-            #prevNodes = [a for a in neighbors if f(a) < f(nextNode)]
+            
             nextNodes = list(H.successors(nextNode))
             prevNodes = list(H.predecessors(nextNode))
 
@@ -42,24 +63,18 @@ def graph_extract_paths(H,f):
             # find if next is not merge:
             nextNotMerge = False
             if soloNext:
-                #nextNeighbors = list(H.neighbors(nextNodes[0]))
-                #nextPrevNodes = [a for a in nextNeighbors if f(a) < f(nextNodes[0])]
                 nextPrevNodes = list(H.predecessors(nextNodes[0]))
                 if len(nextPrevNodes) == 1: 
                     nextNotMerge = True
 
             nextNotSplit = False
             if soloNext:
-                #nextNeighbors = list(H.neighbors(nextNodes[0]))
-                #nextNextNodes = [a for a in nextNeighbors if f(a) > f(nextNodes[0])]
                 nextNextNodes = list(H.successors(nextNodes[0]))
                 if len(nextNextNodes) <= 1:   # if it ends, it does not split. (len = 0)
                     nextNotSplit = True
 
             prevNotSplit = False
             if soloPrev2:
-                #prevNeighbors = list(H.neighbors(prevNodes[0]))
-                #prevNextNodes = [a for a in prevNeighbors if f(a) > f(prevNodes[0])]
                 prevNextNodes = list(H.successors(prevNodes[0]))
                 if len(prevNextNodes) == 1:
                     prevNotSplit = True
@@ -277,16 +292,17 @@ def drawH(H, paths, node_positions, fixed_nodes = [], show = True, suptitle = "d
 
 def for_graph_plots(G, segs = [], show = True, suptitle = "drawH", node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
     if len(segs) == 0:
-        segments3, skipped = graph_extract_paths(G,lambda x : x[0])
+        segments3 = graph_extract_paths(G) # default min_length
     else:
-        segments3 = {t:[] for t in G.nodes()}
-        for t_seg in segs:
-            if len(t_seg) > 0:
-                segments3[t_seg[0]] = t_seg
+        segments3 = [s for s in segs if len(s) > 0 ]
+        #segments3 = {t:[] for t in G.nodes()}
+        #for t_seg in segs:
+        #    if len(t_seg) > 0:
+        #        segments3[t_seg[0]] = t_seg
 
     # Draw extracted segments with bold lines and different color.
-    segments3 = [a for _,a in segments3.items() if len(a) > 0]
-    segments3 = list(sorted(segments3, key=lambda x: x[0][0]))
+    #segments3 = [a for _,a in segments3.items() if len(a) > 0]
+    #segments3 = list(sorted(segments3, key=lambda x: x[0][0]))
     paths = {i:vals for i,vals in enumerate(segments3)}
 
  

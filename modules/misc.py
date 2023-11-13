@@ -336,19 +336,21 @@ def order_segment_levels(t_segments, debug = 0):
 
     # EDIT NOT SHOWN IN DEBUG: Collapse on uninhabited layers.
     a = 1
+   
     vertical_positions = set(t_pos.values()) 
-    empty_positions = set(range(max(vertical_positions) + 1)) - vertical_positions
-    if len(empty_positions)>0:
-        position_mapping = {}
-        sorted_IDs = sorted(t_pos,key=t_pos.get)
-        t_pos2 = {ID:t_pos[ID] for ID in sorted_IDs if t_pos[ID] > min(empty_positions)}
-        for i, position in t_pos2.items():
-            if len(empty_positions) > 0 and position > min(empty_positions) and position not in position_mapping:
-                # Find the first available empty position
-                new_position = min(empty_positions)
-                position_mapping[position] = new_position
-                t_pos[i] = new_position
-                empty_positions.remove(new_position)
+    if len(vertical_positions) > 0:
+        empty_positions = set(range(max(vertical_positions) + 1)) - vertical_positions
+        if len(empty_positions)>0:
+            position_mapping = {}
+            sorted_IDs = sorted(t_pos,key=t_pos.get)
+            t_pos2 = {ID:t_pos[ID] for ID in sorted_IDs if t_pos[ID] > min(empty_positions)}
+            for i, position in t_pos2.items():
+                if len(empty_positions) > 0 and position > min(empty_positions) and position not in position_mapping:
+                    # Find the first available empty position
+                    new_position = min(empty_positions)
+                    position_mapping[position] = new_position
+                    t_pos[i] = new_position
+                    empty_positions.remove(new_position)
 
     if debug:
 

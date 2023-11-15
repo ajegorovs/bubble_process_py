@@ -182,10 +182,17 @@ def extract_graph_connected_components(graph, sort_function = lambda x: x):
     [connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
     return connected_components_unique
 
-def extract_graph_connected_components_autograph(edges, sort_function = lambda x: x): 
+#def extract_graph_connected_components_autograph(edges, sort_function_in = lambda x: x, sort_function_out = lambda x: x): 
+#    graph = nx.Graph()
+#    graph.add_edges_from(edges)
+#    return  sorted([sorted(c, key = sort_function_out) for c in nx.connected_components(graph)] , key = sort_function_in)
+    
+
+def extract_clusters_from_edges(edges, sort_f_in = lambda x: x, sort_f_out = lambda x: x[0]): 
     graph = nx.Graph()
     graph.add_edges_from(edges)
-    return extract_graph_connected_components(graph, sort_function = sort_function)
+    return  sorted([sorted(c, key = sort_f_in) for c in nx.connected_components(graph)] , key = sort_f_out)
+    
 
 def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_segments, source_segment, source_node = None, target_nodes = None, return_cc = False):
     # test connectivity of source segments to nearby segments (within certain time interval - [t_max, t_min]

@@ -400,8 +400,8 @@ def graph_check_paths(graph_node, graph_seg, graph_seg_new, segment_relevant_IDs
 
     for ID_from in segment_relevant_IDs:
         
-
-        graph_seg_new.add_node(ID_from, **dict(graph_seg.nodes[ID_from])) #copy old parameters
+        if graph_seg != graph_seg_new:
+            graph_seg_new.add_node(ID_from, **dict(graph_seg.nodes[ID_from])) #copy old parameters
 
         #graph_seg_new.add_node(ID_from)
         #graph_seg_new.nodes()[ID_from]["t_start"   ] = G_time(segments_all[ID_from][0   ])

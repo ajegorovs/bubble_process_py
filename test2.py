@@ -1080,14 +1080,15 @@ G.add_node(1,t_start = 10)
 b = lambda node , graph = G: print(graph.nodes()[node]["t_start"   ] )
 
 b(1) # output 10
-G.nodes()[1]["t_start"   ] = 20
-b(1) # ouput 20
-a = 1
-c = lambda x, y = a: print(x + y)
 
-c(0) #output 1
-a += 10
-c(0) #output 1
+def gg(graph):
+    graph.nodes()[1]["t_start"   ] = 20
+    return graph
+
+gg(G)
+b(1) # ouput 20
+
+
 
 
 # snippet shows that if times is generated before loop, 

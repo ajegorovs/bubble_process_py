@@ -29,7 +29,7 @@ intervalStart   = 4000                            # start with this ID
 numImages       = 2000                          # how many images you want to analyze.
 intervalStop    = intervalStart + numImages     # images IDs \elem [intervalStart, intervalStop); start-end will be updated depending on available data.
 
-exportArchive       = 0                         # implies there are no results that can be reused, of you want to force data initialization stage.
+exportArchive       = 1                         # implies there are no results that can be reused, of you want to force data initialization stage.
 useIntermediateData = 1 
 
 useMeanWindow   = 0                             # averaging intervals will overlap half widths, read more below
@@ -312,9 +312,21 @@ if not useIntermediateData:           # this will pre-calculate some stuff in ca
         #cv2.imshow('5',np.uint8(binarizedMaskArr[20]))
         binarizedMaskArr = np.uint8([cv2.erode(img, np.ones((5,5), np.uint8) ) for img in binarizedMaskArr]) 
         #cv2.imshow('6',np.uint8(binarizedMaskArr[20]))
+
+        # remove edge components that touch virtual border of thickness "border_thickness"
+        # draw internal border on all images
+        border_thickness = 5
+        binarizedMaskArr[:,     :border_thickness   , :                 ] = 255
+        binarizedMaskArr[:,     -border_thickness:  , :                 ] = 255
+        binarizedMaskArr[:,     :                   , :border_thickness ] = 255
+        binarizedMaskArr[:,     :                   , -border_thickness:] = 255
+
         print(f"{timeHMS()}: Removing small and edge contours...")
         topFilter, bottomFilter, leftFilter, rightFilter, minArea    = 80, 40, 100, 100, 180
         for i in tqdm(range(binarizedMaskArr.shape[0]), total=binarizedMaskArr.shape[0]):
+            
+            
+            cv2.floodFill(binarizedMaskArr[i], None, (0,0), 0)
             contours            = cv2.findContours(binarizedMaskArr[i], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[0] #cv2.RETR_EXTERNAL; cv2.RETR_LIST; cv2.RETR_TREE
             areas               = np.array([int(cv2.contourArea(contour)) for contour in contours])
             boundingRectangles  = np.array([cv2.boundingRect(contour) for contour in contours])
@@ -1114,7 +1126,7 @@ for doX in temp:
     fk_merge_to , fk_split_from = {}    , {}                                       
     fk_merges   , fk_splits     = set() , set()
 
-    for t, (t_from, t_to) in enumerate([(t_subIDs[0],t_subIDs[-1]) for t_subIDs in lr_big_121s_chains]):
+    for t, (t_from, t_to) in enumerate(     [(t_subIDs[0],t_subIDs[-1]) for t_subIDs in lr_big_121s_chains]     ):
         if t_from in lr_ms_edges_brnch['split']:
             fk_split_from[t_from] = lr_ms_edges_brnch['split'][t_from]                   
             fk_splits.add(t) 
@@ -1361,19 +1373,6 @@ for doX in temp:
                 if len(t_subIDs_cut) > 1:           # questionable, stays None
                     t_big121s_edited[t] = t_subIDs_cut
                 
-        # THIS COMMENTED BECAUSE ITS OVERRIDEN. DELETE WHEN ITS CLEAR
-        # side segments may have been dropped. drop according graph edges.
-        #    lr_big121s_conn_121 = []
-        #    for t_conn in t_conn_121:
-        #        t_from,t_to = t_conn
-        #        for t_subIDs in t_big121s_edited:            
-        #            # check if t_conn fully in connected components
-        #            if t_subIDs != None and t_from in t_subIDs:
-        #                if t_to in t_subIDs:
-        #                    lr_big121s_conn_121.append(t_conn)
-        #                    break
-        #print(f'\n{timeHMS()}:({doX_s}) Trimmed big 121s: {lr_big121s_conn_121}\nInterpolating whole big 121s...')
-
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # ===============================================================================================
         # ==================== 121 CHAINS: INTERPOLATE DATA IN HOLES OF LONG CHAINS =====================
@@ -1385,7 +1384,6 @@ for doX in temp:
         if 1 == 1: 
             lr_big121s_edges_relevant = []
             lr_big121s_interpolation        = defaultdict(dict)
-            #lr_big121s_interpolation_big    = defaultdict(dict) 
             t_fake_from_to                  = [list(t_conn) for t_conn in t_big121s_fake_split_merge]
             for t,t_subIDs in enumerate(t_big121s_edited + t_fake_from_to):
                 if t_subIDs != None: 
@@ -1398,11 +1396,9 @@ for doX in temp:
                     # generate time steps in holes for interpolation
                     t_conns_times_dict = {}
                     for (t_from, t_to) in zip(t_subIDs[:-1], t_subIDs[1:]):
-                        #t_conns_times_dict[(t_from, t_to)]  = list(np.arange(G2_t_end(t_from) + 1, G2_t_start(t_to), 1))
                         t_conns_times_dict[(t_from, t_to)]  = range(G2_t_end(t_from) + 1, G2_t_start(t_to), 1)
 
                     lr_big121s_edges_relevant.extend(t_conns_times_dict.keys())
-                    #t_times_missing_all = sum(t_conns_times_dict.values(),[])
                     t_times_missing_all = []; [t_times_missing_all.extend(times) for times in t_conns_times_dict.values()]
         
                     a = 1
@@ -1421,9 +1417,7 @@ for doX in temp:
                         lr_big121s_interpolation[t_conn_new]['centroids'] = np.array(t_centroids)
                         lr_big121s_interpolation[t_conn_new]['areas'    ] = t_areas
                         lr_big121s_interpolation[t_conn_new]['times'    ] = t_times_relevant
-                    # save whole big 121
-                    #lr_big121s_interpolation_big[tuple(t_subIDs)]['centroids'] = t_interpolation_centroids_1
-                    #lr_big121s_interpolation_big[tuple(t_subIDs)]['areas'    ] = t_interpolation_areas_1
+                    
 
     
     
@@ -1449,19 +1443,6 @@ for doX in temp:
                     for t_time, t_subIDs in t_times_subIDs.items():
                         lr_big121s_perms[(t_from_new,t_to_new)][t_time] = combs_different_lengths(t_subIDs)
 
-
-            #lr_big121s_perms_pre        = {old_conn_2_new(t_conn,lr_zp_redirect):v for t_conn,v in lr_big121s_perms_pre.items()}
-            #lr_big121s_perms_pre_keys   = [t_conn for t_conn in lr_big121s_perms_pre if  t_conn[0] != t_conn[1] and t_conn in lr_big121s_edges_relevant]
-            #lr_big121s_perms            = {t_conn:{t_time:[] for t_time in lr_big121s_perms_pre[t_conn]} for t_conn in lr_big121s_perms_pre_keys}
-            #for t_conn in lr_big121s_perms_pre_keys:
-            #    t_times_contours = lr_big121s_perms_pre[t_conn]
-            #    t_conn_new = old_conn_2_new(t_conn,lr_zp_redirect)
-            #    if t_conn_new[0] != t_conn_new[1]:
-            #        for t_time,t_contours in t_times_contours.items():
-            #            t_perms = combs_different_lengths(t_contours)
-            #            lr_big121s_perms[t_conn_new][t_time] = t_perms
-
-
         lr_big121s_conn_121 = lr_big121s_edges_relevant
         # ===============================================================================================
         # =========== 121 CHAINS: PRE-CALCULATE HULL CENTROIDS AND AREAS FOR EACH PERMUTATION ===========
@@ -1469,37 +1450,51 @@ for doX in temp:
         # WHY: these will be reused alot in next steps, store beforehand
         print(f'\n{timeHMS()}:({doX_s}) Calculating parameters for possible contour combinations...')
         if 1 == 1:    
-            lr_big121s_perms_areas      = AutoCreateDict()
-            lr_big121s_perms_centroids  = AutoCreateDict()
-            lr_big121s_perms_mom_z      = AutoCreateDict()
-
+            lr_big121s_perms_areas      = {}
+            lr_big121s_perms_centroids  = {}
+            lr_big121s_perms_mom_z      = {}
+            
             for t_conn, t_times_perms in lr_big121s_perms.items():
-                #t_conn_new = old_conn_2_new(t_conn,lr_zp_redirect)
+                lr_big121s_perms_areas[     t_conn]  = {t:{} for t in t_times_perms}
+                lr_big121s_perms_centroids[ t_conn]  = {t:{} for t in t_times_perms}
+                lr_big121s_perms_mom_z[     t_conn]  = {t:{} for t in t_times_perms}
                 for t_time,t_perms in t_times_perms.items():
                     for t_perm in t_perms:
                         t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][subID] for subID in t_perm]))
                         t_centroid, t_area, t_mom_z = centroid_area_cmomzz(t_hull)
-
                         lr_big121s_perms_areas[     t_conn][t_time][t_perm] = t_area
                         lr_big121s_perms_centroids[ t_conn][t_time][t_perm] = t_centroid
                         lr_big121s_perms_mom_z[     t_conn][t_time][t_perm] = t_mom_z
 
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # ===============================================================================================
-        # =========== 121 CHAINS: CONSTUCT UNIQUE EVOLUTIONS THOUGH CONTOUR PERMUTATION SPACE ===========
+        # ========== 121 CHAINS: CONSTUCT UNIQUE EVOLUTIONS THROUGH CONTOUR PERMUTATION SPACE ===========
         # ===============================================================================================
         # WHAT: using subID permutations at missing time construct choice tree. 
         # WHY:  each branch represents a bubbles contour ID evolution through unresolved intervals.
-        # HOW:  either though itertools product, or if number of branches is big, dont consider
-        # HOW:  branches where area changes more than set threshold. 
+        # HOW:  either though itertools product or, if number of branches is big, dont consider
+        # HOW:  branches where area changes more than a set threshold. 
+        # -----------------------------------------------------------------------------------------------
+        # NOTE: number of branches (evolutions) from start to finish may be very large, depending on 
+        # NOTE: number of time steps and contour permutation count at each step. 
+        # NOTE: it can be calculated as 't_branches_count' = len(choices_t1)*len(choices_t2)*...
+        # case 0)   if count is small, then use combinatorics product function.
+        # case 1a)  if its large, dont consider evoltions where bubble changes area rapidly from one step to next.
+        # case 1b)  limit number of branches retrieved by 't_max_paths'. we can leverage known assumption to
+        #           get better branches in this batch. assumption- bubbles most likely include all 
+        #           subcontours at each time step. Transitions from large cluster to large cluster has a priority.
+        #           if we create a graph with large to large cluster edges first, pathfinding method
+        #           will use them to generate first evolutions. so you just have to build graph in specific order.
+        # case 2)   optical splits have 121 chains in inter-segment space. these chains are not atomized into
+        #           solo nodes, but can be included into evolutions as a whole. i.e if 2 internal chains are
+        #           present, you can create paths which include 1st, 2nd on both branches simultaneously.
         print(f'\n{timeHMS()}:({doX_s}) Generating possible bubble evolution paths from prev combinations...')
 
         lr_big121s_perms_cases = {}
         lr_big121s_perms_times = {}
         lr_drop_huge_perms = []
         for t_conn, t_times_perms in lr_big121s_perms.items():
-            rel_area_thresh = 2
-            func = lambda edge : edge_crit_func(t_conn,edge, lr_big121s_perms_areas)
+            func = lambda edge : edge_crit_func(t_conn,edge, lr_big121s_perms_areas, 2)
 
             t_conn_new = old_conn_2_new(t_conn,lr_zp_redirect)
             t_values = list(t_times_perms.values())
@@ -1507,46 +1502,42 @@ for doX in temp:
             t_branches_count = itertools_product_length(t_values) # large number of paths is expected
             t_max_paths = 5000
             if t_branches_count >= t_max_paths:
-                # refine possible transition from one time to next via limit on max area change.
-                # generate choices nodes, so area can be retrieved
+                # 1a) keep only tranitions that dont change area very much
                 t_choices = [[(t_time,) + t_perm for t_perm in t_perms] for t_time,t_perms in zip(t_times,t_values)]
-                # get all acceptable edges.
                 edges, nodes_start, nodes_end = comb_product_to_graph_edges(t_choices, func)
+
                 if len(nodes_end) == 0: # finding paths will fail, since no target node
                     nodes_end.add(t_choices[-1][0])   # add last, might also want edges to that node, since they have failed
                     edges.extend(list(itertools.product(*t_choices[-2:])))
-                # generally i expect correct solution to have max number of elements in each cluster at each time
-                # i want fidning path algorithm to retrieve evolutions with large nodes.
-                # ive noticed that 'all_simple_paths' generator traverses nodes in order you have supplied them to graph
-                # so supply first edges with highest total element count, but also sort them with least difference of
-                # subIDs first. e.g ((1,2,3),(4,)) is worse than ((1,2),(3,4))
+                
+                # 1b) resort edges for pathfining graph: sort by large to large first subIDs first: ((1,2),(3,4)) -> ((1,2),(3,))
+                # 1b) for same size sort by cluster size uniformity e.g ((1,2),(3,4)) -> ((1,2,3),(4,)) 
                 sorted_edges = sorted(edges, key=sort_len_diff_f, reverse=True) 
-                # retrieve 
                 sequences, fail = find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = True, G = None, edges = sorted_edges, only_subIDs = True, max_paths = t_max_paths - 1)
                 # 'fail' can be either because 't_max_paths' is reached or there is no path from source to target
                 if fail == 'to_many_paths':    # add trivial solution where evolution is transition between max element per time step number clusters                                           
                     seq_0 = list(itertools.product(*[[t[-1]] for t in t_values] ))
                     if seq_0[0] not in sequences: sequences = seq_0 + sequences # but first check. in case of max paths it should be on top anyway.
                 elif fail == 'no_path': # increase rel area change threshold
-                    rel_area_thresh = 5
-                    func = lambda edge : edge_crit_func(t_conn,edge, lr_big121s_perms_areas)
+                    func = lambda edge : edge_crit_func(t_conn,edge, lr_big121s_perms_areas, 5)
                     edges, nodes_start, nodes_end = comb_product_to_graph_edges(t_choices, func)
                     sorted_edges = sorted(edges, key=sort_len_diff_f, reverse=True) 
                     sequences, fail = find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = True, G = None, edges = sorted_edges, only_subIDs = True, max_paths = t_max_paths - 1)
 
-                # for fake event (artificial split-merge), we have constraints that can lower number of paths
-                # these events include combination of internal branches. means no explicit edges between branche nodes. consider to include branch whole.
+                # 2) for fake event (artificial/optical split/merge), include internal branches as a whole.
                 if t_conn in t_big121s_fake_split_merge and len(sequences) >= t_max_paths:
                     t_branches_fake = t_big121s_fake_split_merge[t_conn]
                     t_perms = lr_big121s_perms_pre[t_conn]
                     seqs, t_nodes_pre = perms_with_branches(t_branches_fake, segments2, t_perms, return_nodes = True)
+                    # test if this sol is shorter than previous
                     if len(seqs) < len(sequences): sequences = seqs
 
-            else:# -> t_branches_count < t_max_paths
+            # 0) -> t_branches_count < t_max_paths. use product
+            else:
                 sequences = list(itertools.product(*t_values))
                 
-            if len(sequences) == 0: # len = 0 because seconda pass of rel_area_thresh failed.
-                sequences = []                                # since there is no path, dont solve this conn
+            if len(sequences) == 0: # len = 0 because second pass of rel_area_thresh has failed.
+                sequences = []      # since there is no path, dont solve this conn
                 t_times = []
                 lr_drop_huge_perms.append(t_conn)
 
@@ -1561,15 +1552,27 @@ for doX in temp:
         # ========= 121 CHAINS: FIND BEST FIT EVOLUTIONS OF CONTOURS THOUGH HOLES (TIME-WISE) ===========
         # ===============================================================================================
         # WHAT: calculate how area and centroids behave for each evolution
-        # WHY:  evolutions with least path length and area changes should be right ones
+        # WHY:  evolutions with least path length and area changes should be right ones pregenerated data
+        # HOW:  for each conn explore permutations fo each evolution. generate trajectory and areas from.
+        # HOW:  evaluate 4 criterions and get evolution indicies where there crit are the least:
+        # HOW:  1) displacement error form predicted trajetory (interpolated data)
+        # HOW:  2) sum of displacements for each evolution = total path. should be minimal
+        # HOW:  3) relative area chainges its mean and stdev values (least mean rel area change, least mean stdev)
+        # HOW:  4) same with moment z, which is very close to 3) except scaled. (although min result is different) 
+        # HOW:  currently you get 4 bins with index of evolution with minimal crit. ie least 1) is for evol #1
+        # HOW:  least #2 is for evol 64, least #3 is for #1 again,.. etc
+          
         print(f'\n{timeHMS()}:({doX_s}) Determining evolutions thats are closest to interpolated missing data...')
-        
+        # NOTE: >>> this needs refactoring, not internals, but argument data management <<<<
         t_temp_centroids = {t_conn:t_dict['centroids'] for t_conn,t_dict in lr_big121s_interpolation.items()}
         t_args = [lr_big121s_conn_121, lr_big121s_perms_cases,t_temp_centroids,lr_big121s_perms_times,
                 lr_big121s_perms_centroids,lr_big121s_perms_areas,lr_big121s_perms_mom_z]
 
         t_sols_c, t_sols_c_i, t_sols_a, t_sols_m = lr_evel_perm_interp_data(*t_args)
 
+        # ======================= FROM MULTIPLE THRESHOLDS GET WINNING ONE ==================================
+        # NOTE: dont like this approach. you should evaluate actual values/errors, rather then indicies.
+        # NOTE: its easy if multiple indicies are in winning bins.
         t_weights   = [1,1.5,0,1]
         t_sols      = [t_sols_c, t_sols_c_i, t_sols_a, t_sols_m]
         lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems =  lr_weighted_sols(lr_big121s_conn_121,t_weights, t_sols, lr_big121s_perms_cases )
@@ -1592,9 +1595,6 @@ for doX in temp:
         for t_conn in lr_big121s_conn_121:
             t_from, t_to = t_conn
             t_from_new, t_to_new = old_conn_2_new(t_conn,lr_121chain_redirect)
-            #t_from_new = lr_121chain_redirect[t_from]
-            #t_to_new = lr_121chain_redirect[t_to] # G2_n_start, G2_n_end
-            #print(f'edge :({t_from},{t_to}) or = {t_segments_new[t_from_new][-1]}->{t_segments_new[t_to_new][0]}')  
             print(f'edge :({t_from},{t_to}) or = {G2_n_end(t_from_new)}->{G2_n_start(t_to_new)}')  
             save_connections_two_ways(t_segments_new, lr_big121s_perms_pre[t_conn], t_from,  t_to, G, G2, lr_121chain_redirect, g0_contours)
 
@@ -1608,12 +1608,12 @@ for doX in temp:
             for t_slave in t_branches_IDs:
                 lr_121chain_redirect[t_slave] = lr_121chain_redirect[t_master]
 
-        lr_time_active_segments = defaultdict(list)
-        for t_segment_index, t_segment_nodes in enumerate(t_segments_new):
-            for t_time in [G_time(node) for node in t_segment_nodes]:
-                lr_time_active_segments[t_time].append(t_segment_index)
-        # sort keys in lr_time_active_segments
-        lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
+        #lr_time_active_segments = defaultdict(list)
+        #for t_segment_index, t_segment_nodes in enumerate(t_segments_new):
+        #    for t_time in [G_time(node) for node in t_segment_nodes]:
+        #        lr_time_active_segments[t_time].append(t_segment_index)
+        ## sort keys in lr_time_active_segments
+        #lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
 
         #for_graph_plots(G, segs = t_segments_new) 
         print(f'\n{timeHMS()}:({doX_s}) Working on real and fake events (merges/splits):\nPreparing data...')
@@ -1631,8 +1631,8 @@ for doX in temp:
             # -----------------------------------------------------------------------------------------------
             # ------ PREPARE DATA INTO USABLE FORM ----
             # -----------------------------------------------------------------------------------------------
-            t_merge_fake_to_ID  = unique_sort_list([t_conn[1] for t_conn in t_big121s_merge_conn_fake])                                          # grab master node e.g [10]
-            t_split_fake_from_ID = unique_sort_list([t_conn[0] for t_conn in t_big121s_split_conn_fake])                                        # e.g [15]
+            t_merge_fake_to_ID      = unique_sort_list([t_conn[1] for t_conn in t_big121s_merge_conn_fake])                                          # grab master node e.g [10]
+            t_split_fake_from_ID    = unique_sort_list([t_conn[0] for t_conn in t_big121s_split_conn_fake])                                        # e.g [15]
 
             t_merge_real_to_ID_relevant = []
             t_split_real_from_ID_relevant = []
@@ -1649,15 +1649,12 @@ for doX in temp:
             # NOTE: everything is held in one dictionary, but keys and contents are different
             print('Generating information for:')
             # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-            t_event_start_end_times = {'merge':{},'split':{},'mixed':{}}
-
-            func_prev_neighb = lambda x: G2.nodes[x]["t_end"]
-            func_next_neighb = lambda x: G2.nodes[x]["t_start"]
+            t_event_start_end_times = {'merge':{}, 'split':{}, 'mixed':{}}
 
             # ------------------------------------- REAL MERGE/SPLIT -------------------------------------
             t_state = 'merge'
             for t_to in lr_ms_edges_main[t_state]: 
-                t_predecessors             = list(G2.predecessors(t_to))# G2_t_start G2_t_end
+                t_predecessors              = list(G2.predecessors(t_to))# G2_t_start G2_t_end
                 t_predecessors              = [lr_121chain_redirect[t] for t in G2.predecessors(t_to)] # update if inherited
                 t_predecessors_times_end    = {t:G2_t_end(t) for t in t_predecessors}
                 t_t_to_start                = G2_t_start(t_to)
@@ -1713,12 +1710,12 @@ for doX in temp:
 
                 t_nodes_keep    = [node for node in G.nodes() if t_t_start < G_time(node) < t_t_to_max and G_owner(node) is None]
                 t_nodes_keep.append(t_node_from)
-                t_subgraph = G.subgraph(t_nodes_keep)   # big subgraph
+                t_subgraph      = G.subgraph(t_nodes_keep)   # big subgraph
 
-                t_dfs_sol = set()
+                t_dfs_sol           = set()
                 dfs_succ(t_subgraph, t_node_from, time_lim = t_t_to_max , node_set = t_dfs_sol)
-                t_node_subIDs_all = disperse_nodes_to_times(t_dfs_sol) # reformat sol into time:subIDs
-                t_node_subIDs_all = {t:sorted(t_node_subIDs_all[t]) for t in sorted(t_node_subIDs_all)}
+                t_node_subIDs_all   = disperse_nodes_to_times(t_dfs_sol) # reformat sol into time:subIDs
+                t_node_subIDs_all   = {t:sorted(t_node_subIDs_all[t]) for t in sorted(t_node_subIDs_all)}
 
                 t_active_IDs = {t:[] for t in np.arange(t_t_to_max -1, t_t_start, -1)} #>>> reverse for reverse re
 
@@ -1775,7 +1772,6 @@ for doX in temp:
                 t_fake_edges = [(t_d[a],t_d[b]) for a,b in zip(t_branches_all[:-1], t_branches_all[1:]) if not G.has_edge(t_d[a],t_d[b])]
                 
 
-                #t_fake_edges = list(itertools.combinations(t_target_nodes.values(), 2))
                 G.add_edges_from(t_fake_edges)
                 t_subgraph = G.subgraph(t_nodes_keep)   
 
@@ -1788,11 +1784,7 @@ for doX in temp:
                 t_sol = [t for t in t_sol if t not in t_nodes_segments_all]
 
                 t_sol.extend(t_target_nodes.values())
-                #for t in t_to_all:                          
-                #    t_sol.append(t_target_nodes[t])
-                #t_segments_keep = t_from_all_new + list(t_to_all)
-                #t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_from_min + 1, t_t_to_max, lr_time_active_segments,
-                #                                                t_segments_new, t_segments_keep, ref_node = t_segments_new[t_to_all[0]][0]) 
+
                 G.remove_edges_from(t_fake_edges)
                 t_node_subIDs_all = disperse_nodes_to_times(t_sol) # reformat sol into time:subIDs
                 t_node_subIDs_all = {t:t_node_subIDs_all[t] for t in sorted(t_node_subIDs_all)}
@@ -2001,7 +1993,6 @@ for doX in temp:
     G_seg_view_2 = nx.Graph()
     G_seg_view_2.add_edges_from([(x,y) for y,x in lr_121chain_redirect.items()])
 
-    #lr_C1_condensed_connections = extract_graph_connected_components(G_seg_view_2, lambda x: x)
     lr_C1_condensed_connections = [sorted(c, key = lambda x: x) for c in nx.connected_components(G_seg_view_2)]
     lr_C1_condensed_connections = sorted(lr_C1_condensed_connections, key = lambda x: x[0])
     # lets condense all sub-segments into one with smallest index. EDIT: give each segment index its master. since number of segments will shrink anyway
@@ -2407,13 +2398,13 @@ for doX in temp:
         set_custom_node_parameters(G, g0_contours, t_segments_fin[t_ID], t_new_ID, calc_hull = 1)        # 
 
 
-    lr_time_active_segments = defaultdict(list)
-    for t_segment_index, t_segment_nodes in enumerate(t_segments_new):
-        t_times = [G_time(node) for node in t_segment_nodes]
-        for t_time in t_times:
-            lr_time_active_segments[t_time].append(t_segment_index)
-    # sort keys in lr_time_active_segments
-    lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
+    #lr_time_active_segments = defaultdict(list)
+    #for t_segment_index, t_segment_nodes in enumerate(t_segments_new):
+    #    t_times = [G_time(node) for node in t_segment_nodes]
+    #    for t_time in t_times:
+    #        lr_time_active_segments[t_time].append(t_segment_index)
+    ## sort keys in lr_time_active_segments
+    #lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
 
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # for_graph_plots(G, segs = t_segments_fin)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

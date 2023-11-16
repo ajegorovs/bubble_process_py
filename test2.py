@@ -1072,21 +1072,39 @@ if 1 == -1:
                             G2_new.add_edge(t_ID_from, t_ID_to, dist = time_to - time_from + 1) # include end points =  inter + 2
                 a = 1
 
+if 1 == -1:
+    import networkx as nx
 
-import networkx as nx
+    G = nx.Graph()
+    G.add_node(1,t_start = 10)
+    b = lambda node , graph = G: print(graph.nodes()[node]["t_start"   ] )
 
-G = nx.Graph()
-G.add_node(1,t_start = 10)
-b = lambda node , graph = G: print(graph.nodes()[node]["t_start"   ] )
+    b(1) # output 10
 
-b(1) # output 10
+    def gg(graph):
+        graph.nodes()[1]["t_start"   ] = 20
+        return graph
 
-def gg(graph):
-    graph.nodes()[1]["t_start"   ] = 20
-    return graph
+    gg(G)
+    b(1) # ouput 20
 
-gg(G)
-b(1) # ouput 20
+import numpy as np, cv2
+
+# Assuming you have a numpy array of shape (N_images, height, width)
+N_images, height, width = 3, 100, 150
+binarizedMaskArr = np.zeros((N_images, height, width), dtype=np.uint8)
+
+# Define the border thickness
+border_thickness = 5
+
+
+binarizedMaskArr[:, :border_thickness, :] = 127
+binarizedMaskArr[:, -border_thickness:, :] = 127
+binarizedMaskArr[:, :, :border_thickness] = 127
+binarizedMaskArr[:, :, -border_thickness:] = 127
+
+# Display the results (showing only the first image for illustration)
+cv2.imshow('6',binarizedMaskArr[1])
 
 
 

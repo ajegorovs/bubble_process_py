@@ -236,8 +236,8 @@ def prep_combs_clusters_from_nodes(t_nodes):
     return {t_time:sorted(t_subIDs) for t_time,t_subIDs in t_return.items()}
 
    
-rel_area_thresh = 2        
-def edge_crit_func(conn,edge,lr_big121s_perms_areas):
+#rel_area_thresh = 2        
+def edge_crit_func(conn,edge,lr_big121s_perms_areas, rel_area_thresh):
     time1,*subIDs1 = edge[0]; time2,*subIDs2 = edge[1]
                 
     area1 = lr_big121s_perms_areas[conn][time2][tuple(subIDs2)] 
@@ -500,73 +500,70 @@ def old_conn_2_new(conn,transform):
 def lr_evel_perm_interp_data(t_conns, lr_permutation_cases,lr_121_interpolation_centroids,lr_permutation_times,
         lr_permutation_centroids_precomputed,lr_permutation_areas_precomputed,lr_permutation_mom_z_precomputed):
         
-    t_all_traj      = {t_conn:[] for t_conn in lr_permutation_cases}
-    t_all_areas     = {t_conn:[] for t_conn in lr_permutation_cases}
-    t_all_moms      = {t_conn:[] for t_conn in lr_permutation_cases}
     t_sols_c        = {t_conn:[] for t_conn in lr_permutation_cases}
     t_sols_c_i      = {t_conn:[] for t_conn in lr_permutation_cases}
     t_sols_a        = {t_conn:[] for t_conn in lr_permutation_cases}
     t_sols_m        = {t_conn:[] for t_conn in lr_permutation_cases}
 
     for t_conn in t_conns:
-        t_c_interp = lr_121_interpolation_centroids[t_conn]
-        for t,t_perms in enumerate(lr_permutation_cases[t_conn]):
-            # dump sequences of areas and centroids for each possible trajectory
-            t_temp_c = []
-            t_temp_a = []     
-            t_temp_m = [] 
-            for t_time,t_perm in zip(lr_permutation_times[t_conn],t_perms):
-                t_temp_c.append(lr_permutation_centroids_precomputed[t_conn][t_time][t_perm])
-                t_temp_a.append(lr_permutation_areas_precomputed[t_conn][t_time][t_perm])
-                t_temp_m.append(lr_permutation_mom_z_precomputed[t_conn][t_time][t_perm])
-            t_all_traj[t_conn].append(np.array(t_temp_c).reshape(-1,2))
-            t_all_areas[t_conn].append(np.array(t_temp_a))
-            t_all_moms[t_conn].append(np.array(t_temp_m))
 
-        #
-        t_c_inter_traj =  [t[1:-1]       for t in t_all_traj[t_conn]]
-        t_c_inter_traj_diff =  [t - t_c_interp      for t in t_c_inter_traj]
-        t_c_inter_traj_diff_norms = [np.linalg.norm(t, axis=1)  for t in t_c_inter_traj_diff]
-        t_c_i_traj_d_norms_means  = [np.mean(t) for t in t_c_inter_traj_diff_norms]
-        t_c_i_mean_min            = np.argmin(t_c_i_traj_d_norms_means)
+        # pre define arrays for storing centroids, area and moments
+        num_time_steps  = len(lr_permutation_times[t_conn])
+        num_perms       = len(lr_permutation_cases[t_conn])
 
-        # check displacement norms, norm means and stdevs
-        t_c_diffs = [np.diff(t,axis = 0)        for t in t_all_traj[t_conn]]
-        t_c_norms = [np.linalg.norm(t, axis=1)  for t in t_c_diffs]
-        t_c_means = np.mean(t_c_norms, axis=1)
-        t_c_stdevs= np.std( t_c_norms, axis=1)
+        t_c_all_traj    = np.zeros((num_perms, num_time_steps, 2))
+        t_areas         = np.zeros((num_perms, num_time_steps))
+        t_moments       = np.zeros((num_perms, num_time_steps))
 
-        t_c_mean_min    = np.argmin(t_c_means)
-        t_c_stdevs_min  = np.argmin(t_c_stdevs)
+        # fill storage with values depending on permutations
+        for i, t_perms in enumerate(lr_permutation_cases[t_conn]):
+            for j, (t_time, t_perm) in enumerate(zip(lr_permutation_times[t_conn], t_perms)):
+                t_c_all_traj[  i][j]    = lr_permutation_centroids_precomputed[   t_conn][t_time][t_perm]
+                t_areas[       i][j]    = lr_permutation_areas_precomputed[       t_conn][t_time][t_perm]
+                t_moments[     i][j]    = lr_permutation_mom_z_precomputed[       t_conn][t_time][t_perm]
+
+        # get difference between evolution and expected (interpolated) trajectory. 
+        # 't_c_all_traj' includes end points, interpolation not, take them out
+        # calc dispalcement norm at each time step 
+        t_c_interp                  = lr_121_interpolation_centroids[t_conn]
+        t_c_inter_traj_diff_norms   = np.linalg.norm(t_c_all_traj[:, 1:-1] - t_c_interp, axis=2)
+        # calc mean of displ for each evolution
+        t_c_i_traj_d_norms_means    = np.mean(t_c_inter_traj_diff_norms, axis=1)
+        t_c_i_mean_min              = np.argmin(t_c_i_traj_d_norms_means)
+
+        # get displacements for all trajectories, calculate displacment norms
+        t_c_diffs = np.diff(       t_c_all_traj , axis = 1)
+        t_c_norms = np.linalg.norm(t_c_diffs    , axis = 2)
+        
+        t_c_means       = np.mean(  t_c_norms   , axis = 1)
+        t_c_stdevs      = np.std(   t_c_norms   , axis = 1)
+
+        t_c_mean_min    = np.argmin(t_c_means   )
+        t_c_stdevs_min  = np.argmin(t_c_stdevs  )
 
 
         # same with areas
-        t_areas = np.array(t_all_areas[t_conn])
-        t_a_diffs = np.diff(t_areas, axis=1)
-        t_a_d_abs = np.array([np.abs(t) for t in t_a_diffs])
-        t_a_d_a_sum = np.sum(t_a_d_abs, axis = 1)
-        t_a_means = np.mean(t_a_d_abs, axis=1)
-        t_a_stdevs= np.std( t_a_d_abs, axis=1)
+        t_a_d_abs   = np.abs(np.diff(   t_areas     , axis = 1)) #np.array([np.abs(t) for t in t_a_diffs])
+        t_a_means   = np.mean(          t_a_d_abs   , axis = 1)
+        t_a_stdevs  = np.std(           t_a_d_abs   , axis = 1)
 
         t_a_mean_min    = np.argmin(t_a_means)
         t_a_stdevs_min  = np.argmin(t_a_stdevs)
 
         # same with moments
-        t_moments = np.array(t_all_moms[t_conn])
-        t_m_diffs = np.diff(t_moments, axis=1)
-        t_m_d_abs = np.array([np.abs(t) for t in t_m_diffs])
-        t_m_d_a_sum = np.sum(t_m_d_abs, axis = 1)
-        t_m_means = np.mean(t_m_d_abs, axis=1)
-        t_m_stdevs= np.std( t_m_d_abs, axis=1)
+        t_m_d_abs   = np.abs(np.diff(   t_moments, axis = 1))# np.array([np.abs(t) for t in t_m_diffs])
+        t_m_means   = np.mean(          t_m_d_abs, axis = 1)
+        t_m_stdevs  = np.std(           t_m_d_abs, axis = 1)
 
         t_m_mean_min    = np.argmin(t_m_means)
         t_m_stdevs_min  = np.argmin(t_m_stdevs)
 
         # save cases with least mean and stdev
-        t_sols_c[t_conn] += [t_c_mean_min,t_c_stdevs_min]
-        t_sols_c_i[t_conn] += [t_c_i_mean_min]
-        t_sols_a[t_conn] += [t_a_mean_min,t_a_stdevs_min]
-        t_sols_m[t_conn] += [t_m_mean_min,t_m_stdevs_min]
+        t_sols_c[   t_conn].extend( [t_c_mean_min   , t_c_stdevs_min]   )
+        t_sols_c_i[ t_conn].extend( [t_c_i_mean_min                 ]   )
+        t_sols_a[   t_conn].extend( [t_a_mean_min   , t_a_stdevs_min]   )
+        t_sols_m[   t_conn].extend( [t_m_mean_min   , t_m_stdevs_min]   )
+
     return t_sols_c, t_sols_c_i, t_sols_a, t_sols_m
 
 def lr_weighted_sols(t_conns, weights, t_sols, lr_permutation_cases):
@@ -584,7 +581,7 @@ def lr_weighted_sols(t_conns, weights, t_sols, lr_permutation_cases):
         t_all_sols += t_sols_a[t_conn]
         t_all_sols += t_sols_m[t_conn]
 
-        t_all_sols_unique = sorted(list(set(t_sols_c[t_conn] + t_sols_c_i[t_conn] + t_sols_a[t_conn] + t_sols_m[t_conn])))  # take unique
+        t_all_sols_unique = sorted(list(set(t_all_sols)))  # take unique
      
         lr_weighted_solutions[t_conn] = {tID:0 for tID in t_all_sols_unique}
         for tID in t_all_sols_unique:                       # go though solutions if unique ID is present there, add bonus reward

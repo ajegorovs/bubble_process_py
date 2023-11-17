@@ -188,8 +188,9 @@ def extract_graph_connected_components(graph, sort_function = lambda x: x):
 #    return  sorted([sorted(c, key = sort_function_out) for c in nx.connected_components(graph)] , key = sort_function_in)
     
 
-def extract_clusters_from_edges(edges, sort_f_in = lambda x: x, sort_f_out = lambda x: x[0]): 
+def extract_clusters_from_edges(edges, nodes= [], sort_f_in = lambda x: x, sort_f_out = lambda x: x[0]): 
     graph = nx.Graph()
+    graph.add_nodes_from(nodes)
     graph.add_edges_from(edges)
     return  sorted([sorted(c, key = sort_f_in) for c in nx.connected_components(graph)] , key = sort_f_out)
     

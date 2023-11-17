@@ -99,17 +99,30 @@ def sort_len_diff_f(edge):
     length_difference = abs(node1_length - node2_length)
     return (total_length, -length_difference)  
 
-def disperse_nodes_to_times(nodes):
+def disperse_nodes_to_times(nodes, sort = False):
     t_perms = defaultdict(list)
     for t, *t_subIDs in nodes:
         t_perms[t].extend(t_subIDs)
-    return dict(t_perms)
 
-def disperse_composite_nodes_into_solo_nodes(composite_node_list):
+    if not sort:
+        return dict(t_perms)
+    else:
+        return {t:sorted(t_perms[t]) for t in sorted(t_perms)}
+
+# DUPLICATE FROM MAIN
+# sort function for composite node of type (time, ID1, ID2,...): [(1,2),(2,1),(1,1,9)] -> [(1,1,9),(1,2),(2,1)]
+sort_comp_n_fn = lambda x: (x[0], x[1:]) 
+
+def disperse_composite_nodes_into_solo_nodes(composite_node_list, sort = False, sort_fn = sort_comp_n_fn):
     output = set()
     for time, *subIDs in composite_node_list:
         output.update([(time,subID) for subID in subIDs])
-    return output
+
+    if not sort:
+        return list(output)
+    else:
+        return sorted(output, key = sort_fn)
+
 
 
 def find_key_by_value(my_dict, value_to_find):

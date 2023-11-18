@@ -25,7 +25,7 @@ inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\Fiel
 #inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 125 mT\Series 1\350 sccm'
 #inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\100 sccm'
 # image data subsets are controlled by specifying image index, which is part of an image. e.g image1, image2, image20, image3
-intervalStart   = 2000                            # start with this ID
+intervalStart   = 4000                            # start with this ID
 numImages       = 2000                          # how many images you want to analyze.
 intervalStop    = intervalStart + numImages     # images IDs \elem [intervalStart, intervalStop); start-end will be updated depending on available data.
 
@@ -586,7 +586,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     seg_min_length = 2     
     segments_fb = graph_extract_paths(G, min_length = seg_min_length)
 
-    #for_graph_plots(G, segments_fb, show = False)
+    #for_graph_plots(G, segments_fb, show = True)
 
     # ===============================================================================================
     # ========================= FIND OBJECTS/BUBBLES THAT ARE FROZEN IN PLACE =======================
@@ -708,7 +708,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     ## sort keys in lr_time_active_segments
     #lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
 
-    # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    for_graph_plots(G, segs = segments2)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     print(f'\n{timeHMS()}:({doX_s}) Determining connectivity between segments... ')
     # ===============================================================================================
     # ===============================================================================================

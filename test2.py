@@ -1087,41 +1087,68 @@ if 1 == -1:
 
     gg(G)
     b(1) # ouput 20
+if 1 == -1:
+    import numpy as np, cv2
 
-import numpy as np, cv2
+    # Assuming you have a numpy array of shape (N_images, height, width)
+    N_images, height, width = 3, 100, 150
+    binarizedMaskArr = np.zeros((N_images, height, width), dtype=np.uint8)
 
-# Assuming you have a numpy array of shape (N_images, height, width)
-N_images, height, width = 3, 100, 150
-binarizedMaskArr = np.zeros((N_images, height, width), dtype=np.uint8)
-
-# Define the border thickness
-border_thickness = 5
-
-
-binarizedMaskArr[:, :border_thickness, :] = 127
-binarizedMaskArr[:, -border_thickness:, :] = 127
-binarizedMaskArr[:, :, :border_thickness] = 127
-binarizedMaskArr[:, :, -border_thickness:] = 127
-
-# Display the results (showing only the first image for illustration)
-cv2.imshow('6',binarizedMaskArr[1])
+    # Define the border thickness
+    border_thickness = 5
 
 
+    binarizedMaskArr[:, :border_thickness, :] = 127
+    binarizedMaskArr[:, -border_thickness:, :] = 127
+    binarizedMaskArr[:, :, :border_thickness] = 127
+    binarizedMaskArr[:, :, -border_thickness:] = 127
+
+    # Display the results (showing only the first image for illustration)
+    cv2.imshow('6',binarizedMaskArr[1])
 
 
-# snippet shows that if times is generated before loop, 
-# during manual debug, values are advanced without getting to code below.
-#a = []
-#times = (i for i in range(10 , 15 ))
-#for t in times:
-#for t in (i for i in range(10 , 15 )):
 
-#    a.append(t)
+
+    # snippet shows that if times is generated before loop, 
+    # during manual debug, values are advanced without getting to code below.
+    #a = []
+    #times = (i for i in range(10 , 15 ))
+    #for t in times:
+    #for t in (i for i in range(10 , 15 )):
+
+    #    a.append(t)
     
-#print(a)
+    #print(a)
 
+def overlaps(a, b):
+    """
+    Return the amount of overlap, in bp
+    between a and b.
+    If >0, the number of bp of overlap
+    If 0,  they are book-ended.
+    If <0, the distance in bp between them
+    """
 
+    return min(a[1], b[1]) - max(a[0], b[0])
+
+i1 = [0,1]
+i2 = [8,10]
+print(overlaps(i2,i1))
     
+
+def ranges_overlap(range1, range2):
+    return range1.stop > range2.start and range2.stop > range1.start
+
+# Example usage:
+range1 = range(1, 3)
+range2 = range(3, 7)
+
+if ranges_overlap(range1, range2):
+    print("Ranges overlap.")
+else:
+    print("Ranges do not overlap.")
+
+
 a = 1   
 
 k = cv2.waitKey(0)

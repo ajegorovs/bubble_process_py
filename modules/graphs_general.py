@@ -1,5 +1,6 @@
 
-import networkx as nx, cv2, numpy as np, itertools
+from re import A
+import networkx as nx, cv2, numpy as np, itertools, copy
 from matplotlib import pyplot as plt
 from collections import defaultdict
 from bubble_params import (centroid_area_cmomzz)
@@ -297,8 +298,23 @@ def drawH(H, paths, node_positions, fixed_nodes = [], show = True, suptitle = "d
         plt.show()
     
     return edge_width, edge_color, node_size
+def check_overlap(a, b):
+    """
+    https://stackoverflow.com/questions/2953967/built-in-function-for-computing-overlap-in-python
+    Return the amount of overlap, in bp
+    between a and b.
+    If >0, the number of bp of overlap
+    If 0,  they are book-ended.
+    If <0, the distance in bp between them
+    """
+
+    return min(a[1], b[1]) - max(a[0], b[0])
+
+def ranges_overlap(range1, range2):
+    return range1.stop > range2.start and range2.stop > range1.start
 
 def for_graph_plots(G, segs = [], show = True, suptitle = "drawH", node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
+
     if len(segs) == 0:
         segments3 = graph_extract_paths(G) # default min_length
     else:
@@ -313,25 +329,148 @@ def for_graph_plots(G, segs = [], show = True, suptitle = "drawH", node_size = 3
     #segments3 = list(sorted(segments3, key=lambda x: x[0][0]))
     paths = {i:vals for i,vals in enumerate(segments3)}
 
- 
-    t_pos = order_segment_levels(segments3, debug = 0)
+    # check overlap between segments time-wise: extract overlapping clusters
+    # 
+    G_time  = lambda node, graph = G : graph.nodes[node]['time']
+    G_owner = lambda node, graph = G : graph.nodes[node]['owner']
+    # extract (time_from,to_to) of each segment
+    #time_intervals = {i:(G_time(nodes[0]), G_time(nodes[-1])) for i, nodes in paths.items()}
+    # check all pairs of segments for overlap. keep overlapping
+    #pairs_overlap = [(a,b) for (a,b) in itertools.combinations(paths.keys(), 2) 
+    #                 if check_overlap(time_intervals[a],time_intervals[b]) >= 0]
 
-    all_segments_nodes = sorted(sum(segments3,[]), key = lambda x: [x[0],x[1]])
-    all_nodes_pos = {tID:[tID[0],0] for tID in G.nodes()} # initialize all with true horizontal position.
+    time_intervals = {i:range(G_time(nodes[0]), G_time(nodes[-1]) + 1) for i, nodes in paths.items()}
+    # check all pairs of segments for overlap. keep overlapping
+    pairs_overlap = [(a,b) for (a,b) in itertools.combinations(paths.keys(), 2) 
+                     if ranges_overlap(time_intervals[a],time_intervals[b])]
+    # extract clusters of overlapping segments. different clusters dont overlap. 
+    # by 'jumping' from one segment in cluster to other you can reach form min to max cluster time
+    # cluster elements are sorted by internal index and clusters themself are sorted by first element.
+    # it should inherit proper order with which they were found on graph.
+    overlapping_clusters = extract_clusters_from_edges(edges = pairs_overlap, nodes = paths)
+    # determine maximal number of layers in all clusters
+    max_layers = max([len(subIDs) for subIDs in overlapping_clusters])
+    # create empty layers for all clusters. global max layers for every cluster storage
+    positions = {c:{layer:[] for layer in range(max_layers)} for c,_ in enumerate(overlapping_clusters)}
+    # distribute cluster elements on layers in ladder fashion from lowest to highest
+    for cluster_ID, subIDs in enumerate(overlapping_clusters):
+        for layer, subID in enumerate(subIDs):
+            positions[cluster_ID][layer].append(subID)
+    # we have 
+    # positions = { 
+    #                       cluster_01: 
+    #                                   {
+    #                                       layer_01:   [segment_ID_01], 
+    #                                       layer_02:   [segment_ID_02],
+    #                                       ...
+    #                                    }, 
+    #                       cluster_02:{},
+    #                       ...
+    #                       }
+    #positions0 = copy.deepcopy(positions)
+    
+    for clusterID, layer_dict in positions.items():
+        if max_layers <= 1:         continue        # 1 layer means theres nothing to reshuffle. maybe break instead of continue
+        num_IDs_layer = lambda layer: len(layer_dict[layer])
+        last_ID_layer = lambda layer: layer_dict[layer][-1]
+        for layer, seg_subIDs in layer_dict.items():# initially each layer has 1 element (or zero). have to drop them down.
+            if layer == 0:              continue    # dont do anything with first layer.
+            if len(seg_subIDs) == 0:    break       # first empty, then rest are also empty.
+            ID = seg_subIDs[0]
+            interval = time_intervals[ID]        
+            # start walking layers below. take last ID on that layer and check overlap. take first case w/o overlap
+            first_match = next(
+                (l for l in range(2,layer) if num_IDs_layer(l)                                          == 0 or 
+                                            not ranges_overlap(interval, time_intervals[last_ID_layer(l)])    
+                 )
+                , None)
+
+            if first_match is not None:
+                positions[clusterID][first_match].append(ID)# add to end of layer with free spot
+                positions[clusterID][layer].remove(ID)
+                
+    
+    # move verticaly cluster layers to center of the graph:
+    # have to get new layer counts
+    num_layers_cluster = {}
+
+    for clusterID, layer_dict in positions.items():
+        num_IDs_layer = lambda layer: len(layer_dict[layer])
+        # check how many layers are left after collapse. count up to first empty.
+        max_layers_cluster = next((l for l in range(max_layers) if num_IDs_layer(l) == 0 ), max_layers)
+        num_layers_cluster[clusterID] = max_layers_cluster
+        
+    max_layers_2 = max(num_layers_cluster.values())
+    # move clusters vertically individually
+    t_pos = {i:0 for i,_ in enumerate(segments3)}
+    for clusterID, layer_dict in positions.items():
+        offset = np.floor(0.5*(max_layers_2 - num_layers_cluster[clusterID]))
+        for layer, seg_subIDs in layer_dict.items():
+            for ID in seg_subIDs:
+                t_pos[ID] = int(layer + offset) 
+    #t_pos = order_segment_levels(segments3, debug = 0)
+
+    #isolate stray nodes
+    stray_nodes = [n for n in G.nodes() if G_owner(n) is None]
+    # get times at which stray nodes are present
+    stray_times = sorted(set([G_time(n) for n in stray_nodes]))
+    # sort strat nodes to time related bins
+    stray_times_nodes       = {t:[] for t in stray_times}
+    stray_times_seg_nodes   = {t:[] for t in stray_times}
+    for n in G.nodes():
+        if G_time(n) in stray_times:
+            if G_owner(n) is None:
+                stray_times_nodes[G_time(n)].append(n)
+            else:
+                stray_times_seg_nodes[G_time(n)].append(n)
+
+    # segment nodes will be fixed in place, remember their layer
+    node_layer_pos = {}
+    for time, nodes in stray_times_seg_nodes.items():
+        for node in nodes:
+            ID = G_owner(node)
+            node_layer_pos[node] = t_pos[ID]
+
+    # find maximal number of nodes for all time slices.
+    max_stray_layers = 0
+    num_layers_strays = {}
+    for time in stray_times:
+        num_tot                 = len(stray_times_nodes[time]) + len(stray_times_seg_nodes[time])
+        num_layers_strays[time] = num_tot
+        max_stray_layers        = max(max_stray_layers, num_tot)
+    
+    for time, num_layers in num_layers_strays.items():
+        stat_node_pos = [node_layer_pos[n] for n in stray_times_seg_nodes[time]]
+        unresolved_strays = stray_times_nodes[time]
+        #num_free_nodes = num_layers - len(stat_node_pos)
+
+        for i in range(0,100000):
+            if i not in stat_node_pos:
+                if len(unresolved_strays) == 0: break
+                node_layer_pos[unresolved_strays[0]] = i
+                del unresolved_strays[0]
+
+    # nodes at each time step slice should repel each other. get edges between node pairs to calc forces.
+    stray_repel_pairs = {}
+    for time in stray_times:
+        nodes_tot = stray_times_nodes[time] + stray_times_seg_nodes[time]
+        stray_repel_pairs[time] = list(itertools.combinations(nodes_tot, 2))
+    
+    # initialize stray node positions
+
+    all_nodes_pos = {}# {tID:[tID[0],0] for tID in G.nodes()}
+    for node in G.nodes():
+        segID = G_owner(node)
+        if segID is not None:
+            all_nodes_pos[node] = [ G_time(node), t_pos[segID]          ]
+        else:
+            all_nodes_pos[node] = [ G_time(node), node_layer_pos[node]  ] 
+
+    a = 1
+    #all_segments_nodes = sorted(sum(segments3,[]), key = lambda x: [x[0],x[1]])
+    #all_nodes_pos = {tID:[tID[0],0] for tID in G.nodes()} # initialize all with true horizontal position.
     #fixed_nodes_pos = {tID:[tID[0],0] for tID in G.nodes()}
 
-    for t_k, t_segment in enumerate(segments3): #modify only path nodes position, rest is default
-        for t_node in t_segment:
-            all_nodes_pos[t_node][1] = 0.28*t_pos[t_k]
-            #all_nodes_pos[t_node] = (t_node[0],0.28*t_pos[t_k])
-
-    not_segment_nodes = [t_node for t_node in G.nodes() if t_node not in all_segments_nodes]
-    # not_segment_nodes contain non-segment nodes, thus they are solo ID nodes: (time,ID)
-    not_segment_nodes_clusters = prep_combs_clusters_from_nodes(not_segment_nodes)
-    for t_time, t_subIDs in not_segment_nodes_clusters.items():
-        for t_k, t_subID in enumerate(t_subIDs):
-            t_node = tuple([t_time,t_subID])
-            all_nodes_pos[t_node][1] = 0.28*(t_k - 0.5)
     #G = G.to_undirected()
     edge_width, edge_color, node_size = drawH(G.to_undirected(), paths, all_nodes_pos, show = show, suptitle = suptitle, node_size = node_size, edge_width_path = edge_width_path, edge_width = edge_width, font_size = font_size)
     #drawH(G, paths, all_nodes_pos, fixed_nodes = all_segments_nodes)

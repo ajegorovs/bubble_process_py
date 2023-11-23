@@ -1,7 +1,18 @@
-import numpy as np, itertools, networkx as nx, sys, copy,  cv2, os, glob, re, pickle
+import numpy as np, itertools, networkx as nx, sys, copy,  cv2, os, glob, re, pickle, time as time_lib
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from collections import defaultdict
+
+
+def track_time(reset = False):
+    if reset:
+        track_time.last_time = time_lib.time()
+        return '(Initializing time counter)'
+    else:
+        current_time = time_lib.time()
+        time_passed = current_time - track_time.last_time
+        track_time.last_time = current_time
+        return f'({time_passed:.2f} s)'
 
 #from multiprocessing import Pool, log_to_stderr, get_logger
 
@@ -16,6 +27,10 @@ from collections import defaultdict
 # import from custom sub-folders are defined bit lower
 #from imageFunctionsP2 import (overlappingRotatedRectangles,graphUniqueComponents)
 
+# ------------------------------------ CREATE MAIN PROJECT, SUBPROJECT FOLDERS ---------------------------//
+mainOutputFolder            = r'.\post_tests'                           # descritive project name e.g [gallium_bubbles, water_bubbles]
+mainOutputSubFolders =  ['Field OFF Series 7', 'sccm150-meanFix']       # sub-project folder hierarhy e.g [exp setup, parameter] 
+                                                                        # one more layer will be created for image subset later.
 # ========================================================================================================
 # ============== SET NUMBER OF IMAGES ANALYZED =================
 # ========================================================================================================
@@ -25,8 +40,8 @@ inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\Fiel
 #inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 125 mT\Series 1\350 sccm'
 #inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\100 sccm'
 # image data subsets are controlled by specifying image index, which is part of an image. e.g image1, image2, image20, image3
-intervalStart   = 4000                            # start with this ID
-numImages       = 2000                          # how many images you want to analyze.
+intervalStart   = 1                            # start with this ID
+numImages       = 1999                          # how many images you want to analyze.
 intervalStop    = intervalStart + numImages     # images IDs \elem [intervalStart, intervalStop); start-end will be updated depending on available data.
 
 exportArchive       = 0                         # implies there are no results that can be reused, of you want to force data initialization stage.
@@ -63,29 +78,26 @@ if 1 == 1:                               # prep image links, get min/max image i
 # --------------------------------------------------------------------------------------------------------//
 # ------------------------------------ CREATE MAIN PROJECT, SUBPROJECT FOLDERS ---------------------------//
 
-mainOutputFolder            = r'.\post_tests'                           # descritive project name e.g [gallium_bubbles, water_bubbles]
 if not os.path.exists(mainOutputFolder): os.mkdir(mainOutputFolder)  
-mainOutputSubFolders =  ['Field OFF Series 7', 'sccm150-meanFix', 
-                         f"{intervalStart:05}-{intervalStop:05}"]       # sub-project folder hierarhy e.g [exp setup, parameter, subset of data]
+mainOutputSubFolders.append(f"{intervalStart:05}-{intervalStop:05}")       # sub-project folder hierarhy e.g [exp setup, parameter, subset of data]
 
 for folderName in mainOutputSubFolders:     
     mainOutputFolder = os.path.join(mainOutputFolder, folderName)               
     if not os.path.exists(mainOutputFolder): os.mkdir(mainOutputFolder)
 
 # -------------------------------- CREATE VARIOUS OUTPUT FOLDERS -------------------------
-a = ['images', 'stages',  'archives', 'graphs']
-b = ['']*len(a)                                                                
 
-for i,folderName in enumerate(a):   
-    tempFolder = os.path.join(mainOutputFolder, folderName)
-    if not os.path.exists(tempFolder): os.mkdir(tempFolder)
-    b[i] = tempFolder
-imageFolder, stagesFolder, dataArchiveFolder, graphsFolder = b
-imageFolder_pre_run = 'prerun'
-imageFolder_pre_run = os.path.join(imageFolder, imageFolder_pre_run)
+imageFolder        = os.path.join(mainOutputFolder, 'images'    )
+stagesFolder       = os.path.join(mainOutputFolder, 'stages'    )
+dataArchiveFolder  = os.path.join(mainOutputFolder, 'archives'  )
+graphsFolder       = os.path.join(mainOutputFolder, 'graphs'    )
+
+[os.mkdir(folder) for folder in (imageFolder, stagesFolder, dataArchiveFolder, graphsFolder) if not os.path.exists(folder)]
+
+imageFolder_pre_run = os.path.join(imageFolder, 'prerun')
 if not os.path.exists(imageFolder_pre_run): os.mkdir(imageFolder_pre_run)
-imageFolder_output = 'output'
-imageFolder_output = os.path.join(imageFolder, imageFolder_output)
+
+imageFolder_output = os.path.join(imageFolder, 'output')
 if not os.path.exists(imageFolder_output): os.mkdir(imageFolder_output)
 
 # ============================ MANAGE MODULES WITH FUNCTIONS =============================//
@@ -131,20 +143,21 @@ cropMaskName = "-".join(mainOutputSubFolders[:2])+'-crop'
 cropMaskPath = os.path.join(os.path.join(*mainOutputFolder.split(os.sep)[:-1]), f"{cropMaskName}.png")
 cropMaskMissing = True if not os.path.exists(cropMaskPath) else False
 
-meanImagePath       = os.path.join(dataArchiveFolder,   "-".join(["mean"                ]+mainOutputSubFolders)+".npz")
-meanImagePathArr    = os.path.join(dataArchiveFolder,   "-".join(["meanArr"             ]+mainOutputSubFolders)+".npz")
+graphsPath          =   os.path.join(dataArchiveFolder  ,  "graphs.pickle"    )
+segmentsPath        =   os.path.join(dataArchiveFolder  ,  "segments.pickle"  )
+contoursHulls       =   os.path.join(dataArchiveFolder  ,  "contorus.pickle"  )
+mergeSplitEvents    =   os.path.join(dataArchiveFolder  ,  "ms-events.pickle" )
 
-archivePath         = os.path.join(stagesFolder,        "-".join(["croppedImageArr"     ]+mainOutputSubFolders)+".npz")
-binarizedArrPath    = os.path.join(stagesFolder,        "-".join(["binarizedImageArr"   ]+mainOutputSubFolders)+".npz")
+                     
+meanImagePath       =   os.path.join(dataArchiveFolder  ,  "mean.npz"         )
+meanImagePathArr    =   os.path.join(dataArchiveFolder  ,  "meanArr.npz"      )
+                     
+archivePath         =   os.path.join(stagesFolder       ,  "croppedImageArr.npz"        )
+binarizedArrPath    =   os.path.join(stagesFolder       ,  "binarizedImageArr.npz"      )
+post_binary_data    =   os.path.join(stagesFolder       ,  "intermediate_data.pickle"   ) 
 
-graphsPath          = os.path.join(dataArchiveFolder,   "-".join(["graphs"              ]+mainOutputSubFolders)+".pickle")
-segmentsPath        = os.path.join(dataArchiveFolder,   "-".join(["segments"            ]+mainOutputSubFolders)+".pickle")
-contoursHulls       = os.path.join(dataArchiveFolder,   "-".join(["contorus"            ]+mainOutputSubFolders)+".pickle")
-mergeSplitEvents    = os.path.join(dataArchiveFolder,   "-".join(["ms-events"           ]+mainOutputSubFolders)+".pickle")
-
-exportArchive = 1 if not os.path.exists(archivePath) else 0 
-
-if exportArchive == 1:
+print(track_time(reset = True))
+if not os.path.exists(archivePath):
     # ===================================================================================================
     # ======== CROP USING A MASK (DRAW RED RECTANGLE ON EXPORTED SAMPLE IN MANUAL MASK FOLDER) ==========
     # IF MASK IS MISSING YOU CAN DRAW IT USING GUI
@@ -177,11 +190,11 @@ if exportArchive == 1:
     # =========================== CROP/UNSISTORT AND STORE DATA INTO ARCHIVES ===========================
     # ---------------------------------------------------------------------------------------------------
 
-    print(f"\n{timeHMS()}: Processing and saving archive data on drive...")
+    print(f"\n{timeHMS()}: Processing and saving archive data on drive... {track_time()}\n")
     
     if rotateImageBy % 2 == 0 and rotateImageBy != -1: W,H = H,W            # for cv2.XXX rotation commands
 
-    dataArchive = np.zeros((len(imageLinks),H,W),np.uint8)                        # predefine storage
+    dataArchive = np.zeros((len(imageLinks),H,W),np.uint8)                  # predefine storage
 
     mapXY       = (np.load('./mapx.npy'), np.load('./mapy.npy'))            # fish-eye correction map
 
@@ -191,43 +204,26 @@ if exportArchive == 1:
             dataArchive[i]    = cv2.rotate(image, rotateImageBy)
         else:
             dataArchive[i]    = image
-
-    print(f"\n{timeHMS()}: Processing and saving archive data on drive...saving compressed")
-    np.savez_compressed(archivePath,dataArchive)
+    print(f"\n\n{timeHMS()}: Imporing, undistorting, cropping and rotating images ... Done! {track_time()}")
     
-    print(f"\n{timeHMS()}: Exporting mean image...calculating mean")
+    np.savez(archivePath,dataArchive)
+    print(f"{timeHMS()}: Saving uncompressed image stack ... Done! {track_time()}")
 
+else:
+    dataArchive = np.load(archivePath)['arr_0']
+    print(f"{timeHMS()}:  Uncompressed image stack is found. Loading ... Done! {track_time()}")
+
+if not os.path.exists(meanImagePath):
     meanImage = np.mean(dataArchive, axis=0)
-    print(f"\n{timeHMS()}: Exporting mean image...saving compressed")
-    np.savez_compressed(meanImagePath,meanImage)
-      
-    print(f"\n{timeHMS()}: Processing and saving archive data on drive... Done!")
+    print(f"\n{timeHMS()}: Mean image is not found. Calculating mean image of a stack ... Done! {track_time()}")
+
+    np.savez(meanImagePath,meanImage)
+    print(f"\n{timeHMS()}: Mean image is not found. Saving uncompressed mean image ... Done! {track_time()}") 
 
     useIntermediateData = 0           # no need to re-read data you have just created
-
-elif not os.path.exists(archivePath): # did not find ropped image array.
-    print(f"\n{timeHMS()}: No archive detected! Please generate it from project images. set exportArchive = 1")
-
-elif useIntermediateData:
-    print(f"\n{timeHMS()}: Existing archive found! Importing data...")
-    dataArchive = np.load(archivePath)['arr_0']
-
-    print(f"\n{timeHMS()}: Existing archive found! Importing data... Done!")
-
-    if not os.path.exists(meanImagePath):
-        print(f"\n{timeHMS()}: No mean image found... Calculating mean")
-
-        meanImage = np.mean(dataArchive, axis=0)
-        print(f"\n{timeHMS()}: No mean image found... Saving compressed")
-        np.savez_compressed(meanImagePath,meanImage)
-
-        print(f"\n{timeHMS()}: No mean image found... Done")
-    else:
-        meanImage = np.load(meanImagePath)['arr_0']
 else:
-    print(f"\n{timeHMS()}: Did not generate new data, nor imported existing... set exportArchive = 1 or useIntermediateData = 1")
-
-#cv2.imshow(f'mean',meanImage.astype(np.uint8))
+    meanImage = np.load(meanImagePath)['arr_0']
+    print(f"\n{timeHMS()}:  Mean image found. Loading ... Done! {track_time()}")
 
 # =========================================================================================================
 # discrete update moving average with window N, with intervcal overlap of N/2
@@ -236,35 +232,37 @@ else:
 #       [-interval2-]   for second segment: inteval is [i-1/4*N, i+3/4*N]
 #                 |     third switch 1/4*N +2*[i-1/4*N, i+3/4*N] and so on. N/2 between switches
 
-if useMeanWindow == 1 and not useIntermediateData:
-    meanIndicies = np.arange(0,dataArchive.shape[0],1)                                           # index all images
-    meanWindows = {}                                                                             # define timesteps at which averaging
-    meanWindows[0] = [0,N]                                                                       # window is switched. eg at 0 use
-                                                                                                 # np.mean(archive[0:N])
-    meanSwitchPoints = np.array(1/4*N + 1/2*N*np.arange(1, int(len(meanIndicies)/(N/2)), 1), int)# next switch points, by geom construct
-                                                                                                 # 
-    for t in meanSwitchPoints:                                                                   # intervals at switch points
-        meanWindows[t] = [t-int(1/4*N),min(t+int(3/4*N),max(meanIndicies))]                      # intervals have an overlap of N/2
-    meanWindows[meanSwitchPoints[-1]] = [meanWindows[meanSwitchPoints[-1]][0],max(meanIndicies)] # modify last to include to the end
-    intervalIndecies = {t:i for i,t in enumerate(meanWindows)}                                   # index switch points {i1:0, i2:1, ...}
-                                                                                                 # so i1 is zeroth interval
-    print(meanWindows)                                                                                       
-    print(intervalIndecies)
+if useMeanWindow:
 
+    print(f"\n{timeHMS()}: Mean window is enabled. working on it... {track_time()}")                 # index all images
+    meanIndicies = np.arange(0,dataArchive.shape[0],1)                                              # define timesteps at which averaging
+    meanWindows = {}                                                                                # window is switched. eg at 0 use
+    meanWindows[0] = [0,N]                                                                          # np.mean(archive[0:N])
+                                                                                                    # next switch points, by geom construct
+    meanSwitchPoints = np.array(1/4*N + 1/2*N*np.arange(1, int(len(meanIndicies)/(N/2)), 1), int)   # 
+                                                                                                    # intervals at switch points
+    for t in meanSwitchPoints:                                                                      # intervals have an overlap of N/2
+        meanWindows[t] = [t-int(1/4*N),min(t+int(3/4*N),max(meanIndicies))]                         # modify last to include to the end
+    meanWindows[meanSwitchPoints[-1]] = [meanWindows[meanSwitchPoints[-1]][0],max(meanIndicies)]    # index switch points {i1:0, i2:1, ...}
+                                                                                                    # so i1 is zeroth interval
     if not os.path.exists(meanImagePathArr):
-        print(f"\n{timeHMS()}: Mean window is enabled. No mean image array found. Generating and saving new...")
+
         masksArr = np.array([np.mean(dataArchive[start:stop], axis=0) for start,stop in meanWindows.values()])   # array of discrete averages
+        print(f"\n{timeHMS()}: Mean window is enabled. No array found. Generating new... Done! {track_time()}")
 
         with open(meanImagePathArr, 'wb') as handle:
             pickle.dump(masksArr, handle)
-        print(f"\n{timeHMS()}: Mean window is enabled. No mean image array found. Generating and saving new... Done")
-                                                     
+        print(f"\n{timeHMS()}: Mean window is enabled. No array found. Saving new... Done! {track_time()}")
 
     else:
-        print(f"\n{timeHMS()}: Mean window is enabled. Mean image array found. Importing data...")
         with open(meanImagePathArr, 'rb') as handle:
                 masksArr = pickle.load(handle)
-        print(f"\n{timeHMS()}: Mean window is enabled. Mean image array found. Importing data... Done!")
+        print(f"\n{timeHMS()}: Mean window is enabled. Array found. Importing data... Done! {track_time()}")
+
+    intervalIndecies = {t:i for i,t in enumerate(meanWindows)}    
+
+    #print(meanWindows)                                                                                       
+    #print(intervalIndecies)
 
 def whichMaskInterval(t,order):                                                                          # as frames go 0,1,..numImgs
     times = np.array(list(order))                                                                        # mean should be taken form the left
@@ -277,8 +275,9 @@ def whichMaskInterval(t,order):                                                 
 
 # sort function for composite node of type (time, ID1, ID2,...): [(1,2),(2,1),(1,1,9)] -> [(1,1,9),(1,2),(2,1)]
 sort_comp_n_fn = lambda x: (x[0], x[1:]) 
-if not useIntermediateData:           # this will pre-calculate some stuff in case of analysis needed.
-
+if not os.path.exists(binarizedArrPath):           # this will pre-calculate some stuff in case of analysis needed.
+    print(f"\n{timeHMS()}: Doing initial image processing to form binary masks:")
+    
     def adjustBrightness(image):
         brightness = np.sum(image) / (255 * np.prod(image.shape))
         minimum_brightness = 0.66
@@ -287,92 +286,80 @@ if not useIntermediateData:           # this will pre-calculate some stuff in ca
             return 1
         return ratio    #cv2.convertScaleAbs(image, alpha = 1 / ratio, beta = 0)
         
-    do_stage = False
-    if useMeanWindow and not os.path.exists(binarizedArrPath): # want mean window and archive does not exist.
-        binarizedMaskArr = np.zeros(dataArchive.shape)
+    if useMeanWindow: 
+        binarizedMaskArr = np.zeros_like(dataArchive)
         for k in range(dataArchive.shape[0]):
             blurMean = cv2.blur(masksArr[whichMaskInterval(k,intervalIndecies)], (5,5),cv2.BORDER_REFLECT)
             binarizedMaskArr[k] = dataArchive[k] - blurMean   
-        #meanImage = masksArr[whichMaskInterval(globalCounter,intervalIndecies)] # copied from diff code
-        do_stage = True
+        print(f"\n{timeHMS()}: Subtracting mean window image from stack ... Done! {track_time()}")
 
     elif not os.path.exists(binarizedArrPath):                # dont want mean window and archive does not exist
+        
         blurMean = cv2.blur(meanImage, (5,5),cv2.BORDER_REFLECT)
-        #cv2.imshow('1',np.uint8(blurMean))
         binarizedMaskArr = dataArchive - blurMean             # substract mean image from stack -> float
-        #cv2.imshow('1',np.uint8(binarizedMaskArr[20]))
-        do_stage = True
+        print(f"\n{timeHMS()}: Subtracting mean image from stack ... Done! {track_time()}")
 
-    if do_stage:                  # archive does not exist
-        ratio = 1 #adjustBrightness(np.uint8(blurMean))
-        #binarizedMaskArr = np.array([cv2.convertScaleAbs(img, alpha = ratio, beta = 0) for img in binarizedMaskArr])
-        #cv2.imshow('2',np.uint8(binarizedMaskArr[20]))
-        imgH,imgW = blurMean.shape
-        thresh0 = 10
-        binarizedMaskArr = np.where(binarizedMaskArr < thresh0, 0, 255).astype(np.uint8)                        # binarize stack
-        #cv2.imshow('3',np.uint8(binarizedMaskArr[20]))
-        binarizedMaskArr = np.uint8([cv2.morphologyEx(img, cv2.MORPH_OPEN, np.ones((5,5),np.uint8)) for img in binarizedMaskArr])    # delete white objects
-        #cv2.imshow('4',np.uint8(binarizedMaskArr[20]))
-        binarizedMaskArr = np.uint8([cv2.dilate(img, np.ones((8,8), np.uint8) ) for img in binarizedMaskArr])    
-        #cv2.imshow('5',np.uint8(binarizedMaskArr[20]))
-        binarizedMaskArr = np.uint8([cv2.erode(img, np.ones((5,5), np.uint8) ) for img in binarizedMaskArr]) 
-        #cv2.imshow('6',np.uint8(binarizedMaskArr[20]))
+       
+    #ratio = 1 #adjustBrightness(np.uint8(blurMean))
+    #binarizedMaskArr = np.array([cv2.convertScaleAbs(img, alpha = ratio, beta = 0) for img in binarizedMaskArr])
+    imgH,imgW = blurMean.shape
+    thresh0 = 10
+    binarizedMaskArr = np.where(binarizedMaskArr < thresh0, 0, 255).astype(np.uint8)                        # binarize stack
+    print(f"\n{timeHMS()}: Performing binarization ... Done! {track_time()}")
+    binarizedMaskArr = np.uint8([cv2.morphologyEx(img, cv2.MORPH_OPEN, np.ones((5,5),np.uint8)) for img in binarizedMaskArr])    # delete white objects
+    binarizedMaskArr = np.uint8([cv2.dilate(img, np.ones((8,8), np.uint8) ) for img in binarizedMaskArr])    
+    binarizedMaskArr = np.uint8([cv2.erode(img, np.ones((5,5), np.uint8) ) for img in binarizedMaskArr]) 
+    print(f"\n{timeHMS()}: Performing morpological operations ... Done! {track_time()}")
+    #cv2.imshow('6',np.uint8(binarizedMaskArr[20]))
 
-        # remove edge components that touch virtual border of thickness "border_thickness"
-        # draw internal border on all images
-        border_thickness = 5
-        binarizedMaskArr[:,     :border_thickness   , :                 ]   = 255
-        binarizedMaskArr[:,     -border_thickness:  , :                 ]   = 255
-        binarizedMaskArr[:,     :                   , :border_thickness ]   = 255
-        binarizedMaskArr[:,     :                   , -border_thickness:]   = 255
+    # remove edge components that touch virtual border of thickness "border_thickness"
+    # draw internal border on all images
+    print(f"\n{timeHMS()}: Prep required for border components removel {track_time()}")
+    border_thickness = 5
+    binarizedMaskArr[:,     :border_thickness   , :                 ]   = 255
+    binarizedMaskArr[:,     -border_thickness:  , :                 ]   = 255
+    binarizedMaskArr[:,     :                   , :border_thickness ]   = 255
+    binarizedMaskArr[:,     :                   , -border_thickness:]   = 255
 
-        print(f"{timeHMS()}: Removing small and edge contours...")
-        topFilter, bottomFilter, leftFilter, rightFilter, minArea           = 80, 40, 100, 100, 180
-        for i in tqdm(range(binarizedMaskArr.shape[0]), total=binarizedMaskArr.shape[0]):
+    print(f"\n{timeHMS()}: Starting small and border component removal... {track_time()}\n")
+    #print(f"{timeHMS()}: Removing small and edge contours...")
+    topFilter, bottomFilter, leftFilter, rightFilter, minArea           = 80, 40, 100, 100, 180
+    for i in tqdm(range(binarizedMaskArr.shape[0]), total=binarizedMaskArr.shape[0]):
             
-            # remove edge components by flooding them with black. flooding starts from virtual corner.
-            cv2.floodFill(binarizedMaskArr[i], None, (0,0), 0)
-            contours            = cv2.findContours(binarizedMaskArr[i], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[0] #cv2.RETR_EXTERNAL; cv2.RETR_LIST; cv2.RETR_TREE
-            areas               = np.array([int(cv2.contourArea(contour)) for contour in contours])
-            boundingRectangles  = np.array([cv2.boundingRect(contour) for contour in contours])
-            whereSmall          = np.argwhere(areas < minArea)
+        # remove edge components by flooding them with black. flooding starts from virtual corner.
+        cv2.floodFill(binarizedMaskArr[i], None, (0,0), 0)
+        contours            = cv2.findContours(binarizedMaskArr[i], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[0] #cv2.RETR_EXTERNAL; cv2.RETR_LIST; cv2.RETR_TREE
+        areas               = np.array([int(cv2.contourArea(contour)) for contour in contours])
+        boundingRectangles  = np.array([cv2.boundingRect(contour) for contour in contours])
+        whereSmall          = np.argwhere(areas < minArea)
             
-            # img coords: x increases from left to right; y increases from top to bottom (not usual)
-            #topCoords       = np.array([y+h for x,y,w,h in boundingRectangles])     # bottom    b-box coords
-            #bottomCoords    = np.array([y   for x,y,w,h in boundingRectangles])     # top       b-box coords
-            #leftCoords      = np.array([x+w for x,y,w,h in boundingRectangles])     # right     b-box coords
-            #rightCoords     = np.array([x   for x,y,w,h in boundingRectangles])     # left      b-box coords
+        # boundingRectangles is an array of size (N,len([x,y,w,h])) where  x,y are b-box corner coordinates, w = width h = height
+        topCoords       = boundingRectangles[:,1] + boundingRectangles[:,3]      # bottom    b-box coords y + h
+        bottomCoords    = boundingRectangles[:,1]                                # top       b-box coords y
+        leftCoords      = boundingRectangles[:,0] + boundingRectangles[:,2]      # right     b-box coords x + w
+        rightCoords     = boundingRectangles[:,0]                                # left      b-box coords x
 
-            # boundingRectangles is an array of size (N,len([x,y,w,h])) where  x,y are b-box corner coordinates, w= width h = height
-            topCoords       = boundingRectangles[:,1] + boundingRectangles[:,3]      # bottom    b-box coords y + h
-            bottomCoords    = boundingRectangles[:,1]                                # top       b-box coords y
-            leftCoords      = boundingRectangles[:,0] + boundingRectangles[:,2]      # right     b-box coords x + w
-            rightCoords     = boundingRectangles[:,0]                                # left      b-box coords x
-
-            whereTop    = np.argwhere(topCoords     < topFilter)                    # bottom of b-box is within top band
-            whereBottom = np.argwhere(bottomCoords  > (imgH - topFilter))           # top of b-box is within bottom band
-            whereLeft   = np.argwhere(leftCoords    < leftFilter)                   # -"-"-
-            whereRight  = np.argwhere(rightCoords   > (imgW - rightFilter))         # -"-"-
+        whereTop    = np.argwhere(topCoords     < topFilter)                    # bottom of b-box is within top band
+        whereBottom = np.argwhere(bottomCoords  > (imgH - topFilter))           # top of b-box is within bottom band
+        whereLeft   = np.argwhere(leftCoords    < leftFilter)                   # -"-"-
+        whereRight  = np.argwhere(rightCoords   > (imgW - rightFilter))         # -"-"-
                                                                              
-            whereFailed = np.concatenate((whereSmall, whereTop, whereBottom, whereLeft, whereRight)).flatten()
-            whereFailed = np.unique(whereFailed)
+        whereFailed = np.concatenate((whereSmall, whereTop, whereBottom, whereLeft, whereRight)).flatten()
+        whereFailed = np.unique(whereFailed)
 
-            # draw over black (cover) border elements
-            [cv2.drawContours(  binarizedMaskArr[i],   contours, j, 0, -1) for j in whereFailed]
+        # draw over black (cover) border elements
+        [cv2.drawContours(  binarizedMaskArr[i],   contours, j, 0, -1) for j in whereFailed]
                 
+    print(f"\n\n{timeHMS()}: Removing small and edge contours... Done! {track_time()}")
+    # binary masks can be compressed very well. for example OG file of 1.8GB got compressed to 3.5 MB. it just takes more time, but bearable
+    np.savez_compressed(binarizedArrPath,  binarizedMaskArr)
+    print(f"{timeHMS()}: Saving compressed binarized image archive ... Done! {track_time()}")
+else:
+    binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
+    print(f"\n{timeHMS()}: Loading compressed binarized image archive ... Done! {track_time()}")
 
-        print(f"\n{timeHMS()}: Removing small and edge contours... Done")
-        print(f"\n{timeHMS()}: Binarized Array archive not found... Saving")
-        np.savez_compressed(binarizedArrPath,binarizedMaskArr)
-        print(f"\n{timeHMS()}: Binarized Array archive not found... Done")
-    else:
-        print(f"\n{timeHMS()}: Binarized Array archive located... Loading")
-        binarizedMaskArr = np.load(binarizedArrPath)['arr_0']
-        print(f"\n{timeHMS()}: Binarized Array archive located... Done")
-
-    
-
-    print(f"\n{timeHMS()}: First Pass: obtaining rough clusters using bounding rectangles...")
+if not os.path.exists(post_binary_data):
+    print(f"\n{timeHMS()}: First Pass: obtaining rough clusters using bounding rectangles ... {track_time()}\n")
     num_time_steps          = binarizedMaskArr.shape[0]
     t_range                 = range(num_time_steps)
     pre_rect_cluster     = {t:{} for t in t_range}
@@ -432,18 +419,18 @@ if not useIntermediateData:           # this will pre-calculate some stuff in ca
             g0_contours_centroids[  time][k] = t_centroid
             g0_contours_areas[      time][k] = int(t_area)
         
-    print(f"\n{timeHMS()}: First Pass: obtaining rough clusters using bounding rectangles...Done!")
+    print(f"\n\n{timeHMS()}: First Pass: clustering objects on single frame...Done! {track_time()}")
 
 
     # stage 2: check overlap of clusters on two consequetive frames
     # inter-frame connections are stored
-    print(f"\n{timeHMS()}: First Pass: forming inter-frame relations for rough clusters...")
 
     pre_edge_temporal  = []
     for time in tqdm(range(0,binarizedMaskArr.shape[0] - 1,1)):
         rect_this_time = pre_rect_cluster[time]
         rect_next_time = pre_rect_cluster[time + 1]
         pre_edge_temporal.extend(   overlappingRotatedRectangles(rect_this_time, rect_next_time)    )
+    print(f"\n\n{timeHMS()}: First Pass: Obtaining overlaps between clusers time-wise... Done! {track_time()}")
 
     # stage 3: create a graph from inter-frame connections and extract connected components
     # these are bubble trail families which contain bubbles that came into close contact
@@ -453,25 +440,23 @@ if not useIntermediateData:           # this will pre-calculate some stuff in ca
     # i think sorting is not necessery, either default sorting method deals with tuples of different lenghts, or data is pepared nicely. but just in case:
     # sort nodes within family (sort_in) by time variable. sort families (sort_out) by extracting first element and sorting as composite object sort_comp_n_fn
     pre_node_families = extract_clusters_from_edges(edges = pre_edge_temporal, nodes = pre_nodes_all, sort_f_in = sort_in, sort_f_out = sort_out)
-    
-    print(f"\n{timeHMS()}: Storing intermediate data...")
-    storeDir = os.path.join(stagesFolder, "intermediateData.pickle")
-    with open(storeDir, 'wb') as handle:
+    print(f"{timeHMS()}: First Pass: Extracting families of nodes ... Done! {track_time()}")
+
+    with open(post_binary_data, 'wb') as handle:
         pickle.dump(
         [
             pre_rect_cluster, g0_contours, g0_contours_hulls, g0_contours_centroids,
             g0_contours_areas, pre_node_families
         ], handle) 
-    print(f"\n{timeHMS()}: Storing intermediate data...Done")
+    print(f"\n{timeHMS()}: Storing intermediate data...Done {track_time()}")
 else:
-    print(f"\n{timeHMS()}: Begin loading intermediate data...")
-    storeDir = os.path.join(stagesFolder, "intermediateData.pickle")
-    with open(storeDir, 'rb') as handle:
+
+    with open(post_binary_data, 'rb') as handle:
         [
             pre_rect_cluster, g0_contours, g0_contours_hulls, g0_contours_centroids,
             g0_contours_areas, pre_node_families
         ] = pickle.load(handle)
-    print(f"\n{timeHMS()}: Begin loading intermediate data...Done!, test sub-case")
+    print(f"\n{timeHMS()}: Begin loading intermediate data...Done! {track_time()}")
 
 
 
@@ -532,7 +517,8 @@ issues_all_dict = defaultdict(dict) #[2]:#[19]:#
 for doX, pre_family_nodes in enumerate(pre_node_families):
     if len(pre_family_nodes) <= 1: continue #one node, go to next doX
     doX_s = f"{doX:0{max_width}}"        # pad index with zeros so 1 is aligned with 1000: 1 -> 0001
-    print(f'\n\n\n{timeHMS()}:({doX_s}) working on family {doX}')
+    print('\n\n=========================================================================================================\n')
+    print(f'{timeHMS()}:({doX_s}) working on family {doX} {track_time()}')
     # ===============================================================================================
     # ===============================================================================================
     # =============== Refine expanded BR overlap subsections with solo contours =====================
@@ -963,264 +949,9 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
     print(f'\n{timeHMS()}:({doX_s}) Working on joining all continious 121s together: {lr_big_121s_chains}')
      
-    # ===============================================================================================
-    # ========================== 121 CHAINS: find splits/merges on end-points =======================
-    # ===============================================================================================
-    # WHAT: check if first and last segment in a chain is a part of merge or split
-    # WHY:  may be its an optical merge/split
-    # HOW:  use lr_ms_edges_brnch data
-
-    fk_event_branchs = lr_ms_edges_main.copy()  # note: lr_ms_edges_main used last time
-
-    fk_merge_to , fk_split_from = {}    , {}                                       
-    fk_merges   , fk_splits     = set() , set()
-
-    for t, (t_from, t_to) in enumerate(     [(t_subIDs[0],t_subIDs[-1]) for t_subIDs in lr_big_121s_chains]     ):
-        if t_from in lr_ms_edges_brnch['split']:
-            fk_split_from[t_from] = lr_ms_edges_brnch['split'][t_from]                   
-            fk_splits.add(t) 
-
-        if t_to in lr_ms_edges_brnch['merge']:
-            fk_merge_to[t_to] = lr_ms_edges_brnch['merge'][t_to]    
-            fk_merges.add(t) 
-
-    t_only_merge = fk_merges - fk_splits    # from list of segments with merges drop... EXAMINE LOGIC
-    t_only_split = fk_splits - fk_merges    # 
-
-    t_merge_split = fk_merges.intersection(fk_splits)
-
-    
-
-    # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # ===============================================================================================
-    # =================== 121 CHAINS: DETERMINE IF END POINTS ARE FAKE EVENTS =======================
-    # ===============================================================================================
-    # WHAT: have to determine if edge segment are part of real splits/merges or they are a part of optical bubble split
-    # WHY:  real event = edge segment in question is a real bubble; fake event = segment is a branch of optical split, has to joined with branch
-    # HOW:  hard to tell real split/merge from optical, but you can try to check for few characteristic features
-
-    # LONG STORY SHORT: ITS HARD TO FIND ANY CASES NOW TO TEST THIS CODE
-    # ideas to tell apart fake from real event
-    # 1)    check if branch is long. might indicate that its not a fluke/optial artifact
-    # 2)    look at cases with only 2 branches. most likely due to sideways illum producing only side reflecitons
-    # 3)    check if that other branch is isolated- does not have a history. 
-    # 4)    other branch spans larger times. kind of meh crit. cannot know in case of random bubble popping out.
-    # 5)    check area change right near an event. this will rule out random neighbor bubble.
-    #       this will also rule out if your segment is a random bubble.
-    print(f'\n{timeHMS()}:({doX_s}) Determining if end points of big 121s are pseudo events: ')
     if 1 == 1:
-        if 1 == 1:
-            t_big121s_merge_conn_fake = []
-            t_big121s_split_conn_fake = []
-
-            t_big121s_merge_conn_fake2 = {}
-            t_big121s_split_conn_fake2 = {}
-
-            t_merge_split_fake = defaultdict(list) # 0 -> is part of fake split, -1 -> is part of fake merge
-            t_only_merge_split_fake = []
-            t_max_pre_merge_segment_length = 12 # skip if branch is too long. most likely a real branch
-
-            t_only_merge_fake = []
-            for t in t_only_merge.union(t_merge_split): # check these big chains IDs with merge event
-                t_big121_subIDs = lr_big_121s_chains[t]
-                #if t not in t_merge_split:
-                t_from      = t_big121_subIDs[-1]   # possible fake merge branch (segment ID).
-                t_from_from = t_big121_subIDs[-2]   # segment ID prior to that, most likely OG bubble.
-                t_from_to   = fk_merge_to[t_from]   # seg ID of merge.
-                t_from_branches = fk_event_branchs['merge'][t_from_to]
-                if len(segments2[t_from]) >= t_max_pre_merge_segment_length: 
-                    continue
-                if len(t_from_branches) > 2: # dont consider difficult cases
-                    continue     
-
-                t_from_other            = [t for t in t_from_branches if t != t_from][0]
-                t_from_other_new = lr_zp_redirect[t_from_other]
-                t_time_from_other_start = G2_t_start(t_from_other)  #G.nodes[  segments2[t_from_other  ][0 ]   ]["time"]
-                t_time_from_from_end    = G2_t_end(t_from_from)     #G.nodes[  segments2[t_from_from   ][-1]   ]["time"]
-                if t_time_from_from_end >= t_time_from_other_start:  # branch overlaps from_from
-                    continue    
-
-                t_from_other_predecessors = list(G2.predecessors(t_from_other))#extractNeighborsPrevious(G2, t_from_other, lambda x: G2.nodes[x]["t_end"])
-                if len(t_from_other_predecessors) > 0:                          continue     # branch lives on its life. probly real
-
-                t_nodes_to_first = segments2[t_from_to   ][:3]
-                # take a time period slice of both branches. should contain first times at which both branches are present.
-                t_time = G2_t_start(t_from_to)  #G.nodes[segments2[t_from_to][0]]['time']
-                t_cntr = 0
-                t_times_common = []
-                while t_time >= t_time_from_from_end:
-                    t_inter = set(t_from_branches).intersection(set(fk_time_active_segments[t_time]))
-                    if len(t_inter) == len(t_from_branches):
-                        t_cntr += 1
-                        t_times_common.append(t_time)
-                    t_time -= 1
-                    if t_cntr >= 3:
-                        break
-                        
-                if len(t_times_common) == 0: continue 
-
-                t_nodes_at_times_common = []
-                for k in t_from_branches:
-                    t_nodes_at_times_common.extend([t_node for t_node in segments2[k] if G_time(t_node) in t_times_common])
-
-                t_dispered_nodes = disperse_nodes_to_times(t_nodes_at_times_common)
-
-                t_from_areas_last = []
-                for t_time, t_subIDs in t_dispered_nodes.items():
-                    t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t] for t in t_subIDs]))
-                    t_from_areas_last.append(centroid_area(t_hull)[1])
-
-                t_area_mean_to_first            = np.mean([G_area(n) for n in t_nodes_to_first])
-                t_area_mean_from_last_combined  = np.mean(t_from_areas_last)
-
-                t_rel_area_change_from_to = np.abs(t_area_mean_to_first - t_area_mean_from_last_combined) / t_area_mean_to_first
-                if  t_rel_area_change_from_to> 0.35: continue
-
-                t_from_to_node      = G2_n_start(t_from_to)     #segments2[t_from_to   ][0 ]                   # take end-start nodes
-                t_from_from_node    = G2_n_end(t_from_from)     #segments2[t_from_from ][-1]
-
-                t_from_to_node_area     = G_area(t_from_to_node)    #G.nodes[t_from_to_node    ]["area"]       # check their area
-                t_from_from_node_area   = G_area(t_from_from_node)    #G.nodes[t_from_from_node  ]["area"] 
-                if np.abs(t_from_to_node_area - t_from_from_node_area) / t_from_to_node_area < 0.35:
-                    if t not in t_merge_split:
-                        t_only_merge_fake += [t]
-                        #t_big121s_merge_conn_fake.append((t_from,t_from_to))
-                        t_big121s_merge_conn_fake2[(t_from_from,t_from_to)] = t_from_branches
-                    else:       # undetermined, decide after
-                        t_merge_split_fake[t] += [-1]
-                        assert 1 == -1, 'havent been here'
-
-            t_only_split_fake = [] ## for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-            for t in t_only_split.union(t_merge_split):
-                t_big121_subIDs = lr_big_121s_chains[t]
-                t_to            = t_big121_subIDs[0]   # possible fake merge branch (segment ID).
-                t_to_to         = t_big121_subIDs[1]   # segment ID prior to that, most likely OG bubble.
-                t_from_to       = fk_split_from[t_to]  # seg ID of merge.
-                t_to_branches = fk_event_branchs['split'][t_from_to]
-                if len(segments2[t_to]) >= t_max_pre_merge_segment_length:  continue     # long branch - probly real
-                if len(t_to_branches) > 2:                                  continue     # dont consider difficult cases
-
-                t_to_other          = [t for t in t_to_branches if t != t_to][0]
-                t_time_to_other_end = G2_t_end(t_to_other)  
-                t_time_to_to_start  = G2_t_start(t_to_to)   
-                if t_time_to_other_end >= t_time_to_to_start:               continue     # branch longer than expected end
-
-                t_to_other_successors = len(G2.successors(t_to_other))#extractNeighborsNext(G2, t_to_other, lambda x: G2.nodes[x]["t_start"])
-                if len(t_to_other_successors) > 0:                          continue     # branch lives one its life. probly real
-
-                t_nodes_from_last = segments2[t_from_to   ][-3:]
-                # take a time period slice of both branches. should contain first times at which both branches are present.
-                t_time = G2_t_end(t_from_to) #G.nodes[segments2[t_from_to][-1]]['time']
-                t_cntr = 0
-                t_times_common = []
-                while t_time <= t_time_to_to_start:
-                    t_inter = set(t_to_branches).intersection(set(fk_time_active_segments[t_time]))
-                    if len(t_inter) == len(t_to_branches):
-                        t_cntr += 1
-                        t_times_common.append(t_time)
-                    t_time += 1
-                    if t_cntr >= 3:
-                        break
-                        
-                if len(t_times_common) == 0: continue     # branches not intersect in time
-
-                t_nodes_at_times_common = []
-                for k in t_to_branches:
-                    t_nodes_at_times_common.extend([t_node for t_node in segments2[k] if G_time(t_node) in t_times_common])
-
-                t_dispered_nodes = disperse_nodes_to_times(t_nodes_at_times_common)
-
-                t_to_areas_first = []
-                for t_time, t_subIDs in t_dispered_nodes.items():
-                    t_hull = cv2.convexHull(np.vstack([g0_contours[t_time][t] for t in t_subIDs]))
-                    t_to_areas_first.append(centroid_area(t_hull)[1])
-
-                t_area_mean_from_last           = np.mean([G_area(n) for n in t_nodes_from_last])
-                t_area_mean_to_first_combined   = np.mean(t_to_areas_first)
-
-                t_rel_area_change_from_to = np.abs(t_area_mean_from_last - t_area_mean_to_first_combined) / t_area_mean_from_last
-                if  t_rel_area_change_from_to> 0.35: continue
-
-                t_from_to_node  = G2_n_end(t_from_to)   #segments2[t_from_to   ][-1]                   # take end-start nodes
-                t_to_to_node    = G2_n_start(t_to_to)   #segments2[t_to_to     ][0]
-
-                t_from_to_node_area = G_area(t_from_to_node)    #G.nodes[t_from_to_node]["area"]       # check their area
-                t_to_to_node_area   = G_area(t_to_to_node)      #G.nodes[t_to_to_node  ]["area"] 
-                if np.abs(t_from_to_node_area - t_to_to_node_area) / t_from_to_node_area < 0.35:
-                    if t not in t_merge_split:
-                        t_only_split_fake += [t]
-                        #t_big121s_split_conn_fake.append((t_from_to,t_to))
-                        t_big121s_split_conn_fake2[(t_from_to,t_to_to)] = t_to_branches
-                    else:       # undetermined, decide after
-                        t_merge_split_fake[t] += [0]
-                        assert 1 == -1, 'havent been here'
-
-            for t,t_states in t_merge_split_fake.items():
-
-                assert 1 == -1, 'havent been here t_merge_split_fake'
-                #if len(t_states) == 2:                  # both ends are in fake event
-                #    t_only_merge_split_fake += [t]
-                #elif 0 in t_states:                     # only split is fake
-                #    t_to            = lr_big_121s_chains[t][0]   
-                #    t_from_to       = fk_split_from[t_to] 
-                #    t_only_split_fake += [t]
-                #    t_big121s_split_conn_fake.append((t_from_to,t_to))
-                #else:                                  # only merge is fake
-                #    t_from      = lr_big_121s_chains[t][-1]  
-                #    t_from_to   = fk_merge_to[t_from]
-                #    t_only_merge_fake += [t]
-                #    t_big121s_merge_conn_fake.append((t_from,t_from_to))
-
-            assert len(t_only_merge_split_fake) == 0, "case yet unexplored, written without test"        
-
-        # experimental fake 121 recovery. time:subID perms dont exist for these events, it should include branches inside.
-        t_big121s_fake_split_merge = {**t_big121s_split_conn_fake2,**t_big121s_merge_conn_fake2}
-
-        for (t_from,t_to), t_branches_IDs in t_big121s_fake_split_merge.items():# t_big121s_split_conn_fake2
-            t_node_from     = G2_n_end(t_from)  #segments2[t_from][-1]
-            t_node_to       = G2_n_start(t_to)  #segments2[t_to][0]
-
-            t_t_from_min    = G2_t_end(t_from)  #G_time(t_node_from)
-            t_t_to_start    = G2_t_start(t_to)  #G_time(t_node_to)
-
-            t_owners_keep = [None] + t_branches_IDs
-            t_nodes_keep    = [node for node in G.nodes() if t_t_from_min < G_time(node) < t_t_to_start and G_owner(node) in t_owners_keep] 
-            t_nodes_keep.extend([t_node_from,t_node_to])
-
-            t_subgraph = G.subgraph(t_nodes_keep)   
-
-            t_segments_keep = [t_from, t_to] + t_branches_IDs
-            t_sol = graph_sub_isolate_connected_components(t_subgraph, t_t_from_min, t_t_to_start, fk_time_active_segments,
-                                                                    segments2, t_segments_keep, ref_node = t_node_from) 
-            t_node_subIDs_all = disperse_nodes_to_times(t_sol) 
-                
-            lr_big121s_perms_pre[(t_from,t_to)] = t_node_subIDs_all
-
-        print(f'\n{timeHMS()}:({doX_s}) Fake merges: {t_big121s_merge_conn_fake2}, Fake splits: {t_big121s_split_conn_fake2}')
         
-        # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        # ===============================================================================================
-        # ==================== 121 CHAINS: TRIM OFF EDGES IF THEY ARE FAKE EVENTS =======================
-        # ===============================================================================================
-        # WHAT: depending if segment has optical merge/ split or both, on edges, remove these end points
-        # WHY:  fake edge segment does not represent a solo bubble, but part of its reflection, so its not 121 conn
-        # HOW:  chain element is naturally ordered by time from earliest to latest. just drop sides.
-        
-        t_big121s_edited = [None]*len(lr_big_121s_chains) # by default everything fails. reduced len 2 cc to len 1 stays none = failed.
-        for t, t_subIDs in enumerate(lr_big_121s_chains):
-
-            if t in t_only_merge_split_fake:    # both endpoints have to be removed, not tested
-                t_subIDs_cut = t_subIDs[1:-1]
-            elif t in t_only_merge_fake:        # drop fake pre-merge branch
-                t_subIDs_cut = t_subIDs[:-1]
-            elif t in t_only_split_fake:        # drop fake post-split branch
-                t_subIDs_cut = t_subIDs[1:]    
-            else:                               # nothing changes
-                t_subIDs_cut = t_subIDs
-
-            if len(t_subIDs_cut) > 1:           # questionable, stays None
-                t_big121s_edited[t] = t_subIDs_cut
-                
+        t_big121s_edited = lr_big_121s_chains.copy()
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         # ===============================================================================================
         # ==================== 121 CHAINS: INTERPOLATE DATA IN HOLES OF LONG CHAINS =====================
@@ -1231,8 +962,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         
         lr_big121s_edges_relevant = []
         lr_big121s_interpolation        = defaultdict(dict)
-        t_fake_from_to                  = [list(t_conn) for t_conn in t_big121s_fake_split_merge]
-        for t,t_subIDs in enumerate(t_big121s_edited + t_fake_from_to):
+
+        for t,t_subIDs in enumerate(t_big121s_edited):
             if t_subIDs != None: 
                 # prepare data: resolved  time steps, centroids, areas G2
                 t_temp_nodes_all    = sum([segments2[t_subID] for t_subID in t_subIDs],[])
@@ -1368,14 +1099,6 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                     sorted_edges = sorted(edges, key=sort_len_diff_f, reverse=True) 
                     sequences, fail = find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = True, G = None, edges = sorted_edges, only_subIDs = True, max_paths = t_max_paths - 1)
 
-                # 2) for fake event (artificial/optical split/merge), include internal branches as a whole.
-                if t_conn in t_big121s_fake_split_merge and len(sequences) >= t_max_paths:
-                    t_branches_fake = t_big121s_fake_split_merge[t_conn]
-                    t_perms = lr_big121s_perms_pre[t_conn]
-                    seqs, t_nodes_pre = perms_with_branches(t_branches_fake, segments2, t_perms, return_nodes = True)
-                    # test if this sol is shorter than previous
-                    if len(seqs) < len(sequences): sequences = seqs
-
             # 0) -> t_branches_count < t_max_paths. use product
             else:
                 sequences = list(itertools.product(*t_values))
@@ -1424,16 +1147,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         lr_121chain_redirect = lr_zp_redirect.copy()
         t_zp_redirect_inheritance = {a:b for a,b in lr_zp_redirect.items() if a != b}
         print(f'\n{timeHMS()}:({doX_s}) Saving results for restored parts of big 121s')
-        #t_last_seg_ID_in_big_121s   = [t[-1]    for t in t_big121s_edited if t is not None]
         t_big121s_edited_clean      = [t for t in t_big121s_edited if t is not None]
-
-        # experimental fake recovery at 121
-        for (t_from,t_to), t_branches_IDs in t_big121s_fake_split_merge.items():
-            for t in t_branches_IDs:
-                lr_121chain_redirect[t] = t_from
-                segments2[t] = []
-            G2.remove_nodes_from(t_branches_IDs)
-            #G2.add_edge(t_from, t_to)
 
         t_segments_new = copy.deepcopy(segments2)
         for t_conn in lr_big121s_conn_121:
@@ -1447,11 +1161,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             lr_121chain_redirect[t_slave] = lr_121chain_redirect[t_master]
         # at this time some segments got condenced into big 121s. right connection might be changed.
 
-        # experimental fake recovery at 121. branches changed out of proper loop. re-assign manually
-        for (t_master, _), t_branches_IDs in t_big121s_fake_split_merge.items():
-            for t_slave in t_branches_IDs:
-                lr_121chain_redirect[t_slave] = lr_121chain_redirect[t_master]
-
+        
         #lr_time_active_segments = defaultdict(list)
         #for t_segment_index, t_segment_nodes in enumerate(t_segments_new):
         #    for t_time in [G_time(node) for node in t_segment_nodes]:
@@ -1475,8 +1185,6 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             # -----------------------------------------------------------------------------------------------
             # ------ PREPARE DATA INTO USABLE FORM ----
             # -----------------------------------------------------------------------------------------------
-            t_merge_fake_to_ID      = unique_sort_list([t_conn[1] for t_conn in t_big121s_merge_conn_fake])                                          # grab master node e.g [10]
-            t_split_fake_from_ID    = unique_sort_list([t_conn[0] for t_conn in t_big121s_split_conn_fake])                                        # e.g [15]
 
             t_merge_real_to_ID_relevant = []
             t_split_real_from_ID_relevant = []
@@ -1654,15 +1362,11 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     # we are interested in segments that are not part of psuedo branches (because they will be integrated into path)
     # pre merge segments will be extended, post split branches also, but backwards. 
     # for pseudo event can take an average paramets for prev and post segments.
+
     print(f'\n{timeHMS()}:({doX_s}) Determining interpolation parameters k and s for segments...')
-    t_fake_branches_IDs = []
-    for t_ID in t_merge_fake_to_ID:
-        t_fake_branches_IDs += t_event_start_end_times['merge'][t_ID]['branches']
-    for t_ID in t_split_fake_from_ID:
-        t = lr_121chain_redirect[t_ID]
-        t_fake_branches_IDs += t_event_start_end_times['split'][t]['branches']
+    
     # get segments that have possibly inherited other segments and that are not branches
-    t_segments_IDs_relevant = [t_ID for t_ID,t_traj in enumerate(t_segments_new) if len(t_traj)>0 and t_ID not in t_fake_branches_IDs]
+    t_segments_IDs_relevant = [t_ID for t_ID,t_traj in enumerate(t_segments_new) if len(t_traj)>0]
 
     k_s_buffer_len_max = 8          # i want this long history at max
     k_s_buffer_len_min = 3      # 
@@ -1729,110 +1433,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             else:
                 return min(t_from_k_s, t_to_k_s, key=lambda x: x[0])
 
-    t_fake_events_k_s_edge_master = {}
-    for t_to in t_merge_fake_to_ID:
-        t_from      =  t_event_start_end_times['merge'][t_to]['pre_predecessor']
-        t_from      = lr_121chain_redirect[t_from]
-        t_from_k_s  = t_segment_k_s[t_from  ]
-        t_to_k_s    = t_segment_k_s[t_to    ]
-        t_k_s_out   = get_k_s(t_from_k_s, t_to_k_s, backup = (1,5))   # determine which k_s to inherit (lower)
-        t_fake_events_k_s_edge_master[t_to] = {'state': 'merge', 'edge': (t_from, t_to), 'k_s':t_k_s_out}
-        
-    for t_from_old in t_split_fake_from_ID:
-        t_from      = lr_121chain_redirect[t_from_old]
-        t_to        = t_event_start_end_times['split'][t_from]['post_successor']
-        t_from_k_s  = t_segment_k_s[t_from  ]
-        t_to_k_s    = t_segment_k_s[t_to    ]
-        t_k_s_out   = get_k_s(t_from_k_s, t_to_k_s, backup = (1,5))  
-        t_fake_events_k_s_edge_master[t_from_old] = {'state': 'split', 'edge': (t_from, t_to), 'k_s':t_k_s_out}
-    # ----------------------- interpolate missing events with known history-----------------------
-    # interpolate
-    # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    print(f'\n{timeHMS()}:({doX_s}) Performing interpolation on data without fake branches')
-    a = 1
-    for t_ID,t_param_dict in t_fake_events_k_s_edge_master.items():
-        t_state         = t_param_dict['state'  ] 
-        t_from, t_to    = t_param_dict['edge'   ]
-        k,s             = t_param_dict['k_s'    ]
-        t_subIDs = [t_from, t_to]
-        t_ID = lr_121chain_redirect[t_ID]
-        t_start = t_event_start_end_times[t_state][t_ID]['t_start'  ]
-        t_end   = t_event_start_end_times[t_state][t_ID]['t_end'    ]
-        if 1 == 1:
-            t_temp_nodes_all = []
-            for t_subID in t_subIDs:
-                t_temp_nodes_all += t_segments_new[t_subID]
-            t_temp_times        = [G.nodes[t_node]["time"       ] for t_node in t_temp_nodes_all]
-            t_temp_areas        = [G.nodes[t_node]["area"       ] for t_node in t_temp_nodes_all]
-            t_temp_centroids    = [G.nodes[t_node]["centroid"   ] for t_node in t_temp_nodes_all]
-        
-            t_times_missing_all = np.arange(t_start + 1, t_end, 1)
-        
-            a = 1
-            # interpolate composite (long) parameters 
-            t_interpolation_centroids_0 = interpolateMiddle2D_2(t_temp_times,np.array(t_temp_centroids), t_times_missing_all, s = s, k = k, debug = 0, aspect = 'equal', title = t_subIDs)
-            t_interpolation_areas_0     = interpolateMiddle1D_2(t_temp_times,np.array(t_temp_areas),t_times_missing_all, rescale = True, s = 15, debug = 0, aspect = 'auto', title = t_subIDs)
-        
-            t_conn = (t_from, t_to)
-            lr_big121s_interpolation[t_conn]['centroids'] = np.array(t_interpolation_centroids_0)
-            lr_big121s_interpolation[t_conn]['areas'    ] = np.array(t_interpolation_areas_0    )   
-            lr_big121s_interpolation[t_conn]['times'    ] = t_times_missing_all
     # ----------------- Evaluate and find most likely evolutions of path -------------------------
     print(f'\n{timeHMS()}:({doX_s}) Finding most possible path evolutions...')
-    if 1 == 1:
-        t_temp_centroids = {}           # generate temp interpolation data storage
-        t_temp_cases = {}
-        t_temp_times = {}
-    
-        for t_ID,t_param_dict in t_fake_events_k_s_edge_master.items():
-            t_ID = lr_121chain_redirect[t_ID]
-            t_state                     = t_param_dict['state'  ] 
-            t_conn                      = t_param_dict['edge'   ]
-            t_temp_centroids[t_conn]    = lr_big121s_interpolation[t_conn]['centroids']
-            t_temp_cases[t_conn]        = t_event_start_end_times[t_state][t_ID]['t_combs']
-            t_temp_times[t_conn]        = list(t_event_start_end_times[t_state][t_ID]['t_times'].values())[0]
-
-        # combine interpolation and pre-computed options for bubble parameters. choose best fit to interp.
-        t_args = [t_temp_cases, t_temp_cases,t_temp_centroids,t_temp_times,
-                lr_big121s_perms_centroids,lr_big121s_perms_areas,lr_big121s_perms_mom_z]
-
-        t_sols_c, t_sols_c_i, t_sols_a, t_sols_m = lr_evel_perm_interp_data(*t_args)
-
-        t_weights   = [1,1.5,0,1]
-        t_sols      = [t_sols_c, t_sols_c_i, t_sols_a, t_sols_m]
-        lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems =  lr_weighted_sols(t_temp_cases, t_weights, t_sols, t_temp_cases )
-    a = 1 # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # ----------------- Save recovered fake event paths -------------------------
-    print(f'\n{timeHMS()}:({doX_s}) Saving fake event data...')
-    if  1 == 1:
-            for t_ID_old,t_param_dict in t_fake_events_k_s_edge_master.items():
-                t_ID = lr_121chain_redirect[t_ID_old]
-                t_state         = t_param_dict['state'  ] 
-                t_conn          = t_param_dict['edge'   ]
-                t_branches      = t_event_start_end_times[t_state][t_ID]['branches']
-                t_sol           = lr_weighted_solutions_max[t_conn]
-                t_from, t_to    = t_conn                                     
-                # prep combs similar to 121 connection saving, except branches are scooped out and included in combs, and start-end IDs changed.
-                t_combs = {t_time:list(t_subIDs) for t_time,t_subIDs in zip(t_temp_times[t_conn], t_temp_cases[t_conn][t_sol])}
-                t_node_from = t_segments_new[lr_121chain_redirect[t_from   ]][-1   ]
-                t_node_to   = t_segments_new[lr_121chain_redirect[t_to     ]][0    ]
-                print(f'fake {t_state} event ({t_conn}) saved: {t_node_from} -> {t_node_to}') 
-                save_connections_two_ways(t_segments_new, t_combs, t_from, t_to, G, G2, lr_121chain_redirect, g0_contours)
-
-                for t_segment_remove in t_branches:        # remove and change refs of fake branches
-                    t_segments_new[t_segment_remove] = []
-                    G2.remove_node(t_segment_remove)
-                    t_from_new = lr_121chain_redirect[t_from]
-                    lr_121chain_redirect[t_segment_remove] = t_from_new
-
-                if t_state == 'merge':   
-                    lr_conn_merges_to_nodes.remove(t_ID_old) # its not real, remove
-                else:
-                    lr_conn_splits_from_nodes.remove(t_ID_old)
-
-                #for_graph_plots(G, segs = t_segments_new)
-                a = 1
-    
                 
     # >>>  this approach of reconnecting lr_121chain_redirect is old. it was used in situation similar to ZP case.
     # >>>  where inheritance did not automatically resolved during saving. i should fix fake splits & merges and fix this after it.
@@ -2670,7 +2272,12 @@ if 1 == 1:
             t_time, *t_subIDs = node
 
         if len(trajectories_all_dict[doX]) > 0:
-            all_nodes_pos, edge_width, edge_color, node_size = for_graph_plots(G, segs = trajectories_all_dict[doX], show = False, node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7)
+
+            temp = for_graph_plots(G, segs = trajectories_all_dict[doX],optimize_pos = False, 
+                                   show = False, node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7)
+
+            all_nodes_pos, edge_width, edge_color, node_size = temp
+
             for node, (x,y) in all_nodes_pos.items():
 
                 G.nodes[node]['viz'] = {'position': {'x': x, 'y': y*12, 'z': 0.0}, 

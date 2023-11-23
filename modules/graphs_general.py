@@ -1,6 +1,6 @@
 
 from re import A
-import networkx as nx, cv2, numpy as np, itertools, copy
+import networkx as nx, cv2, numpy as np, itertools, copy, pickle
 from matplotlib import pyplot as plt
 from collections import defaultdict
 from bubble_params import (centroid_area_cmomzz)
@@ -313,33 +313,24 @@ def check_overlap(a, b):
 def ranges_overlap(range1, range2):
     return range1.stop > range2.start and range2.stop > range1.start
 
-def for_graph_plots(G, segs = [], show = True, suptitle = "drawH", node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
-
-    if len(segs) == 0:
-        segments3 = graph_extract_paths(G) # default min_length
-    else:
-        segments3 = [s for s in segs if len(s) > 0 ]
-        #segments3 = {t:[] for t in G.nodes()}
-        #for t_seg in segs:
-        #    if len(t_seg) > 0:
-        #        segments3[t_seg[0]] = t_seg
-
-    # Draw extracted segments with bold lines and different color.
-    #segments3 = [a for _,a in segments3.items() if len(a) > 0]
-    #segments3 = list(sorted(segments3, key=lambda x: x[0][0]))
-    paths = {i:vals for i,vals in enumerate(segments3)}
-
+def for_graph_plots(G, segs = [], optimize_pos = True, show = True, suptitle = "drawH", node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
+    import time as time_lib
+    from graphs_node_position_spring_lj_model_iterator import (prep_matrices, integration, draw_plot)
+    #if len(segs) == 0:
+    #    segments3 = graph_extract_paths(G) # default min_length
+    #else:
+    #    segments3 = [s for s in segs if len(s) > 0 ]
+    segments3 = segs
+    #paths = {i:vals for i,vals in enumerate(segments3)}
+    paths = {i:vals for i,  vals in enumerate(segments3) if len(vals) > 0}
+    t_pos = {i:0    for i,  vals in enumerate(segments3) if len(vals) > 0}
     # check overlap between segments time-wise: extract overlapping clusters
-    # 
+    
     G_time  = lambda node, graph = G : graph.nodes[node]['time']
     G_owner = lambda node, graph = G : graph.nodes[node]['owner']
-    # extract (time_from,to_to) of each segment
-    #time_intervals = {i:(G_time(nodes[0]), G_time(nodes[-1])) for i, nodes in paths.items()}
-    # check all pairs of segments for overlap. keep overlapping
-    #pairs_overlap = [(a,b) for (a,b) in itertools.combinations(paths.keys(), 2) 
-    #                 if check_overlap(time_intervals[a],time_intervals[b]) >= 0]
 
     time_intervals = {i:range(G_time(nodes[0]), G_time(nodes[-1]) + 1) for i, nodes in paths.items()}
+
     # check all pairs of segments for overlap. keep overlapping
     pairs_overlap = [(a,b) for (a,b) in itertools.combinations(paths.keys(), 2) 
                      if ranges_overlap(time_intervals[a],time_intervals[b])]
@@ -393,7 +384,7 @@ def for_graph_plots(G, segs = [], show = True, suptitle = "drawH", node_size = 3
     # move verticaly cluster layers to center of the graph:
     # have to get new layer counts
     num_layers_cluster = {}
-
+    # position holds values: {cluster_ID: {layer_1:list_sub_IDs, layer_2:...},...}
     for clusterID, layer_dict in positions.items():
         num_IDs_layer = lambda layer: len(layer_dict[layer])
         # check how many layers are left after collapse. count up to first empty.
@@ -402,79 +393,187 @@ def for_graph_plots(G, segs = [], show = True, suptitle = "drawH", node_size = 3
         
     max_layers_2 = max(num_layers_cluster.values())
     # move clusters vertically individually
-    t_pos = {i:0 for i,_ in enumerate(segments3)}
+    
     for clusterID, layer_dict in positions.items():
         offset = np.floor(0.5*(max_layers_2 - num_layers_cluster[clusterID]))
         for layer, seg_subIDs in layer_dict.items():
             for ID in seg_subIDs:
                 t_pos[ID] = int(layer + offset) 
-    #t_pos = order_segment_levels(segments3, debug = 0)
-
+    
     #isolate stray nodes
-    stray_nodes = [n for n in G.nodes() if G_owner(n) is None]
+    stray_nodes = [n for n in G.nodes() if G_owner(n) in (-1, None) ]
     # get times at which stray nodes are present
     stray_times = sorted(set([G_time(n) for n in stray_nodes]))
     # sort strat nodes to time related bins
-    stray_times_nodes       = {t:[] for t in stray_times}
-    stray_times_seg_nodes   = {t:[] for t in stray_times}
+    stray_nodes_time_dict   = {t:[] for t in stray_times}
+    stat_nodes_time_dict    = {t:[] for t in stray_times}
+    #nodes_count_per_time    = {t:0 for t in stray_times}
     for n in G.nodes():
-        if G_time(n) in stray_times:
-            if G_owner(n) is None:
-                stray_times_nodes[G_time(n)].append(n)
+        t = G_time(n)
+        if t in stray_times:
+            if G_owner(n) in (-1, None):
+                stray_nodes_time_dict[t].append(n)
             else:
-                stray_times_seg_nodes[G_time(n)].append(n)
+                stat_nodes_time_dict[t].append(n)
+
+            #nodes_count_per_time[t] += 1
 
     # segment nodes will be fixed in place, remember their layer
     node_layer_pos = {}
-    for time, nodes in stray_times_seg_nodes.items():
+    for time, nodes in stat_nodes_time_dict.items():
         for node in nodes:
             ID = G_owner(node)
             node_layer_pos[node] = t_pos[ID]
 
-    # find maximal number of nodes for all time slices.
-    max_stray_layers = 0
-    num_layers_strays = {}
+
+    # stray nodes should be initialized horizontally near the middle of a graph
+
     for time in stray_times:
-        num_tot                 = len(stray_times_nodes[time]) + len(stray_times_seg_nodes[time])
-        num_layers_strays[time] = num_tot
-        max_stray_layers        = max(max_stray_layers, num_tot)
+        # stationary node reserve layer positions
+        pos_node_d  = {node_layer_pos[n]:n  for n in stat_nodes_time_dict[time]}
+        # define central point near the middle of the graph
+        init_pos    = int(0.5*max_layers_2)
+        # prepare stack of nodes that has to be redistributed on vertical layers
+        node_stack  = stray_nodes_time_dict[time].copy()
+        # redistribution happens in oscillating fashion around central point with increasing offset.
+        offset = 0
+        end_loop = False
+        while True:
+            if end_loop: break
+            for sign in [1,-1]:
+
+                if init_pos + sign*offset not in pos_node_d:
+
+                    pos_node_d[init_pos + sign*offset] = node_stack[0]
+                    node_stack = node_stack[1:]
+
+                if len(node_stack) == 0: 
+                    end_loop = True   # break while loop
+                    break             # break sign loop
+
+            offset += 1
+        # hold to inverse relations node:pos dict
+        for pos, node in pos_node_d.items():
+            node_layer_pos[node] = pos 
     
-    for time, num_layers in num_layers_strays.items():
-        stat_node_pos = [node_layer_pos[n] for n in stray_times_seg_nodes[time]]
-        unresolved_strays = stray_times_nodes[time]
-        #num_free_nodes = num_layers - len(stat_node_pos)
+    # get segment nodes. these are segment achors - end points and segment nodes that exist along stray nodes at common times.
+    seg_nodes = list(set([s[0] for s in paths.values()] + [s[-1] for s in paths.values()] + sum(stat_nodes_time_dict.values(), [])))
+    # all fields will hold to values in same order as nodes_all
+    nodes_all = stray_nodes + seg_nodes
 
-        for i in range(0,100000):
-            if i not in stat_node_pos:
-                if len(unresolved_strays) == 0: break
-                node_layer_pos[unresolved_strays[0]] = i
-                del unresolved_strays[0]
+    positions = np.zeros((len(nodes_all), 2), float)
 
-    # nodes at each time step slice should repel each other. get edges between node pairs to calc forces.
-    stray_repel_pairs = {}
-    for time in stray_times:
-        nodes_tot = stray_times_nodes[time] + stray_times_seg_nodes[time]
-        stray_repel_pairs[time] = list(itertools.combinations(nodes_tot, 2))
+    for k, node in enumerate(stray_nodes):
+        positions[k]                    = [ G_time(node),   node_layer_pos[node]    ]
+
+    for k, node in enumerate(seg_nodes):
+        positions[k + len(stray_nodes)] = [ G_time(node),   t_pos[G_owner(node)]    ]
+
+    if optimize_pos:
+        # perform stray node position optimization by emulating physical forces between nodes: springs/electrostatics/custom
+        positions_t_OG = positions[:,0].copy()
+        # time pair edges act as springs, pulling nodes together (only vertically in this case)
+        spring_edges = []
+        for node in stray_nodes:
+            spring_edges.extend(    [(node,n) for n in G.successors(    node)]  )
+            spring_edges.extend(    [(node,n) for n in G.predecessors(  node)]  )
+        # nodes in vertical (time) slices should repel to counteract spring forces
+        edges_vert = []
+        for node in stray_nodes:
+            time = G_time(node)
+            neighbors_vert = [n for n in stray_nodes_time_dict[time] + stat_nodes_time_dict[time] if n != node]
+            edges_vert.extend(      [(node,n) for n in neighbors_vert]          )
+
+        #with open('spring_iter_data.pickle', 'wb') as handle:
+        #        pickle.dump([stray_nodes,seg_nodes,positions,positions_t_OG, spring_edges, edges_vert], handle)
     
-    # initialize stray node positions
+        save_path = 'particle_movement'
 
-    all_nodes_pos = {}# {tID:[tID[0],0] for tID in G.nodes()}
+        node_enum = {n:i for i,n in enumerate(nodes_all)} # node -> order in nodes_all
+
+        ids_set     = range(len(stray_nodes),len(stray_nodes) + len(seg_nodes))
+
+        positions[:len(stray_nodes),0] += np.random.uniform(-0.15, 0.15, len(stray_nodes))  # perturb horisontally stray nodes
+
+        velocities      = np.zeros_like(positions, float)   # ordered same as nodes_all
+        forces          = np.zeros_like(positions, float)
+    
+
+        edges_spring    = [(node_enum[a],node_enum[b]) for a,b in spring_edges] # connections between nodes ->
+        edges_repel     = [(node_enum[a],node_enum[b]) for a,b in edges_vert]   # -> connections of indicies of nodes_all
+
+        num_particles   = len(positions)
+        (m_spr, m_rep) = prep_matrices(edges_spring, edges_repel, num_particles)
+
+        start_time  = time_lib.time()
+        print('Optimizing stray node positions...')
+        #fig, ax = plt.subplots()
+        ax = None
+        start       = 0
+        num         = 2000 
+
+        k_s_r_t     = [2    ,   50  , 0.1]
+
+        start_num_dt= [start,   num , 0.01]
+
+        positions   =   integration(positions, velocities, forces, *m_spr, *m_rep, positions_t_OG,                                                 
+                                *k_s_r_t, *start_num_dt, k_t_ramp = [], k_s_ramp = [], k_r_ramp = [], 
+                                doPlot = False, ax = ax, ids_set = ids_set, path = save_path)
+
+        #fig, ax = plt.subplots()
+        #x_min,x_max = min(positions[:,0]) - 1, max(positions[:,0]) + 1
+        #x_min,x_max = 369,386
+        #y_min,y_max = min(positions[:,1]) - 1, max(positions[:,1]) + 1
+    
+        #draw_plot(ax, positions, ids_set, edges_spring, edges_repel, x_min, x_max, y_min, y_max, -1)
+        #plt.show()
+
+        start       += num    # start of new counter
+        num         = 2000
+
+        k_t_ramp    = [50   ,200    , int(3/4*num)  ]
+        k_s_r_t     = [2    ,50     , 0.1           ]
+
+        start_num_dt= [start, num   , 0.01           ]
+
+        positions   =   integration(positions, velocities, forces, *m_spr, *m_rep, positions_t_OG,                                                 
+                                    *k_s_r_t, *start_num_dt, k_t_ramp = k_t_ramp, k_s_ramp = [], k_r_ramp = [], 
+                                    doPlot = False, ax = ax, ids_set = ids_set, path = save_path)
+
+        #draw_plot(ax, positions, ids_set, x_min, x_max, y_min, y_max, -1)
+        #plt.show()
+        start       += num    # start of new counter
+        num         = 2000
+
+        k_t_ramp    = [200  , 300   , int(3/4*num)  ]
+        k_r_ramp    = [0.1  , 0.2   , int(num/2)    ]
+        k_s_r_t     = [1    , 10    , 0.2           ]
+
+        start_num_dt= [start, num   , 0.01           ]
+
+        positions   =   integration(positions, velocities, forces, *m_spr, *m_rep, positions_t_OG, 
+                                    *k_s_r_t, *start_num_dt, k_t_ramp = k_t_ramp, k_s_ramp = [], k_r_ramp = k_r_ramp, 
+                                    doPlot = False, ax = ax, ids_set = ids_set, path = save_path)
+     
+    
+        print(f'\nOptimizing stray node positions...done. time elsapsed: {(time_lib.time() - start_time):.3f} s')
+        positions[:, 0] = np.round(positions[:, 0], decimals=0) # clamp to nearest x integer
+
+
+    positions_d = {}
+    for k, node in enumerate(stray_nodes):
+        positions_d[node] = positions[k]
+
+    all_nodes_pos = {}
     for node in G.nodes():
         segID = G_owner(node)
-        if segID is not None:
-            all_nodes_pos[node] = [ G_time(node), t_pos[segID]          ]
+        if segID not in (-1, None):
+            all_nodes_pos[node] = [ G_time(node), t_pos[segID]     ]
         else:
-            all_nodes_pos[node] = [ G_time(node), node_layer_pos[node]  ] 
+            all_nodes_pos[node] = positions_d[node]#[ G_time(node),   ] 
 
-    a = 1
-    #all_segments_nodes = sorted(sum(segments3,[]), key = lambda x: [x[0],x[1]])
-    #all_nodes_pos = {tID:[tID[0],0] for tID in G.nodes()} # initialize all with true horizontal position.
-    #fixed_nodes_pos = {tID:[tID[0],0] for tID in G.nodes()}
-
-    #G = G.to_undirected()
     edge_width, edge_color, node_size = drawH(G.to_undirected(), paths, all_nodes_pos, show = show, suptitle = suptitle, node_size = node_size, edge_width_path = edge_width_path, edge_width = edge_width, font_size = font_size)
-    #drawH(G, paths, all_nodes_pos, fixed_nodes = all_segments_nodes)
-    #drawH(G, paths, node_positions = all_nodes_pos, fixed_nodes = all_segments_nodes)
+
 
     return all_nodes_pos, edge_width, edge_color, node_size
 

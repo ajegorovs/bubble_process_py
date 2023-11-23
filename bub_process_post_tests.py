@@ -530,7 +530,7 @@ events_split_merge_mixed    = {}
 issues_all_dict = defaultdict(dict) #[2]:#[19]:#
 
 for doX, pre_family_nodes in enumerate(pre_node_families):
-
+    if len(pre_family_nodes) <= 1: continue #one node, go to next doX
     doX_s = f"{doX:0{max_width}}"        # pad index with zeros so 1 is aligned with 1000: 1 -> 0001
     print(f'\n\n\n{timeHMS()}:({doX_s}) working on family {doX}')
     # ===============================================================================================
@@ -678,6 +678,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     # =================================== RECALCUULATE CHAINS =======================================
     print(f'\n{timeHMS()}:({doX_s}) Detecting frozen bubbles ... DONE')
     segments2 = graph_extract_paths(G, min_length = seg_min_length)
+    if len(segments2) == 0: continue    # no segments, go to next doX
     # ==================================== SET SEGMENT OWNERS =======================================
     for t,t_segment in enumerate(segments2): # assign owners params
         for t_node in t_segment:
@@ -707,8 +708,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     #        lr_time_active_segments[t_time].append(t_segment_index)
     ## sort keys in lr_time_active_segments
     #lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
-
-    for_graph_plots(G, segs = segments2)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    #if doX >= 0:
+    #    for_graph_plots(G, segs = segments2)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     print(f'\n{timeHMS()}:({doX_s}) Determining connectivity between segments... ')
     # ===============================================================================================
     # ===============================================================================================
@@ -2429,8 +2430,11 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         t_all_time_buffers = {t_branch_ID: t_time_buff  }
         
         t_times_accumulate_resolved = []
+        break_trigger = False
         for t_time, t_permutations in t_combs.items():
-            
+
+            if break_trigger: break # solo branch recover has failed.
+
             t_time_next = t_time
 
             t_traj_b    = t_all_traj_buffers[t_branch_ID].get_data()
@@ -2532,7 +2536,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                     t_extrapolate_sol_comb[t_conn][t_time_next] = tuple(t_subIDs)
                     t_report.add(t_conn)
                 else:
-                    continue
+                    break_trigger = True
+                    break      # this is solo branch extrapolation, should break here. og method uses continue to recover other branches.
     
     
         a = 1
@@ -2630,7 +2635,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         t_times = [a[0] for a in t_segment]
         for t in t_times:
             export_time_active_segments[t].append(k)
-    # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+    #if doX == 1: for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     
     print(f'\n{timeHMS()}:({doX_s}) Final. Recalculate connectivity')
     # ======= EXPORT. RECALCULATE CONNECTIONS BETWEEN SEGMENTS ========================

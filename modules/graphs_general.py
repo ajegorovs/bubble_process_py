@@ -620,8 +620,24 @@ def set_custom_node_parameters(graph, contour_data, nodes_list, owner, calc_hull
 
     return 
 
+def G2_set_parameters(graph, graph_seg, segment, owner, time_func):
 
-def graph_check_paths(graph_node, graph_seg, graph_seg_new, segment_relevant_IDs, times_start_all, time_DT_max, segments_all, report):
+    node_start, node_end  = segment[0], segment[-1]
+
+    time_start  = time_func(node_start , graph)
+    time_end    = time_func(node_end   , graph)
+    
+    graph_seg.add_node(owner) 
+    
+    graph_seg.nodes()[owner]['node_start'   ]   =   node_start
+    graph_seg.nodes()[owner]['node_end'     ]   =   node_end
+
+    graph_seg.nodes()[owner]["t_start"      ]   =   time_start
+    graph_seg.nodes()[owner]["t_end"        ]   =   time_end
+
+    return 
+
+def graph_check_paths(graph_node, graph_seg, graph_seg_new, time_DT_max, report):
 
     # method to find connected segments. connection can be established only stray nodes = paths though other segments are not considered
     # connections are checked in forward direction with segments within specific maximum DT time interval (its cheap and fast)
@@ -630,45 +646,47 @@ def graph_check_paths(graph_node, graph_seg, graph_seg_new, segment_relevant_IDs
     # additional method is implemented which drops path checks that are apriori impossible, which can be determined after a short test.
     # test works on principle: 'you need stray nodes to find pathways instead of consructing subgraph and look for paths, see if 
     # there are time steps between segments in which there are no stray nodes. paths cannot be constructed over these holes.
-    G_time      = lambda node, graph = graph_node : graph.nodes[node]['time']
-    G_owner     = lambda node, graph = graph_node : graph.nodes[node]['owner']
+    # see code_ideas/search_for_holes_before_for_path.py and image for idea/implementation
+
+    G_time      = lambda node, graph = graph_node   : graph.nodes[node]['time']
+    G_owner     = lambda node, graph = graph_node   : graph.nodes[node]['owner']
+
+    G2_t_start  = lambda node, graph = graph_seg    : graph.nodes[node]['t_start' ]
+    G2_t_end    = lambda node, graph = graph_seg    : graph.nodes[node]['t_end'   ]
+    G2_n_start  = lambda node, graph = graph_seg    : graph.nodes[node]['node_start'] 
+    G2_n_end    = lambda node, graph = graph_seg    : graph.nodes[node]['node_end'] 
 
     available_stray_node_times  = set()
     for node in graph_node.nodes():
-        if G_owner(node) == None: available_stray_node_times.add(G_time(node))
+        if G_owner(node) in (None, -1): available_stray_node_times.add(G_time(node))
 
-    for ID_from in segment_relevant_IDs:
+    times_start_all         = np.array([G2_t_start(node) for node in graph_seg.nodes()])
+    segment_relevant_IDs    = np.array([node for node in graph_seg.nodes()])
+    
+    for ID_from in segment_relevant_IDs:   
         
         if graph_seg != graph_seg_new:
             graph_seg_new.add_node(ID_from, **dict(graph_seg.nodes[ID_from])) #copy old parameters
 
-        #graph_seg_new.add_node(ID_from)
-        #graph_seg_new.nodes()[ID_from]["t_start"   ] = G_time(segments_all[ID_from][0   ])
-        #graph_seg_new.nodes()[ID_from]["t_end"     ] = G_time(segments_all[ID_from][-1  ])
-        #graph_seg_new.nodes()[ID_from]["node_start"] = segments_all[ID_from][0   ]
-        #graph_seg_new.nodes()[ID_from]["node_end"  ] = segments_all[ID_from][-1  ]
-
-        time_from    = graph_seg.nodes[ID_from]["t_end"]
+        time_from    = G2_t_end(ID_from)    #graph_seg.nodes[ID_from]["t_end"]
         time_diffs   = times_start_all - time_from
 
         index_pass_DT = np.where((1 <= time_diffs) & (time_diffs <= time_DT_max))[0]
         IDs_DT_pass   = segment_relevant_IDs[index_pass_DT]
 
-        node_from = segments_all[ID_from][-1]
-        time_from = G_time(node_from)
+        node_from = G2_n_end(ID_from)       #segments_all[ID_from][-1]
+        #time_from = G_time(node_from)
 
         for ID_to in IDs_DT_pass:
-            node_to = segments_all[ID_to][0]
-            time_to = G_time(node_to)
+            node_to = G2_n_start(ID_to)     #segments_all[ID_to][0]
+            time_to = G2_t_start(ID_to)   #G_time(node_to)
             edge    = (ID_from,ID_to)
             #  return time of first hole or none = either pass or neighbor segment is right next to it
             first_hole_time = next((t for t in (k for k in range(time_from +1 , time_to )) if t not in available_stray_node_times), None) 
-            #has_holes =  first_hole_time if first_hole_time is not None else False
-            #has_holes_pass_dict = {edge:first_hole_time} if first_hole_time is not None else {edge:False} 
-            
+
             #if not has_holes_pass_dict[edge]:   # pass  = no holes ; not True = False -> dont do if-else. pass = no holes = time
             if first_hole_time is None:
-                nodes_keep    = [node for node in graph_node.nodes() if time_from <= G_time(node) <= time_to and G_owner(node) is None] 
+                nodes_keep    = [node for node in graph_node.nodes() if time_from <= G_time(node) <= time_to and G_owner(node) in (-1, None)] 
                 nodes_keep.extend([node_from,node_to])
                 subgraph = graph_node.subgraph(nodes_keep)
                 hasPath = nx.has_path(subgraph, source = node_from, target = node_to)

@@ -835,8 +835,8 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
 
     node_segments[segment_to] = nodes_composite[::-1] + node_segments[segment_to]
     
-    graph_segments.nodes()[segment_to]["t_start"    ] = nodes_composite[0][0]
-    graph_segments.nodes()[segment_to]["node_start" ] = nodes_composite[0]
+    graph_segments.nodes()[segment_to]["t_start"    ] = node_segments[segment_to][0][0]    #nodes_composite[0][0] # should have been nodes_composite[::-1][0]
+    graph_segments.nodes()[segment_to]["node_start" ] = node_segments[segment_to][0]       # nodes_composite[0]
      
     t_common_nodes = set(nodes_solo).intersection(set(nodes_composite))                             # (5)
     t_composite_nodes = set(nodes_composite) - set(nodes_solo)                                      # (5)

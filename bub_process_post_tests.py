@@ -44,9 +44,6 @@ intervalStart   = 1                            # start with this ID
 numImages       = 1999                          # how many images you want to analyze.
 intervalStop    = intervalStart + numImages     # images IDs \elem [intervalStart, intervalStop); start-end will be updated depending on available data.
 
-exportArchive       = 0                         # implies there are no results that can be reused, of you want to force data initialization stage.
-useIntermediateData = 1 
-
 useMeanWindow   = 0                             # averaging intervals will overlap half widths, read more below
 N               = 700                           # averaging window width
 rotateImageBy   = cv2.ROTATE_180                # -1= no rotation, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_180 
@@ -121,7 +118,7 @@ from bubble_params  import (centroid_area_cmomzz, centroid_area)
 
 from graphs_general import (extractNeighborsNext, extractNeighborsPrevious, graph_extract_paths, find_paths_from_to_multi, graph_check_paths,
                             comb_product_to_graph_edges, for_graph_plots, extract_graph_connected_components, extract_clusters_from_edges,
-                            find_segment_connectivity_isolated,  graph_sub_isolate_connected_components, set_custom_node_parameters, get_event_types_from_segment_graph)
+                            find_segment_connectivity_isolated,  graph_sub_isolate_connected_components, set_custom_node_parameters, G2_set_parameters, get_event_types_from_segment_graph)
 
 from interpolation import (interpolate_trajectory, interpolate_find_k_s, extrapolate_find_k_s, interpolateMiddle2D_2, interpolateMiddle1D_2)
 
@@ -220,7 +217,6 @@ if not os.path.exists(meanImagePath):
     np.savez(meanImagePath,meanImage)
     print(f"\n{timeHMS()}: Mean image is not found. Saving uncompressed mean image ... Done! {track_time()}") 
 
-    useIntermediateData = 0           # no need to re-read data you have just created
 else:
     meanImage = np.load(meanImagePath)['arr_0']
     print(f"\n{timeHMS()}:  Mean image found. Loading ... Done! {track_time()}")
@@ -362,13 +358,13 @@ if not os.path.exists(post_binary_data):
     print(f"\n{timeHMS()}: First Pass: obtaining rough clusters using bounding rectangles ... {track_time()}\n")
     num_time_steps          = binarizedMaskArr.shape[0]
     t_range                 = range(num_time_steps)
-    pre_rect_cluster     = {t:{} for t in t_range}
+    pre_rect_cluster        = {t:{} for t in t_range}
     g0_contours             = {t:[] for t in t_range}
     #g0_contours_children = {t:{} for t in t_range}
     g0_contours_hulls       = {t:{} for t in t_range}
     g0_contours_centroids   = {t:{} for t in t_range} 
     g0_contours_areas       = {t:{} for t in t_range}
-    pre_nodes_all            = []
+    pre_nodes_all           = []
     # stage 1: extract contours on each binary image. delete small and internal contours.
     # check for proximity between contours on frame using overlap of bounding rectangles
     # small objects are less likely to overlap, boost their bounding rectangle to 100x100 pix size
@@ -671,14 +667,15 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             G.nodes[t_node]["owner"] = t
     # ============================= CREATE SEGMENT REPRESENTATION GRAPH =============================
     G2 = nx.DiGraph()
-    for t_seg_index in range(len(segments2)):
+    for t_seg_index, segment in enumerate(segments2):
+        G2_set_parameters(G, G2, segment, t_seg_index, G_time)
 
-        G2.add_node(t_seg_index)
+        #G2.add_node(t_seg_index)
+        #G2.nodes()[t_seg_index]["t_start"   ] = G_time(segments2[t_seg_index][0])
+        #G2.nodes()[t_seg_index]["t_end"     ] = G_time(segments2[t_seg_index][-1])
+        #G2.nodes()[t_seg_index]["node_start"] = segments2[t_seg_index][0]
+        #G2.nodes()[t_seg_index]["node_end"  ] = segments2[t_seg_index][-1]
 
-        G2.nodes()[t_seg_index]["t_start"   ] = G_time(segments2[t_seg_index][0])
-        G2.nodes()[t_seg_index]["t_end"     ] = G_time(segments2[t_seg_index][-1])
-        G2.nodes()[t_seg_index]["node_start"] = segments2[t_seg_index][0]
-        G2.nodes()[t_seg_index]["node_end"  ] = segments2[t_seg_index][-1]
     # =========================== ADD FUNCTIONS TO RETRIEVE G2 NODE PARAMS ==========================
     # same as with G. dont redefine G2. only modify exising G2 ref. print(id(G2))
     G2_t_start      = lambda node, graph = G2 : graph.nodes[node]['t_start' ]
@@ -687,19 +684,12 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     G2_n_start      = lambda node, graph = G2 : graph.nodes[node]['node_start']    
     G2_n_end        = lambda node, graph = G2 : graph.nodes[node]['node_end'] 
 
-    #lr_time_active_segments = defaultdict(list)
-    #for t_segment_index, t_segment_nodes in enumerate(segments2):
-    #    t_times = [G_time(node) for node in t_segment_nodes]
-    #    for t_time in t_times:
-    #        lr_time_active_segments[t_time].append(t_segment_index)
-    ## sort keys in lr_time_active_segments
-    #lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
     #if doX >= 0:
     #    for_graph_plots(G, segs = segments2)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     print(f'\n{timeHMS()}:({doX_s}) Determining connectivity between segments... ')
     # ===============================================================================================
     # ===============================================================================================
-    # === find POSSIBLE interval start-end connectedness: start-end exist within set time interval ==
+    # ========================== FIND CONNECTIVITY BETWEEN SEGMENTS =================================
     # ===============================================================================================
     # ===============================================================================================
     # REMARK: it is expected that INTER segment space is limited, so no point searching paths from
@@ -710,16 +700,6 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     lr_all_start            = np.array([G2_t_start( i)  for i,_ in enumerate(segments2)])
     lr_seg_end_all          = np.array([G2_t_end(   i)  for i,_ in enumerate(segments2)])
     
-    # select segment and calculate time distance from its end to start times of all other segments
-    # filter segments that lie within [1, lr_maxDT]
-    lr_viable_neighbors = {}
-    for k,t_time_from in enumerate(lr_seg_end_all):
-
-        time_diffs          = lr_all_start - t_time_from
-        viable_neighbors    = np.where((1 <= time_diffs) & (time_diffs <= lr_maxDT))[0]
-
-        if len(viable_neighbors) > 0:
-            lr_viable_neighbors[k] = viable_neighbors
     
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # ===============================================================================================
@@ -730,7 +710,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     # NOTE:     before path search i use method described in code_ideas/search_for_holes_before_for_path.py
 
     t_has_holes_report = {}
-    G2 = graph_check_paths(G, G2, G2, np.arange(len(segments2)), lr_all_start, lr_maxDT, segments2, t_has_holes_report)
+    G2 = graph_check_paths(G, G2, G2, lr_maxDT, t_has_holes_report)
 
     print(f'\n{timeHMS()}:({doX_s}) Paths that have failed hole test: {t_has_holes_report}')
      
@@ -966,10 +946,10 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         for t,t_subIDs in enumerate(t_big121s_edited):
             if t_subIDs != None: 
                 # prepare data: resolved  time steps, centroids, areas G2
-                t_temp_nodes_all    = sum([segments2[t_subID] for t_subID in t_subIDs],[])
-                t_temp_times        = [G_time(t_node)       for t_node in t_temp_nodes_all]
-                t_temp_areas        = [G_area(t_node)       for t_node in t_temp_nodes_all]
-                t_temp_centroids    = [G_centroid(t_node)   for t_node in t_temp_nodes_all]
+                t_temp_nodes_all    = sum(  [segments2[t_subID]   for t_subID in t_subIDs         ],[])
+                t_temp_times        =       [G_time(t_node)       for t_node  in t_temp_nodes_all ]
+                t_temp_areas        =       [G_area(t_node)       for t_node  in t_temp_nodes_all ]
+                t_temp_centroids    =       [G_centroid(t_node)   for t_node  in t_temp_nodes_all ]
                 
                 # generate time steps in holes for interpolation
                 t_conns_times_dict = {}
@@ -979,7 +959,6 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                 lr_big121s_edges_relevant.extend(t_conns_times_dict.keys())
                 t_times_missing_all = []; [t_times_missing_all.extend(times) for times in t_conns_times_dict.values()]
         
-                a = 1
                 # interpolate composite (long) parameters 
                 t_interpolation_centroids_0 = interpolateMiddle2D_2(t_temp_times,np.array(t_temp_centroids), t_times_missing_all, s = 15, debug = 0, aspect = 'equal', title = t_subIDs)
                 t_interpolation_areas_0     = interpolateMiddle1D_2(t_temp_times,np.array(t_temp_areas),t_times_missing_all, rescale = True, s = 15, debug = 0, aspect = 'auto', title = t_subIDs)
@@ -1837,13 +1816,21 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     fin_additional_segments_IDs = list(range(t_start_ID, t_start_ID + len(t_unresolved_new), 1))
 
     for t_ID in t_unresolved_new:      # add new segments to end of old storage
+
         t_new_ID = len(t_segments_new)
+
         t_segments_new.append(t_segments_fin[t_ID])
-        G2.add_node(t_new_ID)
-        G2.nodes()[t_new_ID]["t_start"] =  G_time(t_segments_new[t_new_ID][0] )
-        G2.nodes()[t_new_ID]["t_end"]   =  G_time(t_segments_new[t_new_ID][-1])
+
+        node_start, node_end = t_segments_new[t_new_ID][0], t_segments_new[t_new_ID][-1]
+
+        #G2.add_node(t_new_ID) 
+        #G2.nodes()[t_new_ID]["t_start"      ]   =   G_time(node_start   )
+        #G2.nodes()[t_new_ID]["t_end"        ]   =   G_time(node_end     )
+        #G2.nodes()[t_new_ID]['node_start'   ]   =   node_start
+        #G2.nodes()[t_new_ID]['node_end'     ]   =   node_end
         #set_custom_node_parameters(G, g0_contours_hulls, t_segments_fin[t_ID], t_new_ID, calc_hull = 0) # straight hulls since solo nodes 
         set_custom_node_parameters(G, g0_contours, t_segments_fin[t_ID], t_new_ID, calc_hull = 1)        # 
+        G2_set_parameters(G, G2, t_segments_fin[t_ID], t_new_ID, G_time)
 
 
     #lr_time_active_segments = defaultdict(list)
@@ -1865,7 +1852,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     t_segment_time_start = np.array([G2.nodes[t]["t_start"] for t in t_segments_relevant])
 
     t_has_holes_report = {}
-    G2_new = graph_check_paths(G, G2, nx.DiGraph(), t_segments_relevant, t_segment_time_start, lr_maxDT, t_segments_new, t_has_holes_report)
+    G2_new = graph_check_paths(G, G2, nx.DiGraph(), lr_maxDT, t_has_holes_report)
 
     print(f'\n{timeHMS()}:({doX_s}) Paths that have failed hole test: {t_has_holes_report}')
 
@@ -2247,7 +2234,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     t_segment_time_start    = np.array([G2.nodes[t]["t_start"] for t in t_segments_relevant])
 
     t_has_holes_report = {}
-    G2_new = graph_check_paths(G, G2, nx.DiGraph(), t_segments_relevant, t_segment_time_start, lr_maxDT, t_segments_new, t_has_holes_report)                        
+    G2_new = graph_check_paths(G, G2, nx.DiGraph(), lr_maxDT, t_has_holes_report)                        
     # ========== EXPORT. DETERMINE TYPE OF EVENTS BETWEEN SEGMENTS ==========
     G2_dir, export_ms_edges_main = get_event_types_from_segment_graph(G2_new)
 

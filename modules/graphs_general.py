@@ -16,6 +16,18 @@ def extractNeighborsPrevious(graph, node, time_from_node_function):
     return [n for n in neighbors if time_from_node_function(n) < time_from_node_function(node)]
 
 
+seg_t_start     = lambda node, graph : graph.nodes[node]['t_start'      ]
+seg_t_end       = lambda node, graph : graph.nodes[node]['t_end'        ]
+seg_n_from      = lambda node, graph : graph.nodes[node]['node_start'   ]    
+seg_n_to        = lambda node, graph : graph.nodes[node]['node_end'     ] 
+seg_edge_d      = lambda edge, graph : graph.edges[edge]['dist'         ]
+
+node_time       = lambda node, graph : graph.nodes[node]['time'     ]
+node_area       = lambda node, graph : graph.nodes[node]['area'     ]
+node_centroid   = lambda node, graph : graph.nodes[node]['centroid' ]
+node_owner      = lambda node, graph : graph.nodes[node]['owner'    ]
+
+
 def graph_extract_paths(G, min_length = 2, f_sort = lambda x: (x[0], x[1:])):
     solo_edge_forw      = set()
     one_2_one_edges     = set()
@@ -620,12 +632,11 @@ def set_custom_node_parameters(graph, contour_data, nodes_list, owner, calc_hull
 
     return 
 
-def G2_set_parameters(graph, graph_seg, segment, owner, time_func):
+def G2_set_parameters(graph, graph_seg, segment, owner):#, time_func):
 
     node_start, node_end  = segment[0], segment[-1]
 
-    time_start  = time_func(node_start , graph)
-    time_end    = time_func(node_end   , graph)
+    time_start, time_end  = node_time(node_start, graph), node_time(node_end, graph)
     
     graph_seg.add_node(owner) 
     

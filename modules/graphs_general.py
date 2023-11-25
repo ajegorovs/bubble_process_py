@@ -15,18 +15,24 @@ def extractNeighborsPrevious(graph, node, time_from_node_function):
     neighbors = list(graph.neighbors(node))
     return [n for n in neighbors if time_from_node_function(n) < time_from_node_function(node)]
 
+# define parameter retrieval functions for nodes.
+# in main code these are redined into G_parameter(node) by specifying reference graph G/G2
+# node time can be retrieved like 'seg_t_start = lambda node, graph : node[0]'
+# but holding parameters on a graph is more universal.
+# by defining these more general functions i want to get rid of specific string keys that have to typed in manually
+seg_t_start     = lambda node, graph : graph.nodes[node]['t_start'   ]
+seg_t_end       = lambda node, graph : graph.nodes[node]['t_end'     ]
+seg_n_from      = lambda node, graph : graph.nodes[node]['node_start']    
+seg_n_to        = lambda node, graph : graph.nodes[node]['node_end'  ] 
+seg_edge_d      = lambda edge, graph : graph.edges[edge]['dist'      ]
 
-seg_t_start     = lambda node, graph : graph.nodes[node]['t_start'      ]
-seg_t_end       = lambda node, graph : graph.nodes[node]['t_end'        ]
-seg_n_from      = lambda node, graph : graph.nodes[node]['node_start'   ]    
-seg_n_to        = lambda node, graph : graph.nodes[node]['node_end'     ] 
-seg_edge_d      = lambda edge, graph : graph.edges[edge]['dist'         ]
+node_time       = lambda node, graph : graph.nodes[node]['time'      ]
+node_area       = lambda node, graph : graph.nodes[node]['area'      ]
+node_centroid   = lambda node, graph : graph.nodes[node]['centroid'  ]
+node_owner      = lambda node, graph : graph.nodes[node]['owner'     ]
 
-node_time       = lambda node, graph : graph.nodes[node]['time'     ]
-node_area       = lambda node, graph : graph.nodes[node]['area'     ]
-node_centroid   = lambda node, graph : graph.nodes[node]['centroid' ]
-node_owner      = lambda node, graph : graph.nodes[node]['owner'    ]
-
+def node_owner_set(node, graph, owner):
+    graph.nodes[node]["owner"] = owner
 
 def graph_extract_paths(G, min_length = 2, f_sort = lambda x: (x[0], x[1:])):
     solo_edge_forw      = set()
@@ -214,15 +220,18 @@ def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_se
     # from which all but one test target is removed.
 
     # t_min, t_max & add_nodes for main subgraph; active_segments, target_nodes dict for targets; source_segment, source_node for pathing.
-
-    nodes_keep_main =   [node for node in graph.nodes() if t_min <= graph.nodes[node]["time"] <= t_max]    # isolate main graph segment
+    # NOTE: cc_all sorting is created for nodes (time,ID1,...)
+    G_time      = lambda node   : node_time(   node  , graph)
+    G_owner     = lambda node   : node_owner(  node  , graph)
+    
+    nodes_keep_main =   [node for node in graph.nodes() if t_min <= G_time(node) <= t_max]    # isolate main graph segment
     nodes_keep_main +=  add_nodes                                                                          # add extra nodes, if needed
-    subgraph_main   =   graph.subgraph(nodes_keep_main) 
+    subgraph_main   =   graph.subgraph(nodes_keep_main)
 
     if source_node is None:  # automatically find source node if not specified
-        for t_node in nodes_keep_main:
-            if subgraph_main.nodes[t_node]["owner"] == source_segment:
-                source_node = t_node
+        for node in nodes_keep_main:
+            if G_owner(node) == source_segment:
+                source_node = node
                 break
 
     # setup target segments. either known from target_nodes dict or from all time period active (active_segments)
@@ -241,7 +250,7 @@ def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_se
             test_target_node = target_nodes[test_segment]
         elif target_nodes is None:
             for node in nodes_keep_sub:
-                if subgraph_test.nodes[node]["owner"] == test_segment:
+                if G_owner(node) == test_segment:
                     test_target_node = node
                     break
         else: test_target_node = target_nodes
@@ -251,14 +260,14 @@ def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_se
         if hasPath:
             connected_edges.append((source_segment,test_segment))
             if return_cc:
-                nodes_from  = [node for node in nodes_keep_sub if subgraph_test.nodes[node]["owner"] == source_segment]
-                nodes_to    = [node for node in nodes_keep_sub if subgraph_test.nodes[node]["owner"] == test_segment]
+                nodes_from  = [node for node in nodes_keep_sub if G_owner(node) == source_segment]
+                nodes_to    = [node for node in nodes_keep_sub if G_owner(node) == test_segment]
 
-                node_from_last  = max(nodes_from, key = lambda x: x[0])
-                node_to_firt    = min(nodes_to  , key = lambda x: x[0])
+                node_from_last  = max(nodes_from    , key = lambda x: G_time(x))
+                node_to_first    = min(nodes_to     , key = lambda x: G_time(x))
 
-                sub_test_nodes = [node for node in nodes_keep_sub if node_from_last[0] < node[0] < node_to_firt[0]]
-                sub_test_nodes += [node_from_last, node_to_firt]
+                sub_test_nodes = [node for node in nodes_keep_sub if G_time(node_from_last) < G_time(node) < G_time(node_to_first)]
+                sub_test_nodes += [node_from_last, node_to_first]
 
                 sub_subgraph_test = subgraph_test.subgraph(sub_test_nodes) 
                 cc_all = extract_graph_connected_components(sub_subgraph_test.to_undirected(),  lambda x: (x[0], *x[1:]))
@@ -337,9 +346,10 @@ def for_graph_plots(G, segs = [], optimize_pos = True, show = True, suptitle = "
     paths = {i:vals for i,  vals in enumerate(segments3) if len(vals) > 0}
     t_pos = {i:0    for i,  vals in enumerate(segments3) if len(vals) > 0}
     # check overlap between segments time-wise: extract overlapping clusters
-    
-    G_time  = lambda node, graph = G : graph.nodes[node]['time']
-    G_owner = lambda node, graph = G : graph.nodes[node]['owner']
+
+    G_time  = lambda node   : node_time(   node  , G)
+    G_owner = lambda node   : node_owner(  node  , G)
+   
 
     time_intervals = {i:range(G_time(nodes[0]), G_time(nodes[-1]) + 1) for i, nodes in paths.items()}
 
@@ -648,7 +658,7 @@ def G2_set_parameters(graph, graph_seg, segment, owner):#, time_func):
 
     return 
 
-def graph_check_paths(graph_node, graph_seg, graph_seg_new, time_DT_max, report):
+def graph_check_paths(graph_node, graph_seg, time_DT_max, report):
 
     # method to find connected segments. connection can be established only stray nodes = paths though other segments are not considered
     # connections are checked in forward direction with segments within specific maximum DT time interval (its cheap and fast)
@@ -659,13 +669,13 @@ def graph_check_paths(graph_node, graph_seg, graph_seg_new, time_DT_max, report)
     # there are time steps between segments in which there are no stray nodes. paths cannot be constructed over these holes.
     # see code_ideas/search_for_holes_before_for_path.py and image for idea/implementation
 
-    G_time      = lambda node, graph = graph_node   : graph.nodes[node]['time']
-    G_owner     = lambda node, graph = graph_node   : graph.nodes[node]['owner']
-
-    G2_t_start  = lambda node, graph = graph_seg    : graph.nodes[node]['t_start' ]
-    G2_t_end    = lambda node, graph = graph_seg    : graph.nodes[node]['t_end'   ]
-    G2_n_start  = lambda node, graph = graph_seg    : graph.nodes[node]['node_start'] 
-    G2_n_end    = lambda node, graph = graph_seg    : graph.nodes[node]['node_end'] 
+    G_time      = lambda node   : node_time(   node  , graph_node)
+    G_owner     = lambda node   : node_owner(  node  , graph_node)
+                                                     
+    G2_t_start  = lambda node   : seg_t_start( node  , graph_seg )
+    G2_t_end    = lambda node   : seg_t_end(   node  , graph_seg )
+    G2_n_start  = lambda node   : seg_n_from(  node  , graph_seg )
+    G2_n_end    = lambda node   : seg_n_to(    node  , graph_seg )
 
     available_stray_node_times  = set()
     for node in graph_node.nodes():
@@ -675,9 +685,8 @@ def graph_check_paths(graph_node, graph_seg, graph_seg_new, time_DT_max, report)
     segment_relevant_IDs    = np.array([node for node in graph_seg.nodes()])
     
     for ID_from in segment_relevant_IDs:   
-        
-        if graph_seg != graph_seg_new:
-            graph_seg_new.add_node(ID_from, **dict(graph_seg.nodes[ID_from])) #copy old parameters
+
+        successors_old = set(graph_seg.successors(ID_from))  # want to drop old false edges, if present.
 
         time_from    = G2_t_end(ID_from)    #graph_seg.nodes[ID_from]["t_end"]
         time_diffs   = times_start_all - time_from
@@ -686,8 +695,7 @@ def graph_check_paths(graph_node, graph_seg, graph_seg_new, time_DT_max, report)
         IDs_DT_pass   = segment_relevant_IDs[index_pass_DT]
 
         node_from = G2_n_end(ID_from)       #segments_all[ID_from][-1]
-        #time_from = G_time(node_from)
-
+        successors_resolved = set()
         for ID_to in IDs_DT_pass:
             node_to = G2_n_start(ID_to)     #segments_all[ID_to][0]
             time_to = G2_t_start(ID_to)   #G_time(node_to)
@@ -702,22 +710,27 @@ def graph_check_paths(graph_node, graph_seg, graph_seg_new, time_DT_max, report)
                 subgraph = graph_node.subgraph(nodes_keep)
                 hasPath = nx.has_path(subgraph, source = node_from, target = node_to)
                 if hasPath:
-                    graph_seg_new.add_edge(ID_from, ID_to, dist = time_to - time_from + 1)
+                    graph_seg.add_edge(ID_from, ID_to, dist = time_to - time_from + 1)
+                    successors_resolved.add(ID_to)
             else:
                 report[edge] = first_hole_time
+        successors_drop = successors_old - successors_resolved  # which old to remove
+        graph_seg.remove_edges_from([(ID_from,ID) for ID in successors_drop])
 
-    return graph_seg_new
+    return graph_seg
 
-def get_event_types_from_segment_graph(graph_input):
+def get_event_types_from_segment_graph(graph):
+    # method for analyzing which type of event graph edge (between 
+    # segments/nodes) is in based on connectivity between neighbor segments.
+    # e.g merge event conists of multiple branches (nodes) which have solo 
+    # successors et merge segment (node) has multiple predecessors
+ 
+    for edge in graph.edges():
+        graph.edges[edge]["in_events"] = set()
 
-    # create a directed graph copy of an input graph.
-    graph = nx.DiGraph()
-
-    for seg_ID in graph_input.nodes():                                  # copy node parametes
-        graph.add_node(seg_ID, **dict(graph_input.nodes[seg_ID]))
-    for seg_from, seg_to in graph_input.edges():                        # copy edges parametes
-        graph.add_edge(seg_from, seg_to, **dict(graph_input.edges[(seg_from, seg_to)]))
-        graph.edges[(seg_from,seg_to)]["in_events"] = set()
+    get_in_events   = lambda edge: graph.edges[edge]["in_events"]
+    get_to_state    = lambda node: graph.nodes[node]["state_to"]
+    get_from_state  = lambda node: graph.nodes[node]["state_from"]
 
     # determine type of connections (edges) between nodes.
     #  it depends on number of successors and predecessors
@@ -743,41 +756,42 @@ def get_event_types_from_segment_graph(graph_input):
             [graph.edges[(t,seg_ID)]["in_events"].add('merge') for t in seg_predecessors]
 
     connections_together = {'solo':[], 'merge':{}, 'split':{}, 'mixed':{}}
-    # edge is visited twice as a successor and as a predecessor. type of edge will depend on context
-
-    # if both tests result in 'solo' type edge, its a part of segement chain
-    connections_together['solo'] = [t_conn for t_conn in graph.edges() if graph.edges[t_conn]["in_events"] == {'solo'}]
-
-    # for classic merges and splits situation is different. from point of view a branch, it 
-    # is coming/going in only into merge/split node, so this connection is 'solo'. same edge from 
-    # point of view merge/split node is 'merge'/'split' respectivelly, due to many predecessors/successors
+    # edge is visited twice as a successor for one node and as a predecessor for another node. 
+    # depending which role edge playes in both cases we can deduce what type of an event it is.
     
+    # if both roles  result in 'solo' type edge, its a part of segement chain
+    connections_together['solo'] = [conn for conn in graph.edges() if get_in_events(conn) == {'solo'}] #graph.edges[conn]["in_events"]
+
+    # for classic merges (or splits) situation is different. from point of view of a branch, it 
+    # is coming into (going out of)  single merge (split) node, so this connection is 'solo'. same edge from 
+    # point of view of a merge (split) node is 'merge' ('split'), due to many predecessors (successors)
+    # some edges may act as both split and merge branches, these are 'mixed' type events
     type_split = {'split','solo'}
     type_merge = {'merge','solo'}
-    # some edges may act as both split and merge branches, these are mixed type events
-    type_mixed = {'split','merge'}
+    type_mixed = {'split','merge'} 
     edges_mixed = set()
     for seg_ID in graph.nodes():
-        # solo state are ruled out in 'connections_solo'
-
-        if graph.nodes[seg_ID]["state_to"] == 'split':      
+        # solo state is ruled out in 'connections_solo'
+        if get_to_state(seg_ID) == 'split':      #graph.nodes[seg_ID]["state_to"] 
             # check forward connections and check their types
-            edge_types  = {(seg_ID,t): graph.edges[(seg_ID,t)]["in_events"] for t in graph.successors(seg_ID)}
+            edge_types  = {(seg_ID, t): get_in_events((seg_ID,t)) for t in graph.successors(seg_ID)} #graph.edges[(seg_ID,t)]["in_events"]
             type_pass   = [edge_type == type_split for edge_type in edge_types.values()]
             if all(type_pass):  
                 # all branches are classic split
                 connections_together['split'][seg_ID] = [t for _, t in edge_types.keys()]
             else:
                 # check if branches are of mixed type.
-                [edges_mixed.add(edge) for edge,edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
+                [edges_mixed.add(edge) for edge, edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
 
-        if graph.nodes[seg_ID]["state_from"] == 'merge':
-            edge_types  = {(t, seg_ID): graph.edges[(t, seg_ID)]["in_events"] for t in graph.predecessors(seg_ID)}
+        if get_from_state(seg_ID) == 'merge': #graph.nodes[seg_ID]["state_from"]
+
+            edge_types  = {(t, seg_ID): get_in_events((t, seg_ID)) for t in graph.predecessors(seg_ID)} #graph.edges[(t, seg_ID)]["in_events"]
+
             type_pass   = [edge_type == type_merge for edge_type in edge_types.values()]
             if all(type_pass):
-                connections_together['merge'][seg_ID] = [t for t,_ in edge_types.keys()]
+                connections_together['merge'][seg_ID] = [t for t, _ in edge_types.keys()]
             else:
-                [edges_mixed.add(edge) for edge,edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
+                [edges_mixed.add(edge) for edge, edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
      
     # try to isolate event containing mixed branch. to avoid connectendess to far neighbor segments, which is possible 
     # from edge of event, try to find event nodes from gathering predecessors of successors of 'from' mixed edge node
@@ -787,7 +801,7 @@ def get_event_types_from_segment_graph(graph_input):
     ID_clusters = set()
     for seg_from,seg_to in edges_mixed:
         # start a cluster associated with this mixed edge nodes
-        t_node_cluster = {seg_from,seg_to}
+        t_node_cluster = {seg_from, seg_to}
         # add connecteness sweep results to this cluster
         for t in graph.successors(seg_from):
             t_node_cluster.update(list(graph.predecessors(t)))
@@ -811,19 +825,37 @@ def get_event_types_from_segment_graph(graph_input):
     # and similarly, only outgoing and internal branches have predecessors
     # internal branches are, simply, an intersection of those two.
     for k, t_cluster in enumerate(ID_clusters):
+
         subgraph = graph.subgraph(t_cluster)
+
         successors_all = set()
         predecessors_all = set()
-        successors    = {t:list(subgraph.successors(t)) for t in t_cluster}
-        predecessors  = {t:list(subgraph.predecessors(t)) for t in t_cluster}
-        branches_out  = tuple(sorted([t for t in successors      if len(successors[t]  ) == 0]))
-        branches_in   = tuple(sorted([t for t in predecessors    if len(predecessors[t]) == 0]))
-        [successors_all.update(t)     for t in successors.values()  ]
-        [predecessors_all.update(t)   for t in predecessors.values()]
+
+        successors    = {t:list(subgraph.successors(t))     for t in t_cluster}
+        predecessors  = {t:list(subgraph.predecessors(t))   for t in t_cluster}
+
+        branches_out  = tuple(sorted([t for t in successors     if len(successors[t]  ) == 0]))
+        branches_in   = tuple(sorted([t for t in predecessors   if len(predecessors[t]) == 0]))
+
+        [successors_all.update(t)       for t in successors.values()  ]
+        [predecessors_all.update(t)     for t in predecessors.values()]
+
         intersection = successors_all.intersection(predecessors_all)
         if len(intersection) > 0:
             branches_in = tuple(sorted(list(branches_in) + list(intersection)))  # it will be extrapolated
         connections_together['mixed'][branches_in] = branches_out
+
+    # rename in_events into simpler type instead of which events branches are in.
+    # EDIT: not that simple. mixed connections have to be determined by itertools.product(branch_in,branch_out)
+    #for *edge, in_events in graph.edges(data='in_events'):
+    #    if in_events    == {'solo'}:
+    #        graph.edges[edge]["in_events"] = 'solo'
+    #    elif in_events  == type_split:
+    #        graph.edges[edge]["in_events"] = 'split'
+    #    elif in_events  == type_merge:
+    #        graph.edges[edge]["in_events"] = 'merge'
+    #    else:
+    #        graph.edges[edge]["in_events"] = 'mixed'
 
     return graph, connections_together
 

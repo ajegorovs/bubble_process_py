@@ -683,7 +683,13 @@ def perms_with_branches(t_to_branches,t_segments_new,t_times_contours, return_no
 
 
 def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_to, graph_nodes, graph_segments, ID_remap, contours_dict):
-    from graphs_general import (extractNeighborsNext, set_custom_node_parameters)
+    from graphs_general import (set_custom_node_parameters, G2_set_parameters, seg_n_from, seg_n_to, node_time, node_owner_set)
+    
+    G2_n_start  = lambda node: seg_n_from(  node, graph_segments)
+    G2_n_end    = lambda node: seg_n_to(    node, graph_segments)
+    G_time      = lambda node: node_time(   node, graph_nodes   )
+    G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
+
     # NOTE: G_time and such are not implemented
     # *** is used to modify graphs and data storage with info about resolved connections between segments ***
     # ----------------------------------------------------------------------------------------------------
@@ -698,125 +704,149 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
     # ----------------------------------------------------------------------------------------------------
     # from sols_dict {time1:[ID1,ID2,..],..} regenerate composite nodes if there are, but also
     # disperse into original solo nodes, which are a part of event space (node paths between segments)
+
     nodes_solo, nodes_composite = [],[]
-    for time,subIDs in sols_dict.items():                     
+    for time, subIDs in sols_dict.items():                     
         for subID in subIDs:                                
             nodes_solo.append((time,subID))               
                         
-        nodes_composite.append(tuple([time] + list(subIDs)))  
+        nodes_composite.append((time,) + tuple(subIDs))   # tuple([time] + list(subIDs))
 
     segment_from_new        = ID_remap[segment_from]      # get reference of master of this segment
     ID_remap[segment_to]    = segment_from_new            # add let master inherit slave of this segment
 
-    node_from_last = node_segments[segment_from_new][-1]                                            # (1)
-    from_successors = list(graph_nodes.successors(node_from_last))                                  # (1)
-    from_successors_edges = [(node_from_last, node) for node in  from_successors]                   # (1)
+    node_from_last          = G2_n_end(segment_from_new)#node_segments[segment_from_new][-1]        # (1)
+    from_successors         = list(graph_nodes.successors(node_from_last))                          # (1)
+    from_successors_edges   = [(node_from_last, node) for node in  from_successors]                 # (1)
     graph_nodes.remove_edges_from(from_successors_edges)                                            # (1)
 
-    node_to_first = node_segments[segment_to][0]                                                    # (2)
-    to_predecessors = list(graph_nodes.predecessors(node_to_first))                                 # (2)
-    to_predecessors_edges = [(node, node_to_first) for node in  to_predecessors]                    # (2)
+    node_to_first           = G2_n_start(segment_to)#node_segments[segment_to][0]                   # (2)
+    to_predecessors         = list(graph_nodes.predecessors(node_to_first))                         # (2)
+    to_predecessors_edges   = [(node, node_to_first) for node in  to_predecessors]                  # (2)
     graph_nodes.remove_edges_from(to_predecessors_edges)                                            # (2)
-                                                                                                    
-    nodes_solo      = [node for node in nodes_solo      if node_from_last[0] < node[0] < node_to_first[0]]
-    nodes_composite = [node for node in nodes_composite if node_from_last[0] < node[0] < node_to_first[0]]
 
-    node_chain = [node_from_last] + nodes_composite + [node_to_first]                               # (4)
-    edges_sequence = [(x, y) for x, y in zip(node_chain[:-1], node_chain[1:])]                      # (4)
+    #time_check      = lambda node: G_time(node_from_last) < G_time( node)    < G_time(node_to_first)  
+    time_check_c    = lambda node: G_time(node_from_last) <         node[0] < G_time(node_to_first) 
 
-    for node in node_segments[segment_to]:graph_nodes.nodes[node]["owner"] = segment_from_new
+    nodes_solo      = [node for node in nodes_solo      if time_check_c(node) ]
+    nodes_composite = [node for node in nodes_composite if time_check_c(node) ]
+
+    node_chain      = [node_from_last] + nodes_composite + [node_to_first]                          # (4)
+    edges_sequence  = [(x, y) for x, y in zip(node_chain[:-1], node_chain[1:])]                     # (4)
+
+    for node in node_segments[segment_to]:
+        #graph_nodes.nodes[node]["owner"] = segment_from_new
+        G_owner_set(node,segment_from_new) 
 
     node_segments[segment_from_new] += nodes_composite
     node_segments[segment_from_new] += node_segments[segment_to]
     node_segments[segment_to]       = []
     if segment_from_new != segment_from: node_segments[segment_from] = []
 
-    segment_successors   = extractNeighborsNext(graph_segments, segment_to, lambda x: graph_segments.nodes[x]["t_start"])
-    t_edges = [(segment_from_new,successor) for successor in segment_successors]
+    segment_successors  = graph_segments.successors(segment_to) #extractNeighborsNext(graph_segments, segment_to, lambda x: graph_segments.nodes[x]["t_start"])
+    t_edges             = [(segment_from_new,successor) for successor in segment_successors]
     graph_segments.remove_nodes_from([segment_to])
     graph_segments.add_edges_from(t_edges)
-    graph_segments.nodes()[segment_from_new]["t_end"    ] = node_segments[segment_from_new][-1][0]
-    graph_segments.nodes()[segment_from_new]["node_end" ] = node_segments[segment_from_new][-1]
+    
+    #graph_segments.nodes()[segment_from_new]["t_end"    ] = node_segments[segment_from_new][-1][0]
+    #graph_segments.nodes()[segment_from_new]["node_end" ] = node_segments[segment_from_new][-1]
             
-    t_common_nodes = set(nodes_solo).intersection(set(nodes_composite))                             # (5)
-    t_composite_nodes = set(nodes_composite) - set(nodes_solo)                                      # (5)
-    t_node_params = {t:dict(graph_nodes.nodes[t]) for t in t_common_nodes}                          # (5)
+    t_common_nodes      = set(nodes_solo).intersection(set(nodes_composite))                        # (5)
+    t_composite_nodes   = set(nodes_composite) - set(nodes_solo)                                    # (5)
+    t_node_params       = {t:dict(graph_nodes.nodes[t]) for t in t_common_nodes}                    # (5)
         
     graph_nodes.remove_nodes_from(nodes_solo)                                                       # (6)
     graph_nodes.add_edges_from(edges_sequence)                                                      # (6)
 
     for t,t_params in t_node_params.items():    
-            graph_nodes.add_node(t, **t_params)
-            graph_nodes.nodes[t]["owner"] = segment_from_new
+        graph_nodes.add_node(t, **t_params)
+        G_owner_set(t,segment_from_new) 
+        #graph_nodes.nodes[t]["owner"] = segment_from_new
+            
     set_custom_node_parameters(graph_nodes, contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)    
+    G2_set_parameters(graph_nodes, graph_segments, node_segments[segment_from_new], segment_from_new)
     
 def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to, graph_nodes, graph_segments, ID_remap, contours_dict):
     # *** is used to modify graphs and data storage with info about resolved extensions of merge branches (from left to merge node) ***
     # ref save_connections_two_ways() for docs. (2) absent, (3) is new
-    from graphs_general import (set_custom_node_parameters)
+    from graphs_general import (set_custom_node_parameters, G2_set_parameters, seg_n_to, node_time, node_owner_set)
+
+    G2_n_end    = lambda node: seg_n_to(    node, graph_segments)
+    G_time      = lambda node: node_time(   node, graph_nodes   )
+    G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
+
     nodes_solo, nodes_composite = [],[]
 
     for time,subIDs in sols_dict.items():                     
         for subID in subIDs:                                
             nodes_solo.append((time,subID))               
                         
-        nodes_composite.append(tuple([time] + list(subIDs)))  
+        nodes_composite.append((time,) + tuple(subIDs))  
 
     segment_from_new        = ID_remap[segment_from]
 
-    node_from_last = node_segments[segment_from_new][-1]                                            # (1)
-    from_successors = list(graph_nodes.successors(node_from_last))                                  # (1)
-    from_successors_edges = [(node_from_last, node) for node in  from_successors]                   # (1)
+    node_from_last          = G2_n_end(segment_from_new)#node_segments[segment_from_new][-1]        # (1)
+    from_successors         = graph_nodes.successors(node_from_last)                                # (1)
+    from_successors_edges   = [(node_from_last, node) for node in  from_successors]                 # (1)
     graph_nodes.remove_edges_from(from_successors_edges)                                            # (1)
 
-    sols_node_last = nodes_composite[-1]                                                            # (3)
-    sols_nodes_disperesed = disperse_composite_nodes_into_solo_nodes([sols_node_last])              # (3)
-    sols_last_edges = set()                                                                         # (3)
+    sols_node_last          = nodes_composite[-1]                                                   # (3)
+    sols_nodes_disperesed   = disperse_composite_nodes_into_solo_nodes([sols_node_last])            # (3)
+    sols_last_edges         = set()                                                                 # (3)
     for node in sols_nodes_disperesed:                                                              # (3)
         sols_last_edges.update([(sols_node_last,t) for t in graph_nodes.successors(node)])          # (3)
-                                                                                                    
-    nodes_solo      = [node for node in nodes_solo      if node_from_last[0] < node[0]]
-    nodes_composite = [node for node in nodes_composite if node_from_last[0] < node[0]]
+           
+    time_test       = G_time(node_from_last)
+    nodes_solo      = [node for node in nodes_solo      if time_test < node[0]]
+    nodes_composite = [node for node in nodes_composite if time_test < node[0]]
 
-    node_chain = [node_from_last] + nodes_composite                                                 # (4)
-    edges_sequence = [(x, y) for x, y in zip(node_chain[:-1], node_chain[1:])]                      # (4)
-    edges_sequence += list(sols_last_edges)                                                         # (4)
+    node_chain      = [node_from_last] + nodes_composite                                            # (4)
+    edges_sequence  = [(x, y) for x, y in zip(node_chain[:-1], node_chain[1:])]                     # (4)
+    edges_sequence  += list(sols_last_edges)                                                        # (4)
 
     node_segments[segment_from_new] += nodes_composite
  
-    graph_segments.nodes()[segment_from_new]["t_end"    ] = node_segments[segment_from_new][-1][0]
-    graph_segments.nodes()[segment_from_new]["node_end" ] = node_segments[segment_from_new][-1]
+    #graph_segments.nodes()[segment_from_new]["t_end"    ] = node_segments[segment_from_new][-1][0]
+    #graph_segments.nodes()[segment_from_new]["node_end" ] = node_segments[segment_from_new][-1]
      
-    t_common_nodes = set(nodes_solo).intersection(set(nodes_composite))                             # (5)
-    t_composite_nodes = set(nodes_composite) - set(nodes_solo)                                      # (5)
-    t_node_params = {t:dict(graph_nodes.nodes[t]) for t in t_common_nodes}                          # (5)
+    t_common_nodes      = set(nodes_solo).intersection(set(nodes_composite))                        # (5)
+    t_composite_nodes   = set(nodes_composite) - set(nodes_solo)                                    # (5)
+    t_node_params       = {t:dict(graph_nodes.nodes[t]) for t in t_common_nodes}                    # (5)
         
     graph_nodes.remove_nodes_from(nodes_solo)                                                       # (6)
     graph_nodes.add_edges_from(edges_sequence)                                                      # (6)
 
     for t,t_params in t_node_params.items():    
-            graph_nodes.add_node(t, **t_params)
-            graph_nodes.nodes[t]["owner"] = segment_from_new
+        graph_nodes.add_node(t, **t_params)
+        G_owner_set(t, segment_from_new) 
+        #graph_nodes.nodes[t]["owner"] = segment_from_new
     set_custom_node_parameters(graph_nodes, contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)  
+    G2_set_parameters(graph_nodes, graph_segments, node_segments[segment_from_new], segment_from_new)
+
     
 def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to, graph_nodes, graph_segments, ID_remap, contours_dict):
     # *** is used to modify graphs and data storage with info about resolved extensions of split branches (from right to split node) ***
     # ref save_connections_two_ways() for docs. (1) absent, (3) is new
     # >> maybe i have to sort nodes_composite instead of [::-1] <<< later
-    from graphs_general import (set_custom_node_parameters)
+    from graphs_general import (set_custom_node_parameters, G2_set_parameters, seg_n_from, node_time, node_owner_set)
+
+    G2_n_start  = lambda node: seg_n_from(  node, graph_segments)
+    G_time      = lambda node: node_time(   node, graph_nodes   )
+    G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
+
     nodes_solo, nodes_composite = [],[]
 
     for time,subIDs in sols_dict.items():                     
         for subID in subIDs:                                
             nodes_solo.append((time,subID))               
                         
-        nodes_composite.append(tuple([time] + list(subIDs)))  
+        nodes_composite.append((time,) + tuple(subIDs))  
 
     #segment_from_new        = ID_remap[segment_from] # should not be used, since splits dont reach it
 
-    node_to_first = node_segments[segment_to][0]                                                    # (2)
-    to_predecessors = list(graph_nodes.predecessors(node_to_first))                                 # (2)
-    to_predecessors_edges = [(node, node_to_first) for node in  to_predecessors]                    # (2)
+    node_to_first           = G2_n_start(segment_to)#node_segments[segment_to][0]                   # (2)
+    to_predecessors         = graph_nodes.predecessors(node_to_first)                               # (2)
+    to_predecessors_edges   = [(node, node_to_first) for node in  to_predecessors]                  # (2)
     graph_nodes.remove_edges_from(to_predecessors_edges)                                            # (2)
 
     sols_node_first = nodes_composite[-1]                                                           # (3)
@@ -824,9 +854,10 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
     sols_first_edges = set()                                                                        # (3)
     for node in sols_nodes_disperesed:                                                              # (3)
         sols_first_edges.update([(t,sols_node_first) for t in graph_nodes.predecessors(node)])      # (3)
-                                                                                                    
-    nodes_solo      = [node for node in nodes_solo      if  node[0] < node_to_first[0]]
-    nodes_composite = [node for node in nodes_composite if  node[0] < node_to_first[0]]
+                    
+    time_test = G_time(node_to_first)
+    nodes_solo      = [node for node in nodes_solo      if  node[0] < time_test]
+    nodes_composite = [node for node in nodes_composite if  node[0] < time_test]
 
     node_chain = nodes_composite[::-1] + [node_to_first]                                            # (4)
     edges_sequence = [(x, y) for x, y in zip(node_chain[:-1], node_chain[1:])]                      # (4)
@@ -834,9 +865,9 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
 
 
     node_segments[segment_to] = nodes_composite[::-1] + node_segments[segment_to]
-    
-    graph_segments.nodes()[segment_to]["t_start"    ] = node_segments[segment_to][0][0]    #nodes_composite[0][0] # should have been nodes_composite[::-1][0]
-    graph_segments.nodes()[segment_to]["node_start" ] = node_segments[segment_to][0]       # nodes_composite[0]
+
+    #graph_segments.nodes()[segment_to]["t_start"    ] = node_segments[segment_to][0][0]    #nodes_composite[0][0] # should have been nodes_composite[::-1][0]
+    #graph_segments.nodes()[segment_to]["node_start" ] = node_segments[segment_to][0]       # nodes_composite[0]
      
     t_common_nodes = set(nodes_solo).intersection(set(nodes_composite))                             # (5)
     t_composite_nodes = set(nodes_composite) - set(nodes_solo)                                      # (5)
@@ -847,8 +878,10 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
 
     for t,t_params in t_node_params.items():    
             graph_nodes.add_node(t, **t_params)
-            graph_nodes.nodes[t]["owner"] = segment_to
+            G_owner_set(t, segment_to)
+            #graph_nodes.nodes[t]["owner"] = segment_to
     set_custom_node_parameters(graph_nodes, contours_dict, t_composite_nodes, segment_to, calc_hull = 1)  # owner changed
+    G2_set_parameters(graph_nodes, graph_segments, node_segments[segment_to], segment_to)
 
 
 

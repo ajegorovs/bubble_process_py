@@ -110,28 +110,25 @@ sys.path.append(path_modues)
 #--------------------------- IMPORT CUSTOM FUNCITONS -------------------------------------
 from cropGUI import cropGUI
 
-from graphs_brects import (overlappingRotatedRectangles, graphUniqueComponents)
+from graphs_brects import (overlappingRotatedRectangles)
 
 from image_processing import (convertGray2RGB, undistort)
 
 from bubble_params  import (centroid_area_cmomzz, centroid_area)
 
-from graphs_general import (extractNeighborsNext, extractNeighborsPrevious, graph_extract_paths, find_paths_from_to_multi, graph_check_paths,
-                            comb_product_to_graph_edges, for_graph_plots, extract_graph_connected_components, extract_clusters_from_edges,
-                            find_segment_connectivity_isolated,  graph_sub_isolate_connected_components, set_custom_node_parameters, G2_set_parameters, get_event_types_from_segment_graph)
+from graphs_general import (graph_extract_paths, find_paths_from_to_multi, graph_check_paths,
+                            comb_product_to_graph_edges, for_graph_plots,  extract_clusters_from_edges,
+                            set_custom_node_parameters, G2_set_parameters, get_event_types_from_segment_graph)
 
-from graphs_general import (seg_t_start, seg_t_end, seg_n_from, seg_n_to, seg_edge_d, node_time, node_area, node_centroid, node_owner)
+from graphs_general import (seg_t_start, seg_t_end, seg_n_from, seg_n_to, seg_edge_d, node_time, node_area, node_centroid, node_owner, node_owner_set)
 
 from interpolation import (interpolate_trajectory, interpolate_find_k_s, extrapolate_find_k_s, interpolateMiddle2D_2, interpolateMiddle1D_2)
 
-from misc import (cyclicColor, closes_point_contours, timeHMS, modBR, rect2contour, combs_different_lengths, unique_sort_list, sort_len_diff_f,
-                  disperse_nodes_to_times, disperse_composite_nodes_into_solo_nodes,
-                  find_key_by_value, CircularBuffer, CircularBufferReverse, AutoCreateDict, find_common_intervals,
-                  unique_active_segments, split_into_bins, lr_reindex_masters, dfs_pred, dfs_succ, getNodePos,
-                  getNodePos2, segment_conn_end_start_points, old_conn_2_new, lr_evel_perm_interp_data, lr_weighted_sols,
-                  perms_with_branches, save_connections_two_ways, save_connections_merges, save_connections_splits,
-                  itertools_product_length, conflicts_stage_1, conflicts_stage_2, conflicts_stage_3, edge_crit_func,
-                  two_crit_many_branches)
+from misc import (cyclicColor, timeHMS, modBR, rect2contour, combs_different_lengths, sort_len_diff_f,
+                  disperse_nodes_to_times, disperse_composite_nodes_into_solo_nodes, find_key_by_value, CircularBuffer, CircularBufferReverse, 
+                  split_into_bins, lr_reindex_masters, dfs_pred, dfs_succ, old_conn_2_new, lr_evel_perm_interp_data, lr_weighted_sols, 
+                  save_connections_two_ways, save_connections_merges, save_connections_splits, itertools_product_length, conflicts_stage_1, 
+                  conflicts_stage_2, conflicts_stage_3, edge_crit_func, two_crit_many_branches)
 
 # ========================================================================================================
 # ============== Import image files and process them, store in archive or import archive =================
@@ -563,7 +560,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     G_area      = lambda node: node_area(       node, G)    # watch out default graph G is called by reference.  
     G_centroid  = lambda node: node_centroid(   node, G)    # if you redefine G it will use old graph values 
     G_owner     = lambda node: node_owner(      node, G)    # code uses stray node owner None, but gephi needs an int. so its -1 for end code  
-
+    G_owner_set = lambda node, owner: node_owner_set(node, G, owner)
     # ==============================================================================================
     # ========== DEFINE A SEGMENT (TRAJETORY ABSTRACTION) VIEW GRAPH, SET NODE PARAMETERS ==========
     # ==============================================================================================
@@ -586,7 +583,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     for owner, segment in enumerate(segments_fb):
         G2_set_parameters(G, G2, segment, owner)
         for node in segment:
-            G.nodes[node]["owner"] = owner
+            G_owner_set(node, owner)
+            #G.nodes[node]["owner"] = owner
 
     #for_graph_plots(G, segments_fb, show = True)
 
@@ -690,7 +688,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     for owner,segment in enumerate(segments2):
         G2_set_parameters(G, G2, segment, owner)
         for node in segment:
-            G.nodes[node]["owner"] = owner
+            G_owner_set(node, owner)
+            #G.nodes[node]["owner"] = owner
   
     #if doX >= 0:
     #    for_graph_plots(G, segs = segments2)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -707,7 +706,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     lr_maxDT = 60   # search connections with this many time steps.
 
     t_has_holes_report = {}
-    G2 = graph_check_paths(G, G2, G2, lr_maxDT, t_has_holes_report)
+    G2 = graph_check_paths(G, G2, lr_maxDT, t_has_holes_report)
 
     print(f'\n{timeHMS()}:({doX_s}) Paths that have failed hole test: {t_has_holes_report}')
      
@@ -750,9 +749,9 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     # === DETERMINE EDGE TYPES OF EVENTS (PREP FOR FAKE EVENT DETECTION ON EDGES OF 121 CHAINS) =====
     # ===============================================================================================
     # WHAT: extract all 121 type connections. splits merges are not important now.
-   
-    G2_dir, lr_ms_edges_main = get_event_types_from_segment_graph(G2)
-
+    #print(id(G2))
+    G2, lr_ms_edges_main = get_event_types_from_segment_graph(G2)
+    #print(id(G2))
     t_conn_121 = lr_ms_edges_main['solo']
     # ===================================================================================================
     # ==================== SLICE INTER-SEGMENT (121) NOTE-SUBID SPACE W.R.T TIME ========================
@@ -767,7 +766,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         time_from, time_to = G_time(node_from)  , G_time(node_to)
 
         # isolate stray nodes on graph at time interval between two connected segments
-        dist      = G2.edges[(fr,to)]['dist']
+        dist      = G2_edge_dist((fr,to))#G2.edges[(fr,to)]['dist']
         if dist   == 2:# zero-path connections have to include edge times.
             nodes_keep = [n for n in G.nodes() if time_from <= G_time(n) <= time_to]
             #nodes_keep = [n for n, t in G.nodes(data='time') if time_from <= t <= time_to]
@@ -1111,7 +1110,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         # for_graph_plots(G, segs = t_segments_new, suptitle = f'{doX}_before', show = True)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         if 1 == 1: 
 
-            G2_dir, lr_ms_edges_main = get_event_types_from_segment_graph(G2)
+            G2, lr_ms_edges_main = get_event_types_from_segment_graph(G2)
 
             # -----------------------------------------------------------------------------------------------
             # ------ PREPARE DATA INTO USABLE FORM ----
@@ -1138,7 +1137,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             for to in lr_ms_edges_main[state]: 
                 predecessors            = list(G2.predecessors(to))# G2_t_start G2_t_end
                 predecessors            = [ lr_121chain_redirect[t] for t in G2.predecessors(to)] # update if inherited
-                times_end  = { t: G2_t_end(t) for t in predecessors}
+                times_end               = { t: G2_t_end(t) for t in predecessors}
                 time_end                = G2_t_start(to)
                 times                   = { i: np.arange(t_from_end, time_end + 1, 1) for i, t_from_end in times_end.items()}
                 time_start_min          =   min(times_end.values())    # take earliest branch time
@@ -1311,8 +1310,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     t_segment_k_s       = defaultdict(tuple)
     t_segment_k_s_diffs = defaultdict(dict)
     for t_ID in t_segments_IDs_relevant:
-        trajectory          = np.array([G.nodes[n]["centroid"   ] for n in t_segments_new[t_ID]])
-        time                = np.array([G.nodes[n]["time"       ] for n in t_segments_new[t_ID]])
+        trajectory          = np.array([G_centroid(n)   for n in t_segments_new[t_ID]])     #G.nodes[n]["centroid"   ]
+        time                = np.array([G_time(n)       for n in t_segments_new[t_ID]])     #G.nodes[n]["time"       ]
         t_do_k_s_anal = False
     
         if  trajectory.shape[0] > k_s_anal_points_max + k_s_buffer_len_max:   # history is large
@@ -1719,9 +1718,9 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
 
     aaa = defaultdict(set)
-    for t, t_segment in enumerate(t_segments_new):
-        for t_node in t_segment:
-            aaa[t].add(G.nodes[t_node]["owner"])
+    for t, segment in enumerate(t_segments_new):
+        for node in segment:
+            aaa[t].add(G_owner(node)) #G.nodes[t_node]["owner"]
     tt = []
     for n in G.nodes():
         if "time" not in G.nodes[n]:
@@ -1771,25 +1770,12 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
         t_segments_new.append(t_segments_fin[ID])
 
-        node_start, node_end = t_segments_new[ID_new][0], t_segments_new[ID_new][-1]
+        node_start, node_end = t_segments_new[ID_new][0], t_segments_new[ID_new][-1] # t_segments_new[ID_new][[0, -1]]
 
-        #G2.add_node(ID_new) 
-        #G2.nodes()[ID_new]["t_start"      ]   =   G_time(node_start   )
-        #G2.nodes()[ID_new]["t_end"        ]   =   G_time(node_end     )
-        #G2.nodes()[ID_new]['node_start'   ]   =   node_start
-        #G2.nodes()[ID_new]['node_end'     ]   =   node_end
         #set_custom_node_parameters(G, g0_contours_hulls, t_segments_fin[ID], ID_new, calc_hull = 0) # straight hulls since solo nodes 
         set_custom_node_parameters(G, g0_contours, t_segments_fin[ID], ID_new, calc_hull = 1)        # 
         G2_set_parameters(G, G2, t_segments_fin[ID], ID_new)#, G_time)
 
-
-    #lr_time_active_segments = defaultdict(list)
-    #for t_segment_index, t_segment_nodes in enumerate(t_segments_new):
-    #    times = [G_time(node) for node in t_segment_nodes]
-    #    for t_time in times:
-    #        lr_time_active_segments[t_time].append(t_segment_index)
-    ## sort keys in lr_time_active_segments
-    #lr_time_active_segments = {t:lr_time_active_segments[t] for t in sorted(lr_time_active_segments.keys())}
 
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     # for_graph_plots(G, segs = t_segments_fin)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -1798,7 +1784,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     #G2.add_edges_from(G2.edges())
     fin_connectivity_graphs = defaultdict(list) #fin_additional_segments_IDs
     t_has_holes_report = {}
-    G2_new = graph_check_paths(G, G2, nx.DiGraph(), lr_maxDT, t_has_holes_report)
+    G2 = graph_check_paths(G, G2, lr_maxDT, t_has_holes_report)
 
     print(f'\n{timeHMS()}:({doX_s}) Paths that have failed hole test: {t_has_holes_report}')
 
@@ -1820,14 +1806,14 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         fin_extend_info = defaultdict(dict)
             
         #G2_dir, fin_edges_main = get_event_types_from_segment_graph(G2)   
-        G2_dir, fin_edges_main = get_event_types_from_segment_graph(G2_new) 
+        G2, fin_edges_main = get_event_types_from_segment_graph(G2) 
         
         state = 'merge'
         t_all_event_IDs             = [lr_fake_redirect[t_ID] for t_ID in t_event_start_end_times[state]]
         for to, predecessors in fin_edges_main[state].items():
             if to not in t_all_event_IDs: continue # event was already resolved without extrapolation. edit-comment it was not added/deleted from list
-            time_to             = G2_dir.nodes[to]['t_start']
-            times_from          = {n:G2_dir.nodes[n]['t_end'] for n in predecessors}
+            time_to             = G2_t_start(to)#G2_dir.nodes[to]['t_start']
+            times_from          = {n:G2_t_end(n) for n in predecessors} #G2_dir.nodes[n]['t_end']
             times_from_min      = min(times_from.values())
             times_from_max      = max(times_from.values())    # cant recover lower than this time
             times_subIDs        = t_event_start_end_times[state][to]['subIDs']
@@ -1845,8 +1831,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         t_all_event_IDs             = [lr_fake_redirect[t_ID] for t_ID in t_event_start_end_times[state]]
         for fr, successors in fin_edges_main[state].items():
             if fr not in t_all_event_IDs: continue # event was already resolved without extrapolation
-            time_from               = G2_dir.nodes[fr]['t_end']
-            times_from              = {n:G2_dir.nodes[n]['t_start'] for n in successors}
+            time_from               = G2_t_end(fr)#G2_dir.nodes[fr]['t_end']
+            times_from              = {n:G2_t_start(n) for n in successors} #G2_dir.nodes[n]['t_start']
             time_to                 = max(times_from.values())
             time_to_min             = min(times_from.values())    # cant recover higher than this time
             fr_old                  = None
@@ -1877,11 +1863,12 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     start_points  = []
     end_points    = []
 
-    for ID in G2_dir.nodes():
-        successors      = list(G2_dir.successors(           ID))
-        predecessors    = list(G2_dir.predecessors(         ID))
-        if len(successors)      == 0: end_points.append(    ID)
-        if len(predecessors)    == 0: start_points.append(  ID)
+    for ID in G2.nodes():
+        successors      = list(G2.successors(   ID))
+        predecessors    = list(G2.predecessors( ID))
+
+        if len(successors)      == 0: end_points.append(  ID)
+        if len(predecessors)    == 0: start_points.append(ID)
     
     # 
     # ============= Final passes. Terminated segments. extract trailing nodes =================
@@ -2088,12 +2075,19 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
            
             t_min, t_max    = min(dic), max(dic)
 
+            #if state == 'forward':
+            #    node_from     = (t_min,) + tuple(dic[t_min])    #tuple([t_min] + list(dic[t_min]))
+            #    node_to       = (t_max,) + tuple(dic[t_max])    #tuple([t_max] + list(dic[t_max]))
+            #else:
+            #    node_to       = (t_min,) + tuple(dic[t_min])    #tuple([t_min] + list(dic[t_min]))
+            #    node_from     = (t_max,) + tuple(dic[t_max])    #tuple([t_max] + list(dic[t_max]))
+
+            a, b = (t_min,) + tuple(dic[t_min]), (t_max,) + tuple(dic[t_max])
+
             if state == 'forward':
-                node_from     = tuple([t_min] + list(dic[t_min]))
-                node_to       = tuple([t_max] + list(dic[t_max]))
+                node_from, node_to = a, b
             else:
-                node_to       = tuple([t_min] + list(dic[t_min]))
-                node_from     = tuple([t_max] + list(dic[t_max]))
+                node_from, node_to = b, a
 
             print(f' {fr} - {state} extrapolation: {node_from}->{node_to}')
         a = 1
@@ -2155,9 +2149,9 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         if len(combs) == 0: continue                              # no extension, skip.
 
         if state == 'forward':
-            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[conn], ID,  None, G, G2_dir, lr_fake_redirect, g0_contours)
+            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[conn], ID,  None, G, G2, lr_fake_redirect, g0_contours)
         elif state == 'back':
-            save_connections_splits(t_segments_new, t_extrapolate_sol_comb[conn], None,  ID, G, G2_dir, lr_fake_redirect, g0_contours)
+            save_connections_splits(t_segments_new, t_extrapolate_sol_comb[conn], None,  ID, G, G2, lr_fake_redirect, g0_contours)
 
 
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -2176,13 +2170,13 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     # ======= EXPORT. RECALCULATE CONNECTIONS BETWEEN SEGMENTS ========================
     
     t_has_holes_report = {}
-    G2_new = graph_check_paths(G, G2, nx.DiGraph(), lr_maxDT, t_has_holes_report)                        
+    G2 = graph_check_paths(G, G2, lr_maxDT, t_has_holes_report)                        
     # ========== EXPORT. DETERMINE TYPE OF EVENTS BETWEEN SEGMENTS ==========
-    G2_dir, export_ms_edges_main = get_event_types_from_segment_graph(G2_new)
+    G2, export_ms_edges_main = get_event_types_from_segment_graph(G2)
 
 
     trajectories_all_dict[doX]  = t_segments_new
-    graphs_all_dict[doX]        = [G,G2_dir]
+    graphs_all_dict[doX]        = [G,G2]
     events_split_merge_mixed[doX] = export_ms_edges_main
 
 contours_all_dict      = g0_contours

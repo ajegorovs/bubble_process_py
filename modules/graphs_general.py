@@ -469,7 +469,7 @@ def set_custom_node_parameters( contour_data, nodes_list, owner, calc_hull = 1):
 
     return 
 
-def G2_set_parameters(segment, owner):#, time_func):
+def G2_set_parameters(segment, owner, edges = None, remove_nodes = None):#, time_func):
     # [key_t_start, key_t_end, key_n_start, key_n_end, key_e_dist]
     graph, graph_seg        =   G, G2
     node_start, node_end    =   segment[0], segment[-1]
@@ -483,8 +483,15 @@ def G2_set_parameters(segment, owner):#, time_func):
     
     graph_seg.nodes()[owner][key_n_start]   =   node_start
     graph_seg.nodes()[owner][key_n_end  ]   =   node_end
+    if edges is not None:
+        for edge in edges:
+            fr, to = edge
+            if not graph_seg.has_edge(fr, to):
+                graph_seg.add_edge(fr, to)
+            graph_seg.edges[edge][key_e_dist] = G2_t_start(to)  - G2_t_end(fr) + 1
 
-
+    if remove_nodes is not None:
+        graph_seg.remove_nodes_from(remove_nodes)
     return 
 
 def graph_check_paths(time_DT_max, report):
@@ -548,7 +555,7 @@ def graph_check_paths(time_DT_max, report):
 
     return graph_seg
 
-def get_event_types_from_segment_graph(graph):
+def get_event_types_from_segment_graph(graph, solo_only = False):
     # method for analyzing which type of event graph edge (between 
     # segments/nodes) is in based on connectivity between neighbor segments.
     # e.g merge event conists of multiple branches (nodes) which have solo 
@@ -584,108 +591,110 @@ def get_event_types_from_segment_graph(graph):
             graph.nodes[seg_ID]["state_from"] = 'merge'
             [graph.edges[(t,seg_ID)]["in_events"].add('merge') for t in seg_predecessors]
 
-    connections_together = {'solo':[], 'merge':{}, 'split':{}, 'mixed':{}}
+    connections_together = {'solo':[], 'solo_zp':[], 'merge':{}, 'split':{}, 'mixed':{}}
     # edge is visited twice as a successor for one node and as a predecessor for another node. 
     # depending which role edge playes in both cases we can deduce what type of an event it is.
     
     # if both roles  result in 'solo' type edge, its a part of segement chain
-    connections_together['solo'] = [conn for conn in graph.edges() if get_in_events(conn) == {'solo'}] #graph.edges[conn]["in_events"]
+    connections_together['solo'     ] = [conn for conn in graph.edges() if get_in_events(conn) == {'solo'} and G2_edge_dist(conn) >     2]
+    connections_together['solo_zp'  ] = [conn for conn in graph.edges() if get_in_events(conn) == {'solo'} and G2_edge_dist(conn) <=    2]
 
-    # for classic merges (or splits) situation is different. from point of view of a branch, it 
-    # is coming into (going out of)  single merge (split) node, so this connection is 'solo'. same edge from 
-    # point of view of a merge (split) node is 'merge' ('split'), due to many predecessors (successors)
-    # some edges may act as both split and merge branches, these are 'mixed' type events
-    type_split = {'split','solo'}
-    type_merge = {'merge','solo'}
-    type_mixed = {'split','merge'} 
-    edges_mixed = set()
-    for seg_ID in graph.nodes():
-        # solo state is ruled out in 'connections_solo'
-        if get_to_state(seg_ID) == 'split':      #graph.nodes[seg_ID]["state_to"] 
-            # check forward connections and check their types
-            edge_types  = {(seg_ID, t): get_in_events((seg_ID,t)) for t in graph.successors(seg_ID)} #graph.edges[(seg_ID,t)]["in_events"]
-            type_pass   = [edge_type == type_split for edge_type in edge_types.values()]
-            if all(type_pass):  
-                # all branches are classic split
-                connections_together['split'][seg_ID] = [t for _, t in edge_types.keys()]
-            else:
-                # check if branches are of mixed type.
-                [edges_mixed.add(edge) for edge, edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
+    if not solo_only:
+        # for classic merges (or splits) situation is different. from point of view of a branch, it 
+        # is coming into (going out of)  single merge (split) node, so this connection is 'solo'. same edge from 
+        # point of view of a merge (split) node is 'merge' ('split'), due to many predecessors (successors)
+        # some edges may act as both split and merge branches, these are 'mixed' type events
+        type_split = {'split','solo'}
+        type_merge = {'merge','solo'}
+        type_mixed = {'split','merge'} 
+        edges_mixed = set()
+        for seg_ID in graph.nodes():
+            # solo state is ruled out in 'connections_solo'
+            if get_to_state(seg_ID) == 'split':      #graph.nodes[seg_ID]["state_to"] 
+                # check forward connections and check their types
+                edge_types  = {(seg_ID, t): get_in_events((seg_ID,t)) for t in graph.successors(seg_ID)} #graph.edges[(seg_ID,t)]["in_events"]
+                type_pass   = [edge_type == type_split for edge_type in edge_types.values()]
+                if all(type_pass):  
+                    # all branches are classic split
+                    connections_together['split'][seg_ID] = [t for _, t in edge_types.keys()]
+                else:
+                    # check if branches are of mixed type.
+                    [edges_mixed.add(edge) for edge, edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
 
-        if get_from_state(seg_ID) == 'merge': #graph.nodes[seg_ID]["state_from"]
+            if get_from_state(seg_ID) == 'merge': #graph.nodes[seg_ID]["state_from"]
 
-            edge_types  = {(t, seg_ID): get_in_events((t, seg_ID)) for t in graph.predecessors(seg_ID)} #graph.edges[(t, seg_ID)]["in_events"]
+                edge_types  = {(t, seg_ID): get_in_events((t, seg_ID)) for t in graph.predecessors(seg_ID)} #graph.edges[(t, seg_ID)]["in_events"]
 
-            type_pass   = [edge_type == type_merge for edge_type in edge_types.values()]
-            if all(type_pass):
-                connections_together['merge'][seg_ID] = [t for t, _ in edge_types.keys()]
-            else:
-                [edges_mixed.add(edge) for edge, edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
+                type_pass   = [edge_type == type_merge for edge_type in edge_types.values()]
+                if all(type_pass):
+                    connections_together['merge'][seg_ID] = [t for t, _ in edge_types.keys()]
+                else:
+                    [edges_mixed.add(edge) for edge, edge_type in edge_types.items() if type_mixed.issubset(edge_type)]
      
-    # try to isolate event containing mixed branch. to avoid connectendess to far neighbor segments, which is possible 
-    # from edge of event, try to find event nodes from gathering predecessors of successors of 'from' mixed edge node
-    # and similarly, but inverse, for 'to' of mixed event. event may hold multiple mixed nodes, but hopefully clusters are the same
-    # IT IS A WEAK assumption. But it forces path to cross this event, and connections are made in a way
-    # to not use other segments, only stray nodes, which are, most likely, a part of this local event.
-    ID_clusters = set()
-    for seg_from,seg_to in edges_mixed:
-        # start a cluster associated with this mixed edge nodes
-        t_node_cluster = {seg_from, seg_to}
-        # add connecteness sweep results to this cluster
-        for t in graph.successors(seg_from):
-            t_node_cluster.update(list(graph.predecessors(t)))
-        for t in graph.predecessors(seg_to):
-            t_node_cluster.update(list(graph.successors(t)))
-        # add this cluster to set of other clusters, frozenset is required to set of sets, its hashable.
-        ID_clusters.add(frozenset(t_node_cluster))
+        # try to isolate event containing mixed branch. to avoid connectendess to far neighbor segments, which is possible 
+        # from edge of event, try to find event nodes from gathering predecessors of successors of 'from' mixed edge node
+        # and similarly, but inverse, for 'to' of mixed event. event may hold multiple mixed nodes, but hopefully clusters are the same
+        # IT IS A WEAK assumption. But it forces path to cross this event, and connections are made in a way
+        # to not use other segments, only stray nodes, which are, most likely, a part of this local event.
+        ID_clusters = set()
+        for seg_from,seg_to in edges_mixed:
+            # start a cluster associated with this mixed edge nodes
+            t_node_cluster = {seg_from, seg_to}
+            # add connecteness sweep results to this cluster
+            for t in graph.successors(seg_from):
+                t_node_cluster.update(list(graph.predecessors(t)))
+            for t in graph.predecessors(seg_to):
+                t_node_cluster.update(list(graph.successors(t)))
+            # add this cluster to set of other clusters, frozenset is required to set of sets, its hashable.
+            ID_clusters.add(frozenset(t_node_cluster))
     
-    # mixed events also have different sub-cases.  but all are later partially solved by extrapolating 'in' branches.
-    # clean mixed event happens when multiple branches interact and come out multiple
-    # during this event out branches are only connected with incoming branches
-    #
-    # dirty mixed event is when there is an internal event, but ~one branch goes around it.
-    # otherwise you would be able to isolate and process this internal event separately.
-    #
-    # clean event = no internal events, incoming branches go to their successors (outgoing branches)
-    #               predecessors of outgoing branches are incoming branches.
-    # dirty event = incoming branches go to outgoing, but also to internal event branches.
-    #               inc branch successors --> their predecessors =  not only incoming, but also internal branches.
-    # events are isolated on the graph, so only incoming and internal branches have successors,
-    # and similarly, only outgoing and internal branches have predecessors
-    # internal branches are, simply, an intersection of those two.
-    for k, t_cluster in enumerate(ID_clusters):
+        # mixed events also have different sub-cases.  but all are later partially solved by extrapolating 'in' branches.
+        # clean mixed event happens when multiple branches interact and come out multiple
+        # during this event out branches are only connected with incoming branches
+        #
+        # dirty mixed event is when there is an internal event, but ~one branch goes around it.
+        # otherwise you would be able to isolate and process this internal event separately.
+        #
+        # clean event = no internal events, incoming branches go to their successors (outgoing branches)
+        #               predecessors of outgoing branches are incoming branches.
+        # dirty event = incoming branches go to outgoing, but also to internal event branches.
+        #               inc branch successors --> their predecessors =  not only incoming, but also internal branches.
+        # events are isolated on the graph, so only incoming and internal branches have successors,
+        # and similarly, only outgoing and internal branches have predecessors
+        # internal branches are, simply, an intersection of those two.
+        for k, t_cluster in enumerate(ID_clusters):
 
-        subgraph = graph.subgraph(t_cluster)
+            subgraph = graph.subgraph(t_cluster)
 
-        successors_all = set()
-        predecessors_all = set()
+            successors_all = set()
+            predecessors_all = set()
 
-        successors    = {t:list(subgraph.successors(t))     for t in t_cluster}
-        predecessors  = {t:list(subgraph.predecessors(t))   for t in t_cluster}
+            successors    = {t:list(subgraph.successors(t))     for t in t_cluster}
+            predecessors  = {t:list(subgraph.predecessors(t))   for t in t_cluster}
 
-        branches_out  = tuple(sorted([t for t in successors     if len(successors[t]  ) == 0]))
-        branches_in   = tuple(sorted([t for t in predecessors   if len(predecessors[t]) == 0]))
+            branches_out  = tuple(sorted([t for t in successors     if len(successors[t]  ) == 0]))
+            branches_in   = tuple(sorted([t for t in predecessors   if len(predecessors[t]) == 0]))
 
-        [successors_all.update(t)       for t in successors.values()  ]
-        [predecessors_all.update(t)     for t in predecessors.values()]
+            [successors_all.update(t)       for t in successors.values()  ]
+            [predecessors_all.update(t)     for t in predecessors.values()]
 
-        intersection = successors_all.intersection(predecessors_all)
-        if len(intersection) > 0:
-            branches_in = tuple(sorted(list(branches_in) + list(intersection)))  # it will be extrapolated
-        connections_together['mixed'][branches_in] = branches_out
+            intersection = successors_all.intersection(predecessors_all)
+            if len(intersection) > 0:
+                branches_in = tuple(sorted(list(branches_in) + list(intersection)))  # it will be extrapolated
+            connections_together['mixed'][branches_in] = branches_out
 
-    # rename in_events into simpler type instead of which events branches are in.
-    # EDIT: not that simple. mixed connections have to be determined by itertools.product(branch_in,branch_out)
-    #for *edge, in_events in graph.edges(data='in_events'):
-    #    if in_events    == {'solo'}:
-    #        graph.edges[edge]["in_events"] = 'solo'
-    #    elif in_events  == type_split:
-    #        graph.edges[edge]["in_events"] = 'split'
-    #    elif in_events  == type_merge:
-    #        graph.edges[edge]["in_events"] = 'merge'
-    #    else:
-    #        graph.edges[edge]["in_events"] = 'mixed'
-
+        # rename in_events into simpler type instead of which events branches are in.
+        # EDIT: not that simple. mixed connections have to be determined by itertools.product(branch_in,branch_out)
+        #for *edge, in_events in graph.edges(data='in_events'):
+        #    if in_events    == {'solo'}:
+        #        graph.edges[edge]["in_events"] = 'solo'
+        #    elif in_events  == type_split:
+        #        graph.edges[edge]["in_events"] = 'split'
+        #    elif in_events  == type_merge:
+        #        graph.edges[edge]["in_events"] = 'merge'
+        #    else:
+        #        graph.edges[edge]["in_events"] = 'mixed'
+    # 
     return graph, connections_together
 
 if 1 == -1:

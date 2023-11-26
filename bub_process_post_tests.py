@@ -717,6 +717,76 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
     print(f'\n{timeHMS()}:({doX_s}) Paths that have failed hole test: {t_has_holes_report}')
      
+    """
+    ===============================================================================================
+    =============================== RESOLVE ZERO-PATH CONNECTIONS =================================
+    ===============================================================================================
+    WHAT: find segment connections that dont have stray nodes in-between
+    WHY:  very much likely that its the same trajectory. interruption is very brief. 
+    WHY:  connection has a stray node/s and edges, which have confused chain extraction method.
+    HOW:  best i can do is to 'absorb' stray nodes into solo contour nodes by forming a composite node.
+    """
+    G2, lr_ms_edges_main = get_event_types_from_segment_graph(G2, solo_only = True)
+
+    t_conn_121_zp = lr_ms_edges_main['solo_zp']
+
+    lr_zp_redirect = {i: i for i,v in enumerate(segments2) if len(v) > 0}
+
+    # analyze zero path cases:
+    for fr, to in t_conn_121_zp:
+        fr = lr_zp_redirect[fr]         # in case there is a sequence of ZP events one should account for inheritance of IDs
+        time_buffer = 5
+        # take a certain buffer zone about ZP event. its width should not exceed sizes of segments on both sides
+        # which is closer to event from left  : start of  left segment    or end      - buffer size?
+        time_from   = max(G2_t_start(fr), G2_t_end(fr) - time_buffer    )   # test: say, time_buffer = 1e20 -> time_from = G2_t_start(fr)   # (1)
+        # which is closer to event from right : end   of  right segment   or start    + buffer size?
+        time_to     = min(G2_t_end(to)  , G2_t_start(to) + time_buffer  )
+        # NOTE: at least one node should be left in order to reconnect recovered segment back. looks like current approach does it. by (1) and (2)
+        nodes_keep              = []
+        nodes_stray             = [node for node in G.nodes() if time_from < G_time(node) < time_to and G_owner(node) is None] 
+        nodes_extra_segments    = [n for n in segments2[fr] if G_time(n) > time_from] + [n for n in segments2[to] if G_time(n) < time_to]   # (2)
+
+        nodes_keep.extend(nodes_stray)
+        nodes_keep.extend(nodes_extra_segments)   
+        
+        clusters    = nx.connected_components(G.subgraph(nodes_keep).to_undirected())
+        sol         = next((cluster for cluster in clusters if nodes_extra_segments[0] in cluster), None)
+        assert sol is not None, 'cannot find connected components'
+
+        nodes_composite = [(t,) + tuple(IDs) for t, IDs in disperse_nodes_to_times(sol, sort = True).items()] 
+
+        segments2[fr]   =       [n for n in segments2[fr] if G_time(n) <= time_from]                                                           
+        segments2[fr].extend(   nodes_composite)                                                     
+        segments2[fr].extend(   [n for n in segments2[to] if G_time(n) >= time_to]    )
+        segments2[to]   = []
+         
+        G.remove_nodes_from(nodes_stray)           # stray nodes are absorbed into composite nodes. they have to go from G
+        
+        G.remove_nodes_from(nodes_extra_segments)  # old parts of segments have to go. they will be replaced by composite nodes.
+
+        G.add_nodes_from(nodes_composite)
+        set_custom_node_parameters( g0_contours, segments2[fr], fr, calc_hull = 1)
+
+        # have to reconnect reconstructed interval on G. get nodes on interval edges
+        ref_left    = next((n for n in segments2[fr] if G_time(n) == time_from))
+        ref_right   = next((n for n in segments2[fr] if G_time(n) == time_to))
+        # generate edges by staggered zip method.
+        nodes_temp = [ref_left] + nodes_composite + [ref_right]
+        edges = [(a, b) for (a, b) in zip(nodes_temp[:-1], nodes_temp[1:])]
+
+        G.add_edges_from(edges)
+        
+        edges_next = [(fr, i, key_e_dist) for i in successors]
+       
+        G2_set_parameters(segments2[fr], fr, edges = edges_next)
+            
+        G2.remove_node(to)
+            
+        lr_zp_redirect[to] = fr
+        print(f'zero path: joined segments: {conn}')
+
+        a = 1
+
     print(f'\n{timeHMS()}:({doX_s}) Working on one-to-one (121) segment connections ... ')
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     """
@@ -735,8 +805,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     
     (121.A) isolate 121 connections
     (121.B) extract inter-segment nodes as time slices : {t1:[*subIDs],...}
-    (121.C) detect which cases are zero-path ZP. its 121 that splits into segment and a node. byproduct of a method.
-    (121.D) resolve case with ZP
+    DEL-(121.C) detect which cases are zero-path ZP. its 121 that splits into segment and a node. byproduct of a method.
+    DEL-(121.D) resolve case with ZP
     (121.E) find which 121 form a long chain- its an interrupted solo bubble's trejctory.
               missing data in 'holes' is easier to interpolate from larger chains 
     DEL-(121.F) chain edges may be terminated by artifacts - 'fake' events, find them and refine chain list elements.
@@ -747,11 +817,18 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     (121.J) find best fit evolution by minimizing area and isplacement criterium
     (121.L) save data into graps and storage.
     """
+    # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     
-    #print(id(G2))
-    G2, lr_ms_edges_main = get_event_types_from_segment_graph(G2)
-    #print(id(G2))
-    t_conn_121 = lr_ms_edges_main['solo']
+    if len(t_conn_121_zp) > 0:
+
+        t_has_holes_report = {}
+        G2 = graph_check_paths(lr_maxDT, t_has_holes_report)
+
+        print(f'\n{timeHMS()}:({doX_s}) Paths that have failed hole test: {t_has_holes_report}')
+
+        G2, lr_ms_edges_main = get_event_types_from_segment_graph(G2, solo_only = True)
+
+    t_conn_121 = lr_ms_edges_main['solo']# for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     """
     ===================================================================================================
     ==================== SLICE INTER-SEGMENT (121) NOTE-SUBID SPACE W.R.T TIME ========================
@@ -766,96 +843,23 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         time_from, time_to = G_time(node_from)  , G_time(node_to)
 
         # isolate stray nodes on graph at time interval between two connected segments
-        dist      = G2_edge_dist((fr,to))
-        if dist   == 2:# zero-path connections have to include edge times.
-            nodes_keep = [n for n in G.nodes() if time_from <= G_time(n) <= time_to]
-        else:
-            nodes_keep    = [node for node in G.nodes() if time_from < G_time(node) < time_to and G_owner(node) is None] 
-            nodes_keep.extend([node_from,node_to])
+        
+        nodes_keep    = [node for node in G.nodes() if time_from < G_time(node) < time_to and G_owner(node) is None] 
+        nodes_keep.extend([node_from,node_to])
             
         # extract connected nodes using depth search. not sure why i switched from connected components. maybe i used it wrong and it was slow
-        connected_nodes     = set()
-        g_limited           = G.subgraph(nodes_keep)
-        dfs_succ(g_limited, node_from, time_lim = time_to + 1, node_set = connected_nodes)
+        #sol     = set()
+        #g_limited           = G.subgraph(nodes_keep)
+        #dfs_succ(g_limited, node_from, time_lim = time_to + 1, node_set = sol)
 
-        # probly something needed for zero path. like nodes parallel to node_from.
-        nodes_after_from_end = [n for n in connected_nodes if G_time(n) == time_from + 1]
-
-        predecessors = set()
-        for node in nodes_after_from_end:
-            predecessors.update(list(g_limited.predecessors(node)))
-        connected_nodes.update(predecessors)
+        clusters    = nx.connected_components(G.subgraph(nodes_keep).to_undirected())
+        sol         = next((cluster for cluster in clusters if node_from in cluster), None)
+        assert sol is not None, 'cannot find connected components'
         
-        lr_big121s_perms_pre[(fr,to)] = disperse_nodes_to_times(connected_nodes, sort = True)
+        lr_big121s_perms_pre[(fr,to)] = disperse_nodes_to_times(sol, sort = True)
+        
         a = 1
 
-    # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    """
-   ===================================================================================================
-   ============================ SEPARATE 121 PATHS WITH ZERO INTER LENGTH ============================
-   ===================================================================================================
-   WHAT:     121 connection with no internal nodes = nothing to restore. segment + node -> split case
-   HOW:      absorb split/merge node into segment and stick together
-   NOTE:     dont particularly like how its done
-    """
-    lr_zp_redirect = {i: i for i,_ in enumerate(segments2)}
-    if 1 == 1:
-        t_conn_121_zero_path = []
-        for node in t_conn_121:
-            if len(lr_big121s_perms_pre[node]) == 2:
-                time_min = min(lr_big121s_perms_pre[node])
-                time_max = max(lr_big121s_perms_pre[node])
-                if len(lr_big121s_perms_pre[node][time_min]) > 1 or len(lr_big121s_perms_pre[node][time_max]) > 1:
-                    t_conn_121_zero_path.append(node)
-
-        for conn in t_conn_121_zero_path: 
-            dic = lr_big121s_perms_pre[conn]
-            fr, to        = conn                                                   
-            fr_new          = lr_zp_redirect[fr]
-            times             = [t for t, IDs in dic.items() if len(IDs) > 1]
-            if len(times) > 1:
-                if 'zero_path' not in issues_all_dict[doX]: issues_all_dict[doX]['zero_path'] = []
-                issues_all_dict[doX]['zero_path'].append(f'multiple times: {dic}')
-                lr_big121s_perms_pre.pop(conn,None)
-                t_conn_121.remove(conn)
-                continue
-            
-            nodes_composite       = [(t,) + tuple(dic[t])   for t in times                  ]   # join into one node (composite) # tuple([t] + dic[t]) 
-            nodes_solo            = [(t, ID)                for t in times for ID in dic[t] ]   # get solo contour nodes
-
-            # composite node contains solo node on either the end of a 'from' segment on at the start of a 'to' segment
-            # that node is contained in nodes_solo.
-            nodes_prev            =   [n for n in segments2[fr_new] if n not in nodes_solo]  # gather up until composite node
-            nodes_next            =   [n for n in segments2[to]     if n not in nodes_solo]  # add post composite 
-
-            edges                 =  [  (nodes_prev[-1]      , nodes_composite[0]   ),                      # weird note: if segments2[fr_new] changes,
-                                        (nodes_composite[0]  , nodes_next[0]        )   ]                   # nodes_prev also changes. so its not a copy but ref
-
-            segments2[fr_new]   =   nodes_prev                                                               
-            segments2[fr_new].extend(nodes_composite)                                                     
-            segments2[fr_new].extend(nodes_next)
-            segments2[to]       = []
-            
-            # modify graph: remove solo IDs, add new composite nodes. add parameters to new nodes
-            G.remove_nodes_from(nodes_solo) 
-            G.add_edges_from(edges)
-            # composite not is new and does not exist on G. add it and its params
-            set_custom_node_parameters( g0_contours, nodes_composite, fr_new, calc_hull = 1)
-            # inherit G2 params. time end, node end and successors:
-            G2_set_parameters(segments2[fr_new], fr_new)
-
-            successors   = G2.successors(to)
-            edges_next = [(fr_new, i) for i in successors]
-            G2.add_edges_from(edges_next)
-            
-            G2.remove_node(to)
-            
-            lr_zp_redirect[to] = fr_new
-            print(f'zero path: joined segments: {conn}')
-
-
-    
-    t_conn_121              = lr_reindex_masters(lr_zp_redirect, t_conn_121, remove_solo_ID = 1)
     
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<  
     """
@@ -867,14 +871,10 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     HOW:  use 121 edges and condence to a graph, extract connected compontents
     NOTE: same principle as in 'fb_segment_clusters'
     """
-    lr_big_121s_chains = extract_clusters_from_edges(t_conn_121)
-
-    print(f'\n{timeHMS()}:({doX_s}) Working on joining all continious 121s together: {lr_big_121s_chains}')
+    t_big121s_edited = extract_clusters_from_edges(t_conn_121)
+    print(f'\n{timeHMS()}:({doX_s}) Working on joining all continious 121s together: {t_big121s_edited}')
      
     if 1 == 1:
-        
-        t_big121s_edited = lr_big_121s_chains.copy()
-        # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         """
         ===============================================================================================
         ==================== 121 CHAINS: INTERPOLATE DATA IN HOLES OF LONG CHAINS =====================
@@ -1019,7 +1019,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                 # 1b) resort edges for pathfining graph: sort by large to large first subIDs first: ((1,2),(3,4)) -> ((1,2),(3,))
                 # 1b) for same size sort by cluster size uniformity e.g ((1,2),(3,4)) -> ((1,2,3),(4,)) 
                 sorted_edges    = sorted(edges, key=sort_len_diff_f, reverse=True) 
-                sequences, fail = find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = True, G = None, edges = sorted_edges, only_subIDs = True, max_paths = max_paths - 1)
+                sequences, fail = find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = True, graph = None, edges = sorted_edges, only_subIDs = True, max_paths = max_paths - 1)
                 # 'fail' can be either because 't_max_paths' is reached or there is no path from source to target
                 if fail == 'to_many_paths':    # add trivial solution where evolution is transition between max element per time step number clusters                                           
                     seq_0 = list(itertools.product(*[[t[-1]] for t in values] ))
@@ -1028,7 +1028,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                     func = lambda edge : edge_crit_func(t_conn,edge, lr_big121s_perms_areas, 5)
                     edges, nodes_start, nodes_end   = comb_product_to_graph_edges(choices, func)
                     sorted_edges                    = sorted(edges, key=sort_len_diff_f, reverse=True) 
-                    sequences, fail = find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = True, G = None, edges = sorted_edges, only_subIDs = True, max_paths = max_paths - 1)
+                    sequences, fail = find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = True, graph = None, edges = sorted_edges, only_subIDs = True, max_paths = max_paths - 1)
 
             # 0) -> t_branches_count < t_max_paths. use product
             else:

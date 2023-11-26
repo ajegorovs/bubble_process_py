@@ -635,8 +635,8 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
 
     segment_successors  = graph_segments.successors(segment_to) 
     t_edges             = [(segment_from_new,successor) for successor in segment_successors]
-    graph_segments.remove_nodes_from([segment_to])
-    graph_segments.add_edges_from(t_edges)
+    #graph_segments.remove_nodes_from([segment_to])
+    #graph_segments.add_edges_from(t_edges)
     
     #graph_segments.nodes()[segment_from_new]["t_end"    ] = node_segments[segment_from_new][-1][0]
     #graph_segments.nodes()[segment_from_new]["node_end" ] = node_segments[segment_from_new][-1]
@@ -654,7 +654,7 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
         #graph_nodes.nodes[t]["owner"] = segment_from_new
             
     set_custom_node_parameters(contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)    
-    G2_set_parameters(node_segments[segment_from_new], segment_from_new)
+    G2_set_parameters(node_segments[segment_from_new], segment_from_new, edges = t_edges, remove_nodes = [segment_to]))
     
 def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to, ID_remap, contours_dict):
     # *** is used to modify graphs and data storage with info about resolved extensions of merge branches (from left to merge node) ***

@@ -4,46 +4,63 @@ import networkx as nx, cv2, numpy as np, itertools, copy, pickle
 from matplotlib import pyplot as plt
 from collections import defaultdict
 from bubble_params import (centroid_area_cmomzz)
-from misc import (cyclicColor, order_segment_levels, prep_combs_clusters_from_nodes)
+from misc import (cyclicColor)
 
-#G = None
-def extractNeighborsNext(graph, node, time_from_node_function):
-    neighbors = list(graph.neighbors(node))
-    return [n for n in neighbors if time_from_node_function(n) > time_from_node_function(node)]
+G   = nx.DiGraph()
+G2  = nx.DiGraph()
 
-def extractNeighborsPrevious(graph, node, time_from_node_function):
-    neighbors = list(graph.neighbors(node))
-    return [n for n in neighbors if time_from_node_function(n) < time_from_node_function(node)]
+#def extractNeighborsNext(graph, node, time_from_node_function):
+#    neighbors = list(graph.neighbors(node))
+#    return [n for n in neighbors if time_from_node_function(n) > time_from_node_function(node)]
+
+#def extractNeighborsPrevious(graph, node, time_from_node_function):
+#    neighbors = list(graph.neighbors(node))
+#    return [n for n in neighbors if time_from_node_function(n) < time_from_node_function(node)]
 
 # define parameter retrieval functions for nodes.
 # in main code these are redined into G_parameter(node) by specifying reference graph G/G2
 # node time can be retrieved like 'seg_t_start = lambda node, graph : node[0]'
 # but holding parameters on a graph is more universal.
 # by defining these more general functions i want to get rid of specific string keys that have to typed in manually
-seg_t_start     = lambda node, graph : graph.nodes[node]['t_start'   ]
-seg_t_end       = lambda node, graph : graph.nodes[node]['t_end'     ]
-seg_n_from      = lambda node, graph : graph.nodes[node]['node_start']    
-seg_n_to        = lambda node, graph : graph.nodes[node]['node_end'  ] 
-seg_edge_d      = lambda edge, graph : graph.edges[edge]['dist'      ]
 
-node_time       = lambda node, graph : graph.nodes[node]['time'      ]
-node_area       = lambda node, graph : graph.nodes[node]['area'      ]
-node_centroid   = lambda node, graph : graph.nodes[node]['centroid'  ]
-node_owner      = lambda node, graph : graph.nodes[node]['owner'     ]
+key_nodes = [key_t_start, key_t_end, key_n_start, key_n_end, key_e_dist] = ['t_start','t_end', 'node_start', 'node_end', 'dist']
+
+G2_t_start     = lambda node, graph = G2: graph.nodes[node][key_t_start]
+G2_t_end       = lambda node, graph = G2: graph.nodes[node][key_t_end  ]
+G2_n_from      = lambda node, graph = G2: graph.nodes[node][key_n_start]    
+G2_n_to        = lambda node, graph = G2: graph.nodes[node][key_n_end  ] 
+G2_edge_dist   = lambda edge, graph = G2: graph.edges[edge][key_e_dist ]
+
+keys_segments = [key_time, key_area, key_centroid, key_owner, key_momz] = ['time', 'area', 'centroid', 'owner', 'moment_z']
+
+G_time       = lambda node, graph = G: graph.nodes[node][key_time      ]
+G_area       = lambda node, graph = G: graph.nodes[node][key_area      ]
+G_centroid   = lambda node, graph = G: graph.nodes[node][key_centroid  ]
+G_owner      = lambda node, graph = G: graph.nodes[node][key_owner     ]
 
 def node_owner_set(node, graph, owner):
-    graph.nodes[node]["owner"] = owner
+    graph.nodes[node][key_owner] = owner
 
-def graph_extract_paths(G, min_length = 2, f_sort = lambda x: (x[0], x[1:])):
+def G_owner_set(node, owner):
+    G.nodes[node][key_owner] = owner
+
+def graph_extract_paths(graph, min_length = 2, f_sort = lambda x: (x[0], x[1:])):
+    """
+    paths or chains are sequences of connected nodes which are connected ONLY by SOLO edge
+    means that chains looks like : (time_1, ID_1) -> (time_2, ID_2) -> ....
+    solo edges can be extracted by condition that starting node has one successor and target node
+    has only one predecessor. by extracting all solo edges you can create a graph from them
+    and extract connected components, which will yield all chains on original graph.
+    """
     solo_edge_forw      = set()
     one_2_one_edges     = set()
-    for t_from in G.nodes():
-        t_successors = list(G.successors(t_from))
+    for t_from in graph.nodes():
+        t_successors = list(graph.successors(t_from))
         if len(t_successors)  == 1:  
             solo_edge_forw.add((t_from, t_successors[0]))
 
     for t_from, t_to in solo_edge_forw:
-        t_predecessors = list(G.predecessors(t_to))
+        t_predecessors = list(graph.predecessors(t_to))
         if len(t_predecessors) == 1:
             one_2_one_edges.add((t_from, t_to))
 
@@ -57,113 +74,24 @@ def graph_extract_paths(G, min_length = 2, f_sort = lambda x: (x[0], x[1:])):
                     ]
                 , key = f_sort)
 
-def graph_extract_paths_old(H,f):
-    nodeCopy = list(H.nodes()).copy()
-    segments2 = {a:[] for a in nodeCopy}
-    resolved = []
-    skipped = []
-    for node in nodeCopy:
-        goForward = True if node not in resolved else False
-        nextNode = node
-        prevNode = None
-        while goForward == True:
-            
-            nextNodes = list(H.successors(nextNode))
-            prevNodes = list(H.predecessors(nextNode))
 
-            # find if next node exists and its single
-            soloNext    = True if len(nextNodes) == 1 else False
-            soloPrev    = True if len(prevNodes) == 1 else False # or prevNode is None
-            soloPrev2   = True if soloPrev and (prevNode is None or prevNodes[0] == prevNode) else False
-
-            # if looking one step ahead, starting node can have one back and/or forward connection to split/merge
-            # this would still mean that its a chain and next/prev node will be included.
-            # to fix this, check if next/prev are merges/splits
-            # find if next is not merge:
-            nextNotMerge = False
-            if soloNext:
-                nextPrevNodes = list(H.predecessors(nextNodes[0]))
-                if len(nextPrevNodes) == 1: 
-                    nextNotMerge = True
-
-            nextNotSplit = False
-            if soloNext:
-                nextNextNodes = list(H.successors(nextNodes[0]))
-                if len(nextNextNodes) <= 1:   # if it ends, it does not split. (len = 0)
-                    nextNotSplit = True
-
-            prevNotSplit = False
-            if soloPrev2:
-                prevNextNodes = list(H.successors(prevNodes[0]))
-                if len(prevNextNodes) == 1:
-                    prevNotSplit = True
-
-
-            saveNode = False
-            # test if it is a chain start point:
-            # if prev is a split, implies only one prevNode 
-            if prevNode is None:                # starting node
-                if len(prevNodes) == 0:         # if no previos node =  possible chain start
-                    if nextNotMerge:            # if it does not change into merge, it is good
-                        saveNode = True
-                    else:
-                        skipped.append(node)
-                        goForward = False
-                elif not prevNotSplit:
-                    if nextNotMerge:
-                        saveNode = True
-                    else: 
-                        skipped.append(node)
-                        goForward = False
-                else:
-                    skipped.append(node)
-                    goForward = False
-            else:
-            # check if its an endpoint
-                # dead end = zero forward neigbors
-                if len(nextNodes) == 0:
-                    saveNode = True
-                    goForward = False
-                # end of chain =  merge of forward neigbor
-                elif not nextNotMerge:
-                    saveNode = True
-                    goForward = False
-                elif not nextNotSplit:
-                    saveNode = True
-                
-                # check if it is part of a chain
-                elif nextNotMerge:
-                    saveNode = True
-
-
-            if saveNode:
-                segments2[node].append(nextNode)
-                resolved.append(nextNode)
-                prevNode = nextNode
-                if goForward :
-                    nextNode = nextNodes[0]
-
-    
-    
-    return segments2, skipped
-
-def find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = False, G = None, edges = None, only_subIDs = False, max_paths = 20000):
+def find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = False, graph = None, edges = None, only_subIDs = False, max_paths = 20000):
     # extract all possible paths from set of nodes nodes_start to set of nodes nodes_end
-    # give edges and set construct_graph = True to create a graph, alternatively supply graph G
+    # give edges and set construct_graph = True to create a graph, alternatively supply graph graph
     fail = None
     #many_paths = False
     if construct_graph:
-        G = nx.DiGraph()
-        G.add_edges_from(edges)
+        graph = nx.DiGraph()
+        graph.add_edges_from(edges)
 
     all_paths = []
     fail_all = {t:False for t in nodes_start}
     for start_node in nodes_start:
         for end_node in nodes_end:
-            G.add_nodes_from([start_node,end_node]) # for safety. they might not be in. nx.has_path will throw an error
-            if nx.has_path(G, source = start_node, target = end_node):    # otherwise it will fail to find path.
+            graph.add_nodes_from([start_node,end_node]) # for safety. they might not be in. nx.has_path will throw an error
+            if nx.has_path(graph, source = start_node, target = end_node):    # otherwise it will fail to find path.
                 paths = []
-                for path in nx.all_simple_paths(G, source = start_node, target = end_node):
+                for path in nx.all_simple_paths(graph, source = start_node, target = end_node):
                     paths.append(path)
                     if len(paths) >= max_paths:
                         fail = 'to_many_paths'
@@ -190,22 +118,6 @@ def comb_product_to_graph_edges(choices_list, thresh_func):
 
     return output_edges, choices_list[0], choice_from
 
-def extract_graph_connected_components(graph, sort_function = lambda x: x): 
-    # extract all conneted component= clusters from graph. to extract unique clusters,
-    # all options have to be sorted to drop identical. sorting can be done by sort_function.
-    # for nodes with names integers, used lambda x: x, for names as tuples use lambda x: (x[0], *x[1:])
-    # where node name is (timeX, A, B, C,..), it will sort  Time first, then by min(A,B,C), etc
-    connected_components_all = [list(nx.node_connected_component(graph, key)) for key in graph.nodes()]
-    connected_components_all = [sorted(sub, key = sort_function) for sub in connected_components_all] 
-    connected_components_unique = []
-    [connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
-    return connected_components_unique
-
-#def extract_graph_connected_components_autograph(edges, sort_function_in = lambda x: x, sort_function_out = lambda x: x): 
-#    graph = nx.Graph()
-#    graph.add_edges_from(edges)
-#    return  sorted([sorted(c, key = sort_function_out) for c in nx.connected_components(graph)] , key = sort_function_in)
-    
 
 def extract_clusters_from_edges(edges, nodes= [], sort_f_in = lambda x: x, sort_f_out = lambda x: x[0]): 
     graph = nx.Graph()
@@ -213,71 +125,6 @@ def extract_clusters_from_edges(edges, nodes= [], sort_f_in = lambda x: x, sort_
     graph.add_edges_from(edges)
     return  sorted([sorted(c, key = sort_f_in) for c in nx.connected_components(graph)] , key = sort_f_out)
     
-
-def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_segments, source_segment, source_node = None, target_nodes = None, return_cc = False):
-    # test connectivity of source segments to nearby segments (within certain time interval - [t_max, t_min]
-    # to avoid paths that go though other segments, active at that time, temporary subgraph is created
-    # from which all but one test target is removed.
-
-    # t_min, t_max & add_nodes for main subgraph; active_segments, target_nodes dict for targets; source_segment, source_node for pathing.
-    # NOTE: cc_all sorting is created for nodes (time,ID1,...)
-    G_time      = lambda node   : node_time(   node  , graph)
-    G_owner     = lambda node   : node_owner(  node  , graph)
-    
-    nodes_keep_main =   [node for node in graph.nodes() if t_min <= G_time(node) <= t_max]    # isolate main graph segment
-    nodes_keep_main +=  add_nodes                                                                          # add extra nodes, if needed
-    subgraph_main   =   graph.subgraph(nodes_keep_main)
-
-    if source_node is None:  # automatically find source node if not specified
-        for node in nodes_keep_main:
-            if G_owner(node) == source_segment:
-                source_node = node
-                break
-
-    # setup target segments. either known from target_nodes dict or from all time period active (active_segments)
-    if type(target_nodes) == dict   : test_segments = set(target_nodes.keys())  - {source_segment}
-    else                            : test_segments = set(active_segments)      - {source_segment}
-    
-    connected_edges = []
-    out_cc = defaultdict(list)
-    for test_segment in test_segments:                              # go though all active segments except original source
-        segments_keep_sub = (None, source_segment, test_segment)    # no owner, source or test segments are selected for subgraph
-        nodes_keep_sub    = [node for node in subgraph_main.nodes() if subgraph_main.nodes[node]["owner"] in segments_keep_sub]
-        subgraph_test     = subgraph_main.subgraph(nodes_keep_sub)  # subgraph with deleted irrelevant segments
-
-        # find target node from known dict, find it from owner segment or its specified explicitly
-        if type(target_nodes) == dict and test_segment in target_nodes:   
-            test_target_node = target_nodes[test_segment]
-        elif target_nodes is None:
-            for node in nodes_keep_sub:
-                if G_owner(node) == test_segment:
-                    test_target_node = node
-                    break
-        else: test_target_node = target_nodes
-            
-        hasPath = nx.has_path(subgraph_test.to_undirected(), source = source_node, target = test_target_node)
-
-        if hasPath:
-            connected_edges.append((source_segment,test_segment))
-            if return_cc:
-                nodes_from  = [node for node in nodes_keep_sub if G_owner(node) == source_segment]
-                nodes_to    = [node for node in nodes_keep_sub if G_owner(node) == test_segment]
-
-                node_from_last  = max(nodes_from    , key = lambda x: G_time(x))
-                node_to_first    = min(nodes_to     , key = lambda x: G_time(x))
-
-                sub_test_nodes = [node for node in nodes_keep_sub if G_time(node_from_last) < G_time(node) < G_time(node_to_first)]
-                sub_test_nodes += [node_from_last, node_to_first]
-
-                sub_subgraph_test = subgraph_test.subgraph(sub_test_nodes) 
-                cc_all = extract_graph_connected_components(sub_subgraph_test.to_undirected(),  lambda x: (x[0], *x[1:]))
-                cc_sol = [cc for cc in cc_all if source_node in cc]
-                if len(cc_sol) == 0:cc_sol = [None]
-                out_cc[(source_segment,test_segment)] = cc_sol[0]
-
-    if return_cc: return connected_edges, out_cc
-    else: return connected_edges
-
 
 def drawH(H, paths, node_positions, fixed_nodes = [], show = True, suptitle = "drawH", figsize = ( 10,5), node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
     colors = {i:np.array(cyclicColor(i))/255 for i in paths}
@@ -334,11 +181,11 @@ def check_overlap(a, b):
 def ranges_overlap(range1, range2):
     return range1.stop > range2.start and range2.stop > range1.start
 
-def for_graph_plots(G, segs = [], optimize_pos = True, show = True, suptitle = "drawH", node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
+def for_graph_plots(graph = G, segs = [], optimize_pos = True, show = True, suptitle = "drawH", node_size = 30, edge_width_path = 3, edge_width = 1, font_size = 7):
     import time as time_lib
     from graphs_node_position_spring_lj_model_iterator import (prep_matrices, integration, draw_plot)
     #if len(segs) == 0:
-    #    segments3 = graph_extract_paths(G) # default min_length
+    #    segments3 = graph_extract_paths(graph) # default min_length
     #else:
     #    segments3 = [s for s in segs if len(s) > 0 ]
     segments3 = segs
@@ -347,8 +194,8 @@ def for_graph_plots(G, segs = [], optimize_pos = True, show = True, suptitle = "
     t_pos = {i:0    for i,  vals in enumerate(segments3) if len(vals) > 0}
     # check overlap between segments time-wise: extract overlapping clusters
 
-    G_time  = lambda node   : node_time(   node  , G)
-    G_owner = lambda node   : node_owner(  node  , G)
+    #G_time  = lambda node   : G_time(   node  , graph)
+    #G_owner = lambda node   : G_owner(  node  , graph)
    
 
     time_intervals = {i:range(G_time(nodes[0]), G_time(nodes[-1]) + 1) for i, nodes in paths.items()}
@@ -423,14 +270,14 @@ def for_graph_plots(G, segs = [], optimize_pos = True, show = True, suptitle = "
                 t_pos[ID] = int(layer + offset) 
     
     #isolate stray nodes
-    stray_nodes = [n for n in G.nodes() if G_owner(n) in (-1, None) ]
+    stray_nodes = [n for n in graph.nodes() if G_owner(n) in (-1, None) ]
     # get times at which stray nodes are present
     stray_times = sorted(set([G_time(n) for n in stray_nodes]))
     # sort strat nodes to time related bins
     stray_nodes_time_dict   = {t:[] for t in stray_times}
     stat_nodes_time_dict    = {t:[] for t in stray_times}
     #nodes_count_per_time    = {t:0 for t in stray_times}
-    for n in G.nodes():
+    for n in graph.nodes():
         t = G_time(n)
         if t in stray_times:
             if G_owner(n) in (-1, None):
@@ -497,8 +344,8 @@ def for_graph_plots(G, segs = [], optimize_pos = True, show = True, suptitle = "
         # time pair edges act as springs, pulling nodes together (only vertically in this case)
         spring_edges = []
         for node in stray_nodes:
-            spring_edges.extend(    [(node,n) for n in G.successors(    node)]  )
-            spring_edges.extend(    [(node,n) for n in G.predecessors(  node)]  )
+            spring_edges.extend(    [(node,n) for n in graph.successors(    node)]  )
+            spring_edges.extend(    [(node,n) for n in graph.predecessors(  node)]  )
         # nodes in vertical (time) slices should repel to counteract spring forces
         edges_vert = []
         for node in stray_nodes:
@@ -587,42 +434,22 @@ def for_graph_plots(G, segs = [], optimize_pos = True, show = True, suptitle = "
         positions_d[node] = positions[k]
 
     all_nodes_pos = {}
-    for node in G.nodes():
+    for node in graph.nodes():
         segID = G_owner(node)
         if segID not in (-1, None):
             all_nodes_pos[node] = [ G_time(node), t_pos[segID]     ]
         else:
             all_nodes_pos[node] = positions_d[node]#[ G_time(node),   ] 
 
-    edge_width, edge_color, node_size = drawH(G.to_undirected(), paths, all_nodes_pos, show = show, suptitle = suptitle, node_size = node_size, edge_width_path = edge_width_path, edge_width = edge_width, font_size = font_size)
+    edge_width, edge_color, node_size = drawH(graph.to_undirected(), paths, all_nodes_pos, show = show, suptitle = suptitle, node_size = node_size, edge_width_path = edge_width_path, edge_width = edge_width, font_size = font_size)
 
 
     return all_nodes_pos, edge_width, edge_color, node_size
 
-
-
-def graph_sub_isolate_connected_components(G, t_start, t_end, lr_time_active_segments, t_segments_new, t_segments_keep, ref_node = None):
-    # segments active during time period of interest
-    t_segments_active_all = set(sum([vals for t,vals in lr_time_active_segments.items() if t_start <= t <= t_end],[])) 
-    # which segments (and their nodes) to drop from subgraph
-    t_segments_drop = [t for t in t_segments_active_all if t not in t_segments_keep]
-
-    t_nodes_drop    = sum([t_segments_new[tID] for tID in t_segments_drop],[])
-    t_nodes_keep    = [node for node in G.nodes() if t_start <= node[0] <= t_end and node not in t_nodes_drop]
-            
-    t_subgraph = G.subgraph(t_nodes_keep)
-    connected_components_unique = extract_graph_connected_components(t_subgraph.to_undirected(),  lambda x: (x[0], *x[1:]))
-    if ref_node == None:
-        return connected_components_unique
-    else:
-        sol = [t_cc for t_cc in connected_components_unique if ref_node in t_cc] # merge first node
-        assert len(sol) == 1, "inspect path relates to multiple clusters, did not expect it ever to occur"
-        return sol[0]
-
-
-def set_custom_node_parameters(graph, contour_data, nodes_list, owner, calc_hull = 1):
+def set_custom_node_parameters( contour_data, nodes_list, owner, calc_hull = 1):
     # set params for graph nodes. if calc_hull = 0, then contour_data is hull dict
     # otherwise contour_data is contour dict
+    graph = G
     for node in nodes_list:
             
         if calc_hull:
@@ -634,55 +461,55 @@ def set_custom_node_parameters(graph, contour_data, nodes_list, owner, calc_hull
 
         t_centroid, t_area, t_mom_z     = centroid_area_cmomzz(t_hull)
 
-        graph.nodes[node]["time"]       = int(t_time)
-        graph.nodes[node]["centroid"]   = t_centroid
-        graph.nodes[node]["area"]       = t_area
-        graph.nodes[node]["moment_z"]   = t_mom_z
-        graph.nodes[node]["owner"]      = owner
+        graph.nodes[node][key_time      ]   = int(t_time)
+        graph.nodes[node][key_centroid  ]   = t_centroid
+        graph.nodes[node][key_area      ]   = t_area
+        graph.nodes[node][key_owner     ]   = owner
+        graph.nodes[node][key_momz      ]   = t_mom_z
 
     return 
 
-def G2_set_parameters(graph, graph_seg, segment, owner):#, time_func):
+def G2_set_parameters(segment, owner):#, time_func):
+    # [key_t_start, key_t_end, key_n_start, key_n_end, key_e_dist]
+    graph, graph_seg        =   G, G2
+    node_start, node_end    =   segment[0], segment[-1]
 
-    node_start, node_end  = segment[0], segment[-1]
-
-    time_start, time_end  = node_time(node_start, graph), node_time(node_end, graph)
+    time_start, time_end    =   G_time(node_start, graph), G_time(node_end, graph)
     
     graph_seg.add_node(owner) 
     
-    graph_seg.nodes()[owner]['node_start'   ]   =   node_start
-    graph_seg.nodes()[owner]['node_end'     ]   =   node_end
+    graph_seg.nodes()[owner][key_t_start]   =   time_start
+    graph_seg.nodes()[owner][key_t_end  ]   =   time_end
+    
+    graph_seg.nodes()[owner][key_n_start]   =   node_start
+    graph_seg.nodes()[owner][key_n_end  ]   =   node_end
 
-    graph_seg.nodes()[owner]["t_start"      ]   =   time_start
-    graph_seg.nodes()[owner]["t_end"        ]   =   time_end
 
     return 
 
-def graph_check_paths(graph_node, graph_seg, time_DT_max, report):
+def graph_check_paths(time_DT_max, report):
+    """
+    method to find connected segments. 
+    connection can be established only using stray nodes = paths through other segments are not considered
+    connections are checked in forward direction with segments within specific maximum DT time interval (its cheap and fast).
 
-    # method to find connected segments. connection can be established only stray nodes = paths though other segments are not considered
-    # connections are checked in forward direction with segments within specific maximum DT time interval (its cheap and fast)
-    # depending on graph and segments there might be a lot of connections to check
-    # connections are determined by searching paths between segments which are using only stray nodes (on an isolated subgraph)
-    # additional method is implemented which drops path checks that are apriori impossible, which can be determined after a short test.
-    # test works on principle: 'you need stray nodes to find pathways instead of consructing subgraph and look for paths, see if 
-    # there are time steps between segments in which there are no stray nodes. paths cannot be constructed over these holes.
-    # see code_ideas/search_for_holes_before_for_path.py and image for idea/implementation
+    depending on graph and segments there might be a lot of connections to check.
+    connections are determined by searching paths between segments which are using only stray nodes (on an isolated subgraph).
 
-    G_time      = lambda node   : node_time(   node  , graph_node)
-    G_owner     = lambda node   : node_owner(  node  , graph_node)
-                                                     
-    G2_t_start  = lambda node   : seg_t_start( node  , graph_seg )
-    G2_t_end    = lambda node   : seg_t_end(   node  , graph_seg )
-    G2_n_start  = lambda node   : seg_n_from(  node  , graph_seg )
-    G2_n_end    = lambda node   : seg_n_to(    node  , graph_seg )
+    additional method is implemented which drops path that are apriori impossible. suitable path test works using following principle:
+        'you need stray nodes to find pathways. instead of consructing subgraph straight away to search for paths, see if 
+        there are time steps between segments in which there are no stray nodes. paths cannot jump over these holes.'
+    see code_ideas/search_for_holes_before_for_path.py and image for idea/implementation
+    """
+    
+    graph_node, graph_seg = G, G2
 
     available_stray_node_times  = set()
     for node in graph_node.nodes():
         if G_owner(node) in (None, -1): available_stray_node_times.add(G_time(node))
 
-    times_start_all         = np.array([G2_t_start(node) for node in graph_seg.nodes()])
-    segment_relevant_IDs    = np.array([node for node in graph_seg.nodes()])
+    times_start_all         = np.array([G2_t_start(node)    for node in graph_seg.nodes()])
+    segment_relevant_IDs    = np.array([node                for node in graph_seg.nodes()])
     
     for ID_from in segment_relevant_IDs:   
 
@@ -694,12 +521,12 @@ def graph_check_paths(graph_node, graph_seg, time_DT_max, report):
         index_pass_DT = np.where((1 <= time_diffs) & (time_diffs <= time_DT_max))[0]
         IDs_DT_pass   = segment_relevant_IDs[index_pass_DT]
 
-        node_from = G2_n_end(ID_from)       #segments_all[ID_from][-1]
+        node_from = G2_n_to(ID_from)       #segments_all[ID_from][-1]
         successors_resolved = set()
         for ID_to in IDs_DT_pass:
-            node_to = G2_n_start(ID_to)     #segments_all[ID_to][0]
-            time_to = G2_t_start(ID_to)   #G_time(node_to)
-            edge    = (ID_from,ID_to)
+            node_to = G2_n_from(    ID_to)     #segments_all[ID_to][0]
+            time_to = G2_t_start(   ID_to)   #G_time(node_to)
+            edge    = (ID_from, ID_to)
             #  return time of first hole or none = either pass or neighbor segment is right next to it
             first_hole_time = next((t for t in (k for k in range(time_from +1 , time_to )) if t not in available_stray_node_times), None) 
 
@@ -710,7 +537,9 @@ def graph_check_paths(graph_node, graph_seg, time_DT_max, report):
                 subgraph = graph_node.subgraph(nodes_keep)
                 hasPath = nx.has_path(subgraph, source = node_from, target = node_to)
                 if hasPath:
-                    graph_seg.add_edge(ID_from, ID_to, dist = time_to - time_from + 1)
+                    if not graph_seg.has_edge(ID_from, ID_to):
+                        graph_seg.add_edge(ID_from, ID_to)
+                    graph_seg.edges[(ID_from, ID_to)][key_e_dist] = time_to - time_from + 1
                     successors_resolved.add(ID_to)
             else:
                 report[edge] = first_hole_time
@@ -861,94 +690,159 @@ def get_event_types_from_segment_graph(graph):
 
 if 1 == -1:
     
-    def graph_extract_paths_backup_unidir(H,f):
-        nodeCopy = list(H.nodes()).copy()
-        segments2 = {a:[] for a in nodeCopy}
-        resolved = []
-        skipped = []
-        for node in nodeCopy:
-            goForward = True if node not in resolved else False
-            nextNode = node
-            prevNode = None
-            while goForward == True:
-                neighbors = list(H.neighbors(nextNode))
-                nextNodes = [a for a in neighbors if f(a) > f(nextNode)]
-                prevNodes = [a for a in neighbors if f(a) < f(nextNode)]
-                # find if next node exists and its single
-                soloNext    = True if len(nextNodes) == 1 else False
-                soloPrev    = True if len(prevNodes) == 1 else False # or prevNode is None
-                soloPrev2   = True if soloPrev and (prevNode is None or prevNodes[0] == prevNode) else False
+    #def graph_extract_paths_backup_unidir(H,f):
+    #    nodeCopy = list(H.nodes()).copy()
+    #    segments2 = {a:[] for a in nodeCopy}
+    #    resolved = []
+    #    skipped = []
+    #    for node in nodeCopy:
+    #        goForward = True if node not in resolved else False
+    #        nextNode = node
+    #        prevNode = None
+    #        while goForward == True:
+    #            neighbors = list(H.neighbors(nextNode))
+    #            nextNodes = [a for a in neighbors if f(a) > f(nextNode)]
+    #            prevNodes = [a for a in neighbors if f(a) < f(nextNode)]
+    #            # find if next node exists and its single
+    #            soloNext    = True if len(nextNodes) == 1 else False
+    #            soloPrev    = True if len(prevNodes) == 1 else False # or prevNode is None
+    #            soloPrev2   = True if soloPrev and (prevNode is None or prevNodes[0] == prevNode) else False
 
-                # if looking one step ahead, starting node can have one back and/or forward connection to split/merge
-                # this would still mean that its a chain and next/prev node will be included.
-                # to fix this, check if next/prev are merges/splits
-                # find if next is not merge:
-                nextNotMerge = False
-                if soloNext:
-                    nextNeighbors = list(H.neighbors(nextNodes[0]))
-                    nextPrevNodes = [a for a in nextNeighbors if f(a) < f(nextNodes[0])]
-                    if len(nextPrevNodes) == 1: 
-                        nextNotMerge = True
+    #            # if looking one step ahead, starting node can have one back and/or forward connection to split/merge
+    #            # this would still mean that its a chain and next/prev node will be included.
+    #            # to fix this, check if next/prev are merges/splits
+    #            # find if next is not merge:
+    #            nextNotMerge = False
+    #            if soloNext:
+    #                nextNeighbors = list(H.neighbors(nextNodes[0]))
+    #                nextPrevNodes = [a for a in nextNeighbors if f(a) < f(nextNodes[0])]
+    #                if len(nextPrevNodes) == 1: 
+    #                    nextNotMerge = True
 
-                nextNotSplit = False
-                if soloNext:
-                    nextNeighbors = list(H.neighbors(nextNodes[0]))
-                    nextNextNodes = [a for a in nextNeighbors if f(a) > f(nextNodes[0])]
-                    if len(nextNextNodes) <= 1:   # if it ends, it does not split. (len = 0)
-                        nextNotSplit = True
+    #            nextNotSplit = False
+    #            if soloNext:
+    #                nextNeighbors = list(H.neighbors(nextNodes[0]))
+    #                nextNextNodes = [a for a in nextNeighbors if f(a) > f(nextNodes[0])]
+    #                if len(nextNextNodes) <= 1:   # if it ends, it does not split. (len = 0)
+    #                    nextNotSplit = True
 
-                prevNotSplit = False
-                if soloPrev2:
-                    prevNeighbors = list(H.neighbors(prevNodes[0]))
-                    prevNextNodes = [a for a in prevNeighbors if f(a) > f(prevNodes[0])]
-                    if len(prevNextNodes) == 1:
-                        prevNotSplit = True
+    #            prevNotSplit = False
+    #            if soloPrev2:
+    #                prevNeighbors = list(H.neighbors(prevNodes[0]))
+    #                prevNextNodes = [a for a in prevNeighbors if f(a) > f(prevNodes[0])]
+    #                if len(prevNextNodes) == 1:
+    #                    prevNotSplit = True
 
 
-                saveNode = False
-                # test if it is a chain start point:
-                # if prev is a split, implies only one prevNode 
-                if prevNode is None:                # starting node
-                    if len(prevNodes) == 0:         # if no previos node =  possible chain start
-                        if nextNotMerge:            # if it does not change into merge, it is good
-                            saveNode = True
-                        else:
-                            skipped.append(node)
-                            goForward = False
-                    elif not prevNotSplit:
-                        if nextNotMerge:
-                            saveNode = True
-                        else: 
-                            skipped.append(node)
-                            goForward = False
-                    else:
-                        skipped.append(node)
-                        goForward = False
-                else:
-                # check if its an endpoint
-                    # dead end = zero forward neigbors
-                    if len(nextNodes) == 0:
-                        saveNode = True
-                        goForward = False
-                    # end of chain =  merge of forward neigbor
-                    elif not nextNotMerge:
-                        saveNode = True
-                        goForward = False
-                    elif not nextNotSplit:
-                        saveNode = True
+    #            saveNode = False
+    #            # test if it is a chain start point:
+    #            # if prev is a split, implies only one prevNode 
+    #            if prevNode is None:                # starting node
+    #                if len(prevNodes) == 0:         # if no previos node =  possible chain start
+    #                    if nextNotMerge:            # if it does not change into merge, it is good
+    #                        saveNode = True
+    #                    else:
+    #                        skipped.append(node)
+    #                        goForward = False
+    #                elif not prevNotSplit:
+    #                    if nextNotMerge:
+    #                        saveNode = True
+    #                    else: 
+    #                        skipped.append(node)
+    #                        goForward = False
+    #                else:
+    #                    skipped.append(node)
+    #                    goForward = False
+    #            else:
+    #            # check if its an endpoint
+    #                # dead end = zero forward neigbors
+    #                if len(nextNodes) == 0:
+    #                    saveNode = True
+    #                    goForward = False
+    #                # end of chain =  merge of forward neigbor
+    #                elif not nextNotMerge:
+    #                    saveNode = True
+    #                    goForward = False
+    #                elif not nextNotSplit:
+    #                    saveNode = True
                 
-                    # check if it is part of a chain
-                    elif nextNotMerge:
-                        saveNode = True
+    #                # check if it is part of a chain
+    #                elif nextNotMerge:
+    #                    saveNode = True
 
 
-                if saveNode:
-                    segments2[node].append(nextNode)
-                    resolved.append(nextNode)
-                    prevNode = nextNode
-                    if goForward :
-                        nextNode = nextNodes[0]
+    #            if saveNode:
+    #                segments2[node].append(nextNode)
+    #                resolved.append(nextNode)
+    #                prevNode = nextNode
+    #                if goForward :
+    #                    nextNode = nextNodes[0]
 
     
     
-        return segments2, skipped
+    #    return segments2, skipped
+
+    #def find_segment_connectivity_isolated(graph, t_min, t_max, add_nodes, active_segments, source_segment, source_node = None, target_nodes = None, return_cc = False):
+    #    # test connectivity of source segments to nearby segments (within certain time interval - [t_max, t_min]
+    #    # to avoid paths that go though other segments, active at that time, temporary subgraph is created
+    #    # from which all but one test target is removed.
+
+    #    # t_min, t_max & add_nodes for main subgraph; active_segments, target_nodes dict for targets; source_segment, source_node for pathing.
+    #    # NOTE: cc_all sorting is created for nodes (time,ID1,...)
+    #    G_time      = lambda node   : G_time(   node  , graph)
+    #    G_owner     = lambda node   : G_owner(  node  , graph)
+    
+    #    nodes_keep_main =   [node for node in graph.nodes() if t_min <= G_time(node) <= t_max]    # isolate main graph segment
+    #    nodes_keep_main +=  add_nodes                                                                          # add extra nodes, if needed
+    #    subgraph_main   =   graph.subgraph(nodes_keep_main)
+
+    #    if source_node is None:  # automatically find source node if not specified
+    #        for node in nodes_keep_main:
+    #            if G_owner(node) == source_segment:
+    #                source_node = node
+    #                break
+
+    #    # setup target segments. either known from target_nodes dict or from all time period active (active_segments)
+    #    if type(target_nodes) == dict   : test_segments = set(target_nodes.keys())  - {source_segment}
+    #    else                            : test_segments = set(active_segments)      - {source_segment}
+    
+    #    connected_edges = []
+    #    out_cc = defaultdict(list)
+    #    for test_segment in test_segments:                              # go though all active segments except original source
+    #        segments_keep_sub = (None, source_segment, test_segment)    # no owner, source or test segments are selected for subgraph
+    #        nodes_keep_sub    = [node for node in subgraph_main.nodes() if subgraph_main.nodes[node]["owner"] in segments_keep_sub]
+    #        subgraph_test     = subgraph_main.subgraph(nodes_keep_sub)  # subgraph with deleted irrelevant segments
+
+    #        # find target node from known dict, find it from owner segment or its specified explicitly
+    #        if type(target_nodes) == dict and test_segment in target_nodes:   
+    #            test_target_node = target_nodes[test_segment]
+    #        elif target_nodes is None:
+    #            for node in nodes_keep_sub:
+    #                if G_owner(node) == test_segment:
+    #                    test_target_node = node
+    #                    break
+    #        else: test_target_node = target_nodes
+            
+    #        hasPath = nx.has_path(subgraph_test.to_undirected(), source = source_node, target = test_target_node)
+
+    #        if hasPath:
+    #            connected_edges.append((source_segment,test_segment))
+    #            if return_cc:
+    #                nodes_from  = [node for node in nodes_keep_sub if G_owner(node) == source_segment]
+    #                nodes_to    = [node for node in nodes_keep_sub if G_owner(node) == test_segment]
+
+    #                node_from_last  = max(nodes_from    , key = lambda x: G_time(x))
+    #                node_to_first    = min(nodes_to     , key = lambda x: G_time(x))
+
+    #                sub_test_nodes = [node for node in nodes_keep_sub if G_time(node_from_last) < G_time(node) < G_time(node_to_first)]
+    #                sub_test_nodes += [node_from_last, node_to_first]
+
+    #                sub_subgraph_test = subgraph_test.subgraph(sub_test_nodes) 
+    #                cc_all = extract_graph_connected_components(sub_subgraph_test.to_undirected(),  lambda x: (x[0], *x[1:]))
+    #                cc_sol = [cc for cc in cc_all if source_node in cc]
+    #                if len(cc_sol) == 0:cc_sol = [None]
+    #                out_cc[(source_segment,test_segment)] = cc_sol[0]
+
+    #    if return_cc: return connected_edges, out_cc
+    #    else: return connected_edges
+    a = 1

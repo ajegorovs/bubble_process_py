@@ -5,27 +5,12 @@ import datetime, itertools
 from collections import deque
 from collections import defaultdict
 
-#from graphs_general import (extract_graph_connected_components) # gives an error of circular import
-
 
 colorList  = np.array(list(itertools.permutations(np.arange(0,255,255/5, dtype= np.uint8), 3)))
 np.random.seed(2);np.random.shuffle(colorList);np.random.seed()
 
 def cyclicColor(index):
     return colorList[index % len(colorList)].tolist()
-
-def check_overlap(segments):
-    # given list of segments designated as [seg_1, seg_2,..] = [(start_1,end_1),...]
-    # return which seg_ at least partially intsects with other segment, assuming continous space between start and end. otherwise use set intersection.
-    overlaps = []
-    for i in range(len(segments)):
-        for j in range(i+1, len(segments)):
-            seg1 = segments[i]
-            seg2 = segments[j]
-            
-            if seg1[0] <= seg2[1] and seg1[1] >= seg2[0]:
-                overlaps.append((i, j))
-    return overlaps
 
 
 def closest_point(point, array):
@@ -69,7 +54,6 @@ def timeHMS():
     return datetime.datetime.now().strftime("%H-%M-%S")
 
 
-
 def modBR(BR,side):
     x,y,w,h  = BR
     return [x - int(max((side-w)/2,0)), y - int(max((side-h)/2,0)), max(side,w), max(side,h)]
@@ -80,7 +64,7 @@ def rect2contour(rect):
     return np.array([(x,y),(x+w,y),(x+w,y+h),(x,y+h)],int).reshape(-1,1,2)
 
 def combs_different_lengths(elements_list):
-    resort = lambda list_of_tuple: sorted(list_of_tuple, key=lambda x: (x[0], x[1:]))
+    #resort = lambda list_of_tuple: sorted(list_of_tuple, key=lambda x: (x[0], x[1:]))
     return sum([list(itertools.combinations(elements_list, r)) for r in range(1,len(elements_list)+1)],[])
 
 def unique_sort_list(arg, sort_function = lambda x: x):
@@ -122,7 +106,6 @@ def disperse_composite_nodes_into_solo_nodes(composite_node_list, sort = False, 
         return list(output)
     else:
         return sorted(output, key = sort_fn)
-
 
 
 def find_key_by_value(my_dict, value_to_find):
@@ -174,33 +157,33 @@ class CircularBufferReverse:
     def get_data(self):
         return np.array(self.buffer)
 
-class AutoCreateDict:
-    # lr_init_perm_precomputed remake, so dict does not need initialization.
-    def __init__(self):
-        self.data = {}
+#class AutoCreateDict:
+#    # lr_init_perm_precomputed remake, so dict does not need initialization.
+#    def __init__(self):
+#        self.data = {}
 
-    def __getitem__(self, key):
-        if key not in self.data:
-            self.data[key] = AutoCreateDict()
-        return self.data[key]
+#    def __getitem__(self, key):
+#        if key not in self.data:
+#            self.data[key] = AutoCreateDict()
+#        return self.data[key]
 
-    def __setitem__(self, key, value):
-        self.data[key] = value
+#    def __setitem__(self, key, value):
+#        self.data[key] = value
         
-    def __contains__(self, key):
-        return key in self.data
+#    def __contains__(self, key):
+#        return key in self.data
 
-    def keys(self):
-        return self.data.keys()
+#    def keys(self):
+#        return self.data.keys()
 
-    def values(self):
-        return self.data.values()
+#    def values(self):
+#        return self.data.values()
 
-    def items(self):
-        return self.data.items()
+#    def items(self):
+#        return self.data.items()
 
-    def __repr__(self):
-        return repr(self.data)
+#    def __repr__(self):
+#        return repr(self.data)
 
 def find_common_intervals(data):
     element_ids = set()
@@ -283,104 +266,7 @@ def split_into_bins(L, num_bins):
 #    [connected_components_unique.append(x) for x in connected_components_all if x not in connected_components_unique]
 #    return connected_components_unique
 
-def order_segment_levels(t_segments, debug = 0):
-    from graphs_general import (extract_graph_connected_components)
-    #[needs : check_overlap, cyclicColor, networkx as nx, plt, np]
 
-    # want to draw bunch of segments horizontally, but they overlay and have to be stacked vertically
-    # if generally they overlay locally, then they can be vertically compressed, if one of prev segments has ended
-
-    # SEGMENTS are list of sequences of nodes like paths: [path1, path2, ..] and path = (node1, node2,..)
-    # NODE holds its time in name with other paremeter, such as contour IDS: node = (time, ID1, ID2) = (time,*subIDS)
-    # lambda functions are used to specify which element is time. e.g time = (lambda x: x[0])(time, ID1, ID2) 
-
-    # initialize positions as zeroes
-    t_pos = {t:0 for t in range(len(t_segments))}
-    # transform segments to start-end times
-    start_end = [(seg[0][0],seg[-1][0]) for seg in t_segments]
-    # check which segments overlap any way
-    overlap = check_overlap(start_end)
-    # form a graph to extract overlapping clusters
-    HH = nx.Graph()
-    t_all_nodes = list(range(len(t_segments)))
-    HH.add_nodes_from(t_all_nodes)
-    for g in t_all_nodes:
-        HH.nodes()[g]["t_start"]    = t_segments[g][0][0]
-        HH.nodes()[g]["t_end"]      = t_segments[g][-1][0]
-    HH.add_edges_from(overlap)
-
-    # extract connected components =  chain of overlapping clusters
-    t_cc = extract_graph_connected_components(HH, lambda x: x)
-
-        
-    for t_set in t_cc:
-        
-        # sort by starting position to establish hierarchy, secondary sort by end position
-        t_set = sorted(t_set, key = lambda x: [HH.nodes[x]["t_start"],HH.nodes[x]["t_end"]])
-
-        # initialize odered subcluster positions as ladder. worst case scenaro it stays a ladder
-        for t_k, t_from in enumerate(t_set):
-            t_pos[t_from] = t_k
-
-            
-            
-        # overwrite_nodes contains nodes that gave their position to other segment. so they are out of donor pool.
-        overwrite_nodes = []
-
-        for t_k,t_from in enumerate(t_set):
-            # take all which have start earlier than you:
-
-                # first all nodes that have started earlier or at same time, except donors
-            t_from_all_prev             = [tID for tID in t_set if HH.nodes[tID]["t_start"] <= HH.nodes[t_from]["t_start"] and tID not in overwrite_nodes]
-
-                # then check which of them terminate earler than node start
-            t_non_overlapping_all_prev  =  [tID for tID in t_from_all_prev if HH.nodes[tID]["t_end"] < HH.nodes[t_from]["t_start"]]
-
-            # t_non_overlapping_all_prev are available spot donors
-
-            if len(t_non_overlapping_all_prev)>0:
-                # get their positions and take lowest. lowest crit is viable, but visually not the best
-                t_places        = {t_node:t_pos[t_node] for t_node in t_non_overlapping_all_prev}
-                minKey = min(t_places, key = t_places.get)
-
-                # accept donated position and add donor to exclusion list
-                t_pos[t_from]   = t_places[minKey]
-                overwrite_nodes.append(minKey)
-
-    # EDIT NOT SHOWN IN DEBUG: Collapse on uninhabited layers.
-    a = 1
-   
-    vertical_positions = set(t_pos.values()) 
-    if len(vertical_positions) > 0:
-        empty_positions = set(range(max(vertical_positions) + 1)) - vertical_positions
-        if len(empty_positions)>0:
-            position_mapping = {}
-            sorted_IDs = sorted(t_pos,key=t_pos.get)
-            t_pos2 = {ID:t_pos[ID] for ID in sorted_IDs if t_pos[ID] > min(empty_positions)}
-            for i, position in t_pos2.items():
-                if len(empty_positions) > 0 and position > min(empty_positions) and position not in position_mapping:
-                    # Find the first available empty position
-                    new_position = min(empty_positions)
-                    position_mapping[position] = new_position
-                    t_pos[i] = new_position
-                    empty_positions.remove(new_position)
-
-    if debug:
-
-        fig, axes = plt.subplots(1, 1, figsize=( 10,5), sharex=True, sharey=True)
-
-        for t_from, pos in t_pos.items():
-            t_start = HH.nodes[t_from]["t_start"]
-            t_stop  = HH.nodes[t_from]["t_end"]
-            x   = [t_start,t_stop]
-            y0  = [t_from,t_from]
-            y   = [pos,pos]
-            axes.plot(x, y0 ,'-c',c=np.array(cyclicColor(t_from))/255, label = t_from)
-            plt.plot(x, y, linestyle='dotted', c=np.array(cyclicColor(t_from))/255)
-
-            
-
-    return t_pos
 
 rescale_linear = lambda x,minX,maxX: (x-minX)/(maxX - minX)
 def two_crit_many_branches(setA,setB,numObjects):
@@ -447,64 +333,64 @@ def dfs_succ(graph, node, time_lim, node_set):
         if successor not in node_set and graph.nodes[successor]['time'] < time_lim:
             dfs_succ(graph, successor, time_lim, node_set)
 
-def getNodePos2(dic0, S = 20):
-    dups, cnts = np.unique([a for a in dic0.values()], return_counts = True)
-    # relate times to 'local IDs', which are also y-positions or y-indexes
-    dic = {a:np.arange(b) for a,b in zip(dups,cnts)} # each time -> arange(numDups)
-    # give duplicates different y-offset 0,1,2,..
-    dic2 = {t:{s:k for s,k in zip(c,[tID for tID, t_time in dic0.items() if t_time == t])} for t,c in dic.items()}
-    node_positions = {}
-    # offset scaled by S
-    #S = 20
-    for t,c in dic.items():
-        # scale and later offset y-pos by mid-value
-        d = c*S
-        meanD = np.mean(d)
-        for c2,key in dic2[t].items():
-            if len(dic2[t]) == 1:
-                dy = np.random.randint(low=-3, high=3)
-            else: dy = 0
-            # form dict in form key: position. time is x-pos. y is modified by order.
-            node_positions[key] = (t,c2*S-meanD + dy)
+#def getNodePos2(dic0, S = 20):
+#    dups, cnts = np.unique([a for a in dic0.values()], return_counts = True)
+#    # relate times to 'local IDs', which are also y-positions or y-indexes
+#    dic = {a:np.arange(b) for a,b in zip(dups,cnts)} # each time -> arange(numDups)
+#    # give duplicates different y-offset 0,1,2,..
+#    dic2 = {t:{s:k for s,k in zip(c,[tID for tID, t_time in dic0.items() if t_time == t])} for t,c in dic.items()}
+#    node_positions = {}
+#    # offset scaled by S
+#    #S = 20
+#    for t,c in dic.items():
+#        # scale and later offset y-pos by mid-value
+#        d = c*S
+#        meanD = np.mean(d)
+#        for c2,key in dic2[t].items():
+#            if len(dic2[t]) == 1:
+#                dy = np.random.randint(low=-3, high=3)
+#            else: dy = 0
+#            # form dict in form key: position. time is x-pos. y is modified by order.
+#            node_positions[key] = (t,c2*S-meanD + dy)
 
-    return node_positions
+#    return node_positions
 
-def getNodePos(test):
-    dups, cnts = np.unique([a[0] for a in test], return_counts = True)
-    # relate times to 'local IDs', which are also y-positions or y-indexes
-    dic = {a:np.arange(b) for a,b in zip(dups,cnts)}
-    # give duplicates different y-offset 0,1,2,..
-    dic2 = {t:{s:k for s,k in zip(c,[a for a in test if a[0] == t])} for t,c in dic.items()}
-    node_positions = {}
-    # offset scaled by S
-    S = 20
-    for t,c in dic.items():
-        # scale and later offset y-pos by mid-value
-        d = c*S
-        meanD = np.mean(d)
-        for c2,key in dic2[t].items():
-            # form dict in form key: position. time is x-pos. y is modified by order.
-            node_positions[key] = (t,c2*S-meanD)
-    return node_positions
+#def getNodePos(test):
+#    dups, cnts = np.unique([a[0] for a in test], return_counts = True)
+#    # relate times to 'local IDs', which are also y-positions or y-indexes
+#    dic = {a:np.arange(b) for a,b in zip(dups,cnts)}
+#    # give duplicates different y-offset 0,1,2,..
+#    dic2 = {t:{s:k for s,k in zip(c,[a for a in test if a[0] == t])} for t,c in dic.items()}
+#    node_positions = {}
+#    # offset scaled by S
+#    S = 20
+#    for t,c in dic.items():
+#        # scale and later offset y-pos by mid-value
+#        d = c*S
+#        meanD = np.mean(d)
+#        for c2,key in dic2[t].items():
+#            # form dict in form key: position. time is x-pos. y is modified by order.
+#            node_positions[key] = (t,c2*S-meanD)
+#    return node_positions
 
 
 
-segments2 = []
-def segment_conn_end_start_points(connections, segment_list = segments2, nodes = 0):
-    if connections is not None:
-        if type(connections) == tuple:
-            start,end = connections
-            if nodes == 1:
-                return (segment_list[start][-1],    segment_list[end][0])
-            else:
-                return (segment_list[start][-1][0], segment_list[end][0][0])
-        if type(connections) == list:
-            if nodes == 1:
-                return [(segment_list[start][-1],   segment_list[end][0]) for start,end in connections]
-            else:
-                return [(segment_list[start][-1][0],segment_list[end][0][0]) for start,end in connections]
-        else:
-            return None
+#segments2 = []
+#def segment_conn_end_start_points(connections, segment_list = segments2, nodes = 0):
+#    if connections is not None:
+#        if type(connections) == tuple:
+#            start,end = connections
+#            if nodes == 1:
+#                return (segment_list[start][-1],    segment_list[end][0])
+#            else:
+#                return (segment_list[start][-1][0], segment_list[end][0][0])
+#        if type(connections) == list:
+#            if nodes == 1:
+#                return [(segment_list[start][-1],   segment_list[end][0]) for start,end in connections]
+#            else:
+#                return [(segment_list[start][-1][0],segment_list[end][0][0]) for start,end in connections]
+#        else:
+#            return None
 
 
 def old_conn_2_new(conn,transform):
@@ -630,65 +516,69 @@ def lr_weighted_sols(t_conns, weights, t_sols, lr_permutation_cases):
             a = 1
     return lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems
 
-def perms_with_branches(t_to_branches,t_segments_new,t_times_contours, return_nodes = False):
-    # if branch segments are present their sequences will be continuous and present fully
-    # means soolution will consist of combination of branches + other free nodes.
+#def perms_with_branches(t_to_branches,t_segments_new,t_times_contours, return_nodes = False):
+#    # if branch segments are present their sequences will be continuous and present fully
+#    # means soolution will consist of combination of branches + other free nodes.
             
-    # take combination of branches
-    t_branches_perms = combs_different_lengths(t_to_branches)
-    #t_branches_perms = sum([list(itertools.combinations(t_to_branches, r)) for r in range(1,len(t_to_branches)+1)],[])
+#    # take combination of branches
+#    t_branches_perms = combs_different_lengths(t_to_branches)
+#    #t_branches_perms = sum([list(itertools.combinations(t_to_branches, r)) for r in range(1,len(t_to_branches)+1)],[])
 
-    #t_values_drop = t_values.copy()
-    t_times_contours_drop = copy.deepcopy(t_times_contours)
-    t_contour_combs_perms = {}
-    t_branch_comb_variants = []
-    # drop all branches from choices. i will construct more different pools of contour combinations, where branches are frozen
-    for tID in t_to_branches: 
-        for t, (t_time, *t_subIDs) in enumerate(t_segments_new[tID]):
-            for t_subID in t_subIDs:
-                t_times_contours_drop[t_time].remove(t_subID)
-    # pre compute non-frozen node combinations
-    for t_time,t_contours in t_times_contours_drop.items():
-        t_perms = combs_different_lengths(t_contours)
-        #t_perms = sum([list(itertools.combinations(t_contours, r)) for r in range(1,len(t_contours)+1)],[])
-        t_contour_combs_perms[t_time] = t_perms
-    # prepare combination of branches. intermediate combinations should be gathered and frozen
-    t_branch_nodes = defaultdict(list) # for return_nodes
-    for t, t_branch_IDs in enumerate(t_branches_perms):
-        t_branch_comb_variants.append(copy.deepcopy(t_contour_combs_perms))    # copy a primer.
-        t_temp = {}                                                            # this buffer will gather multiple branches and their ID together
-        for t_branch_ID in t_branch_IDs:
-            for t_time, *t_subIDs in t_segments_new[t_branch_ID]:
-                if t_time not in t_temp: t_temp[t_time] = []
-                t_temp[t_time] += list(t_subIDs)                              # fill buffer
-        for t_time, t_subIDs in t_temp.items():
-            t_branch_comb_variants[t][t_time] += [tuple(t_subIDs)]            # walk buffer and add frozen combs to primer
-            t_branch_nodes[t_time].append(tuple(t_subIDs))
+#    #t_values_drop = t_values.copy()
+#    t_times_contours_drop = copy.deepcopy(t_times_contours)
+#    t_contour_combs_perms = {}
+#    t_branch_comb_variants = []
+#    # drop all branches from choices. i will construct more different pools of contour combinations, where branches are frozen
+#    for tID in t_to_branches: 
+#        for t, (t_time, *t_subIDs) in enumerate(t_segments_new[tID]):
+#            for t_subID in t_subIDs:
+#                t_times_contours_drop[t_time].remove(t_subID)
+#    # pre compute non-frozen node combinations
+#    for t_time,t_contours in t_times_contours_drop.items():
+#        t_perms = combs_different_lengths(t_contours)
+#        #t_perms = sum([list(itertools.combinations(t_contours, r)) for r in range(1,len(t_contours)+1)],[])
+#        t_contour_combs_perms[t_time] = t_perms
+#    # prepare combination of branches. intermediate combinations should be gathered and frozen
+#    t_branch_nodes = defaultdict(list) # for return_nodes
+#    for t, t_branch_IDs in enumerate(t_branches_perms):
+#        t_branch_comb_variants.append(copy.deepcopy(t_contour_combs_perms))    # copy a primer.
+#        t_temp = {}                                                            # this buffer will gather multiple branches and their ID together
+#        for t_branch_ID in t_branch_IDs:
+#            for t_time, *t_subIDs in t_segments_new[t_branch_ID]:
+#                if t_time not in t_temp: t_temp[t_time] = []
+#                t_temp[t_time] += list(t_subIDs)                              # fill buffer
+#        for t_time, t_subIDs in t_temp.items():
+#            t_branch_comb_variants[t][t_time] += [tuple(t_subIDs)]            # walk buffer and add frozen combs to primer
+#            t_branch_nodes[t_time].append(tuple(t_subIDs))
 
-    #aa2 = [itertools_product_length(t_choices.values()) for t_choices in t_branch_comb_variants]
-    # do N different variants and combine them together. it should be much shorter, tested on case where 138k combinations with 2 branches were reduced to 2.8k combinations
-    out = sum([list(itertools.product(*t_choices.values())) for t_choices in t_branch_comb_variants],[])
-    if return_nodes:
-        out2 = {t_time:[] for t_time in t_times_contours.keys()}
-        for t_time, t_combs in t_contour_combs_perms.items():
-            if len(t_combs) > 0:
-                for t_comb in t_combs:
-                    out2[t_time].append(t_comb)
-        for t_time, t_combs in t_branch_nodes.items():
-            for t_comb in t_combs:
-                out2[t_time].append(t_comb)
-        return out, out2
-    else:
-        return out
+#    #aa2 = [itertools_product_length(t_choices.values()) for t_choices in t_branch_comb_variants]
+#    # do N different variants and combine them together. it should be much shorter, tested on case where 138k combinations with 2 branches were reduced to 2.8k combinations
+#    out = sum([list(itertools.product(*t_choices.values())) for t_choices in t_branch_comb_variants],[])
+#    if return_nodes:
+#        out2 = {t_time:[] for t_time in t_times_contours.keys()}
+#        for t_time, t_combs in t_contour_combs_perms.items():
+#            if len(t_combs) > 0:
+#                for t_comb in t_combs:
+#                    out2[t_time].append(t_comb)
+#        for t_time, t_combs in t_branch_nodes.items():
+#            for t_comb in t_combs:
+#                out2[t_time].append(t_comb)
+#        return out, out2
+#    else:
+#        return out
 
 
-def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_to, graph_nodes, graph_segments, ID_remap, contours_dict):
-    from graphs_general import (set_custom_node_parameters, G2_set_parameters, seg_n_from, seg_n_to, node_time, node_owner_set)
-    
-    G2_n_start  = lambda node: seg_n_from(  node, graph_segments)
-    G2_n_end    = lambda node: seg_n_to(    node, graph_segments)
-    G_time      = lambda node: node_time(   node, graph_nodes   )
-    G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
+def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_to, ID_remap, contours_dict):
+    from graphs_general import (set_custom_node_parameters, G2_set_parameters, G_owner_set)
+    from graphs_general import (G, G2, G2_n_from, G2_n_to, G_time)
+
+    graph_nodes = G
+    graph_segments = G2
+
+    #G2_n_from  = lambda node: seg_n_from(  node, graph_segments)
+    #G2_n_to    = lambda node: seg_n_to(    node, graph_segments)
+    #G_time      = lambda node: node_time(   node, graph_nodes   )
+    #G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
 
     # NOTE: G_time and such are not implemented
     # *** is used to modify graphs and data storage with info about resolved connections between segments ***
@@ -715,12 +605,12 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
     segment_from_new        = ID_remap[segment_from]      # get reference of master of this segment
     ID_remap[segment_to]    = segment_from_new            # add let master inherit slave of this segment
 
-    node_from_last          = G2_n_end(segment_from_new)#node_segments[segment_from_new][-1]        # (1)
+    node_from_last          = G2_n_to(segment_from_new)#node_segments[segment_from_new][-1]        # (1)
     from_successors         = list(graph_nodes.successors(node_from_last))                          # (1)
     from_successors_edges   = [(node_from_last, node) for node in  from_successors]                 # (1)
     graph_nodes.remove_edges_from(from_successors_edges)                                            # (1)
 
-    node_to_first           = G2_n_start(segment_to)#node_segments[segment_to][0]                   # (2)
+    node_to_first           = G2_n_from(segment_to)#node_segments[segment_to][0]                   # (2)
     to_predecessors         = list(graph_nodes.predecessors(node_to_first))                         # (2)
     to_predecessors_edges   = [(node, node_to_first) for node in  to_predecessors]                  # (2)
     graph_nodes.remove_edges_from(to_predecessors_edges)                                            # (2)
@@ -743,7 +633,7 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
     node_segments[segment_to]       = []
     if segment_from_new != segment_from: node_segments[segment_from] = []
 
-    segment_successors  = graph_segments.successors(segment_to) #extractNeighborsNext(graph_segments, segment_to, lambda x: graph_segments.nodes[x]["t_start"])
+    segment_successors  = graph_segments.successors(segment_to) 
     t_edges             = [(segment_from_new,successor) for successor in segment_successors]
     graph_segments.remove_nodes_from([segment_to])
     graph_segments.add_edges_from(t_edges)
@@ -763,17 +653,20 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
         G_owner_set(t,segment_from_new) 
         #graph_nodes.nodes[t]["owner"] = segment_from_new
             
-    set_custom_node_parameters(graph_nodes, contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)    
-    G2_set_parameters(graph_nodes, graph_segments, node_segments[segment_from_new], segment_from_new)
+    set_custom_node_parameters(contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)    
+    G2_set_parameters(node_segments[segment_from_new], segment_from_new)
     
-def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to, graph_nodes, graph_segments, ID_remap, contours_dict):
+def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to, ID_remap, contours_dict):
     # *** is used to modify graphs and data storage with info about resolved extensions of merge branches (from left to merge node) ***
     # ref save_connections_two_ways() for docs. (2) absent, (3) is new
-    from graphs_general import (set_custom_node_parameters, G2_set_parameters, seg_n_to, node_time, node_owner_set)
+    from graphs_general import (set_custom_node_parameters, G2_set_parameters, G_owner_set)
+    from graphs_general import (G, G2, G2_n_to, G_time)
 
-    G2_n_end    = lambda node: seg_n_to(    node, graph_segments)
-    G_time      = lambda node: node_time(   node, graph_nodes   )
-    G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
+    graph_nodes = G
+    graph_segments = G2
+    #G2_n_to    = lambda node: seg_n_to(    node, graph_segments)
+    #G_time      = lambda node: node_time(   node, graph_nodes   )
+    #G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
 
     nodes_solo, nodes_composite = [],[]
 
@@ -785,7 +678,7 @@ def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to,
 
     segment_from_new        = ID_remap[segment_from]
 
-    node_from_last          = G2_n_end(segment_from_new)#node_segments[segment_from_new][-1]        # (1)
+    node_from_last          = G2_n_to(segment_from_new)#node_segments[segment_from_new][-1]        # (1)
     from_successors         = graph_nodes.successors(node_from_last)                                # (1)
     from_successors_edges   = [(node_from_last, node) for node in  from_successors]                 # (1)
     graph_nodes.remove_edges_from(from_successors_edges)                                            # (1)
@@ -820,19 +713,21 @@ def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to,
         graph_nodes.add_node(t, **t_params)
         G_owner_set(t, segment_from_new) 
         #graph_nodes.nodes[t]["owner"] = segment_from_new
-    set_custom_node_parameters(graph_nodes, contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)  
-    G2_set_parameters(graph_nodes, graph_segments, node_segments[segment_from_new], segment_from_new)
+    set_custom_node_parameters(contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)  
+    G2_set_parameters(node_segments[segment_from_new], segment_from_new)
 
     
-def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to, graph_nodes, graph_segments, ID_remap, contours_dict):
+def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,  ID_remap, contours_dict):
     # *** is used to modify graphs and data storage with info about resolved extensions of split branches (from right to split node) ***
     # ref save_connections_two_ways() for docs. (1) absent, (3) is new
     # >> maybe i have to sort nodes_composite instead of [::-1] <<< later
-    from graphs_general import (set_custom_node_parameters, G2_set_parameters, seg_n_from, node_time, node_owner_set)
-
-    G2_n_start  = lambda node: seg_n_from(  node, graph_segments)
-    G_time      = lambda node: node_time(   node, graph_nodes   )
-    G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
+    from graphs_general import (set_custom_node_parameters, G2_set_parameters, G_owner_set)
+    from graphs_general import (G, G2, G2_n_from, G_time)
+    graph_nodes = G
+    graph_segments = G2
+    #G2_n_from  = lambda node: seg_n_from(  node, graph_segments)
+    #G_time      = lambda node: node_time(   node, graph_nodes   )
+    #G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
 
     nodes_solo, nodes_composite = [],[]
 
@@ -844,7 +739,7 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
 
     #segment_from_new        = ID_remap[segment_from] # should not be used, since splits dont reach it
 
-    node_to_first           = G2_n_start(segment_to)#node_segments[segment_to][0]                   # (2)
+    node_to_first           = G2_n_from(segment_to)#node_segments[segment_to][0]                   # (2)
     to_predecessors         = graph_nodes.predecessors(node_to_first)                               # (2)
     to_predecessors_edges   = [(node, node_to_first) for node in  to_predecessors]                  # (2)
     graph_nodes.remove_edges_from(to_predecessors_edges)                                            # (2)
@@ -880,8 +775,8 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
             graph_nodes.add_node(t, **t_params)
             G_owner_set(t, segment_to)
             #graph_nodes.nodes[t]["owner"] = segment_to
-    set_custom_node_parameters(graph_nodes, contours_dict, t_composite_nodes, segment_to, calc_hull = 1)  # owner changed
-    G2_set_parameters(graph_nodes, graph_segments, node_segments[segment_to], segment_to)
+    set_custom_node_parameters(contours_dict, t_composite_nodes, segment_to, calc_hull = 1)  # owner changed
+    G2_set_parameters(node_segments[segment_to], segment_to)
 
 
 
@@ -1036,3 +931,4 @@ def itertools_product_length(choices):
     for sublist in choices:
         sequences_length *= len(sublist)
     return sequences_length
+

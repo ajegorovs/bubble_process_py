@@ -30,10 +30,11 @@ def track_time(reset = False):
 # ------------------------------------ CREATE MAIN PROJECT, SUBPROJECT FOLDERS ---------------------------//
 mainOutputFolder            = r'.\post_tests'                           # descritive project name e.g [gallium_bubbles, water_bubbles]
 mainOutputSubFolders =  ['Field OFF Series 7', 'sccm150-meanFix']       # sub-project folder hierarhy e.g [exp setup, parameter] 
-                                                                        # one more layer will be created for image subset later.
-# ========================================================================================================
-# ============== SET NUMBER OF IMAGES ANALYZED =================
-# ========================================================================================================
+"""                                                                       # one more layer will be created for image subset later.
+========================================================================================================
+============== SET NUMBER OF IMAGES ANALYZED =================
+========================================================================================================
+"""
 #inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\HFS 200 mT\Series 4\150 sccm' #
 inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\Field OFF\Series 7\150 sccm' #
 #inputImageFolder            = r'F:\UL Data\Bubbles - Optical Imaging\Actual\VFS 125 mT\Series 5\150 sccm' #
@@ -69,12 +70,12 @@ if 1 == 1:                               # prep image links, get min/max image i
 
     intervalStart   = extractIntergerFromFileName(imageLinks[0])        # update start index, so its captures in subfolder name.
     intervalStop    = extractIntergerFromFileName(imageLinks[-1])       # update end index 
-
-# ========================================================================================================//
-# ======================================== BUILD PROJECT FOLDER HIERARCHY ================================//
-# --------------------------------------------------------------------------------------------------------//
-# ------------------------------------ CREATE MAIN PROJECT, SUBPROJECT FOLDERS ---------------------------//
-
+"""
+========================================================================================================//
+======================================== BUILD PROJECT FOLDER HIERARCHY ================================//
+--------------------------------------------------------------------------------------------------------//
+------------------------------------ CREATE MAIN PROJECT, SUBPROJECT FOLDERS ---------------------------//
+"""
 if not os.path.exists(mainOutputFolder): os.mkdir(mainOutputFolder)  
 mainOutputSubFolders.append(f"{intervalStart:05}-{intervalStop:05}")       # sub-project folder hierarhy e.g [exp setup, parameter, subset of data]
 
@@ -120,7 +121,7 @@ from graphs_general import (graph_extract_paths, find_paths_from_to_multi, graph
                             comb_product_to_graph_edges, for_graph_plots,  extract_clusters_from_edges,
                             set_custom_node_parameters, G2_set_parameters, get_event_types_from_segment_graph)
 
-from graphs_general import (seg_t_start, seg_t_end, seg_n_from, seg_n_to, seg_edge_d, node_time, node_area, node_centroid, node_owner, node_owner_set)
+from graphs_general import (G, G2, key_nodes, keys_segments, G2_t_start, G2_t_end, G2_n_from, G2_n_to, G2_edge_dist, G_time, G_area, G_centroid, G_owner, G_owner_set)
 
 from interpolation import (interpolate_trajectory, interpolate_find_k_s, extrapolate_find_k_s, interpolateMiddle2D_2, interpolateMiddle1D_2)
 
@@ -129,12 +130,12 @@ from misc import (cyclicColor, timeHMS, modBR, rect2contour, combs_different_len
                   split_into_bins, lr_reindex_masters, dfs_pred, dfs_succ, old_conn_2_new, lr_evel_perm_interp_data, lr_weighted_sols, 
                   save_connections_two_ways, save_connections_merges, save_connections_splits, itertools_product_length, conflicts_stage_1, 
                   conflicts_stage_2, conflicts_stage_3, edge_crit_func, two_crit_many_branches)
-
-# ========================================================================================================
-# ============== Import image files and process them, store in archive or import archive =================
-# ========================================================================================================
-# NOTE: mapXY IS USED TO FIX FISH-EYE DISTORTION. 
-
+"""
+========================================================================================================
+============== Import image files and process them, store in archive or import archive =================
+========================================================================================================
+NOTE: mapXY IS USED TO FIX FISH-EYE DISTORTION. 
+"""
 cropMaskName = "-".join(mainOutputSubFolders[:2])+'-crop'
 cropMaskPath = os.path.join(os.path.join(*mainOutputFolder.split(os.sep)[:-1]), f"{cropMaskName}.png")
 cropMaskMissing = True if not os.path.exists(cropMaskPath) else False
@@ -154,9 +155,11 @@ post_binary_data    =   os.path.join(stagesFolder       ,  "intermediate_data.pi
 
 print(track_time(reset = True))
 if not os.path.exists(archivePath):
-    # ===================================================================================================
-    # ======== CROP USING A MASK (DRAW RED RECTANGLE ON EXPORTED SAMPLE IN MANUAL MASK FOLDER) ==========
-    # IF MASK IS MISSING YOU CAN DRAW IT USING GUI
+    """
+    ===================================================================================================
+    ======== CROP USING A MASK (DRAW RED RECTANGLE ON EXPORTED SAMPLE IN MANUAL MASK FOLDER) ==========
+    IF MASK IS MISSING YOU CAN DRAW IT USING GUI
+    """
     if cropMaskMissing: # search for a mask at cropMaskPath (project -> setup -> parameter)
         print(f"\nNo crop mask in {mainOutputFolder} folder!, creating mask : {cropMaskName}.png")
         mapXY           = (np.load('./mapx.npy'), np.load('./mapy.npy'))
@@ -181,11 +184,11 @@ if not os.path.exists(archivePath):
     # --------------------- EXTRACT MASK CONTOUR-> BOUNDING RECTANGLE (USED FOR CROP) ------------------
     contours = cv2.findContours(manualMask,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
     [X, Y, W, H] = cv2.boundingRect(contours[0])
-
-    # ===================================================================================================
-    # =========================== CROP/UNSISTORT AND STORE DATA INTO ARCHIVES ===========================
-    # ---------------------------------------------------------------------------------------------------
-
+    """
+    ===================================================================================================
+    =========================== CROP/UNSISTORT AND STORE DATA INTO ARCHIVES ===========================
+    ---------------------------------------------------------------------------------------------------
+    """
     print(f"\n{timeHMS()}: Processing and saving archive data on drive... {track_time()}\n")
     
     if rotateImageBy % 2 == 0 and rotateImageBy != -1: W,H = H,W            # for cv2.XXX rotation commands
@@ -219,14 +222,14 @@ if not os.path.exists(meanImagePath):
 else:
     meanImage = np.load(meanImagePath)['arr_0']
     print(f"\n{timeHMS()}:  Mean image found. Loading ... Done! {track_time()}")
-
-# =========================================================================================================
-# discrete update moving average with window N, with intervcal overlap of N/2
-# [-interval1-]         for first segment: interval [0,N]. switch to next window at i = 3/4*N,
-#           |           which is middle of overlap. 
-#       [-interval2-]   for second segment: inteval is [i-1/4*N, i+3/4*N]
-#                 |     third switch 1/4*N +2*[i-1/4*N, i+3/4*N] and so on. N/2 between switches
-
+"""
+=========================================================================================================
+discrete update moving average with window N, with intervcal overlap of N/2
+[-interval1-]         for first segment: interval [0,N]. switch to next window at i = 3/4*N,
+          |           which is middle of overlap. 
+      [-interval2-]   for second segment: inteval is [i-1/4*N, i+3/4*N]
+                |     third switch 1/4*N +2*[i-1/4*N, i+3/4*N] and so on. N/2 between switches
+"""
 if useMeanWindow:
 
     print(f"\n{timeHMS()}: Mean window is enabled. working on it... {track_time()}")                 # index all images
@@ -514,15 +517,15 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     doX_s = f"{doX:0{max_width}}"        # pad index with zeros so 1 is aligned with 1000: 1 -> 0001
     print('\n\n=========================================================================================================\n')
     print(f'{timeHMS()}:({doX_s}) working on family {doX} {track_time()}')
-
-    # ===============================================================================================
-    # =============== Refine expanded BR overlap subsections with solo contours =====================
-    # ===============================================================================================
-    # WHAT: recalculate overlap between bubble bounding rectangles on to time-adjecent time frames
-    # WHAT: without expaning b-recs for small contours
-    # WHY:  expended b-rec clustering was too rough and might have falsely connected neighbor bubbles 
-    # HOW:  generate bounding rectangles for time step frame and determing overlap
-
+    """
+    ===============================================================================================
+    =============== Refine expanded BR overlap subsections with solo contours =====================
+    ===============================================================================================
+    WHAT: recalculate overlap between bubble bounding rectangles on to time-adjecent time frames
+    WHAT: without expaning b-recs for small contours
+    WHY:  expended b-rec clustering was too rough and might have falsely connected neighbor bubbles 
+    HOW:  generate bounding rectangles for time step frame and determing overlap
+    """
     print(f'\n{timeHMS()}:({doX_s}) generating rough contour overlaps')
 
     # 'pre_family_nodes' contains node which are clusters of contours
@@ -543,60 +546,61 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         lr_edge_temporal.extend(overlappingRotatedRectangles(oldBRs,newBrs))
 
     # for_graph_plots(G)    # <<<<<<<<<<<<<<
-    # ===============================================================================================
-    # ======================== DEFINE A NODE VIEW GRAPH, SET NODE PARAMETERS ========================
-    # ===============================================================================================
-    # WHAT: create a graph with nodes which represent separate contours on each frame, attach contour parameters.
-    # WHY:  hold most information on graph so all important information is held in one place and is easy to retrieve.
-    # NOTE: lambda functions are defined to reference G by id(), so dont redefine G because ref will not update to new obj.
+    """
+    ===============================================================================================
+    =============================== DEFINE A NODE AND SEGMENT VIEW GRAPH ==========================
+    ===============================================================================================
+    WHAT:   create two graphs: 1) one for holding information about contours as nodes of type (time, local_ID)
+    WHAT:   and edges between these nodes show contour overlap (proximity). 2) second graph contains information about
+    WHAT:   how different bubble trajectories split and merge. trajectories are node chains and each has an integer
+    WHAT:   identifier, which is a node on 'segment' graph. edges show that one such segment is connected to others.
+    WHY:    it is best to hold all information on graphs: G = node view, holds information about each contour and their
+    WHY:    connectivity. from it trajectories can be derived into G2, which is used to analyze splits/merges.
+    NOTE:   many functions are defined to modify contents of graphs. to make it easy i keep working with only
+    NOTE:   one instance of each graph and modify it. this way i can set it as a default target and dont have to carry around.
+    NOTE:   in order to prevent cycling imports i define graphs in graphs related module, also key_nodes and keys_segments
+    """
+    [key_t_start, key_t_end, key_n_start, key_n_end, key_e_dist]    = key_nodes     # string keys are defined in graphs_general
+    [key_time, key_area, key_centroid, key_owner, key_momz]         = keys_segments # modules. its for debugging and manual inspection.
+    
+    G.clear()                                                                       # clear contents of node and segment view graphs. 
+    G2.clear()                                                                      # clear not redefine to keep the OG reference
+    G.add_nodes_from(lr_nodes_all)                                                  # add all nodes for this family of nodes
+    G.add_edges_from(lr_edge_temporal)                                              # add overlap information as edges. not all nodes are inter-connected
+    
+    set_custom_node_parameters(g0_contours_hulls, G.nodes(), None, calc_hull = 0)   # store node parameters, about owner = None read next stage
+      
+    """
+    ===============================================================================================
+    =========================== EXTRACT NODE CHAINS FROM NODE VIEW (G) GRAPH ======================
+    ===============================================================================================
+    WHY:    long G graph segmenst (which is a chain of solo contour nodes) is likely to be a 
+    WHY:    single bubble raising without merges and splits. 
+    HOW:    read info in graph_extract_paths(). 
+    """
 
-    G = nx.DiGraph()
-    G.add_nodes_from(lr_nodes_all)                          # add all nodes
-    G.add_edges_from(lr_edge_temporal)                      # add overlap information as edges. not all nodes are inter-connected
-    
-    set_custom_node_parameters(G, g0_contours_hulls, G.nodes(), None, calc_hull = 0) # pre define params and init owner to None 
-    
-    G_time      = lambda node: node_time(       node, G)    # def functions to retrieve bubble params.
-    G_area      = lambda node: node_area(       node, G)    # watch out default graph G is called by reference.  
-    G_centroid  = lambda node: node_centroid(   node, G)    # if you redefine G it will use old graph values 
-    G_owner     = lambda node: node_owner(      node, G)    # code uses stray node owner None, but gephi needs an int. so its -1 for end code  
-    G_owner_set = lambda node, owner: node_owner_set(node, G, owner)
-    # ==============================================================================================
-    # ========== DEFINE A SEGMENT (TRAJETORY ABSTRACTION) VIEW GRAPH, SET NODE PARAMETERS ==========
-    # ==============================================================================================
-    # WHAT: create a graph that does not hold all nodes, but represents interaction between trajectories.
-    # WHY:  this graph is used to analyze connectivity between trajectories and stores most relevant info.
-    # NOTE: same as G, dotn redefine G2, only update its values.
-    G2 = nx.DiGraph()
-    
-    G2_t_start      = lambda node : seg_t_start(node, G2)   # trajectory start time
-    G2_t_end        = lambda node : seg_t_end(  node, G2)  
-    G2_n_start      = lambda node : seg_n_from( node, G2)   # trajectory starts with a node
-    G2_n_end        = lambda node : seg_n_to(   node, G2)      
-    G2_edge_dist    = lambda edge : seg_edge_d( edge, G2)   # time inteval between two trajectories
-
-    print(f'\n{timeHMS()}:({doX_s}) Detecting frozen bubbles ... ')
-   
     seg_min_length = 2     
     segments_fb = graph_extract_paths(G, min_length = seg_min_length)
 
+    # add node owner parameter, which shows to which chain this node belongs (index in segments_fb)
     for owner, segment in enumerate(segments_fb):
-        G2_set_parameters(G, G2, segment, owner)
+        G2_set_parameters(segment, owner)
         for node in segment:
             G_owner_set(node, owner)
-            #G.nodes[node]["owner"] = owner
 
     #for_graph_plots(G, segments_fb, show = True)
-
-    # ===============================================================================================
-    # ========================= FIND OBJECTS/BUBBLES THAT ARE FROZEN IN PLACE =======================
-    # ===============================================================================================
-    # WHAT: find which chains dont move
-    # WHY:  these may be semi-static arftifacts or very small bubbles which stick to walls
-    # HOW:  1) check displacement for all chains 
-    # HOW:  2) check if frozen chains are continuation of same artifacts
-    # HOW:  3) isolate faulty nodes from analysis (from graph)
-    
+    """
+    ===============================================================================================
+    ========================= FIND OBJECTS/BUBBLES THAT ARE FROZEN IN PLACE =======================
+    ===============================================================================================
+    WHAT:   find which chains dont move (much)
+    WHY:    these may be semi-static arftifacts or very small bubbles which stick to walls
+    WHY:    they dont contribute anything meaningfull to analysis only add complexity
+    HOW:    1) check displacement for all chains 
+    HOW:    2) check if frozen chains are continuation of same artifacts
+    HOW:    3) isolate faulty nodes from analysis (from graph)
+    """
+    print(f'\n{timeHMS()}:({doX_s}) Detecting frozen bubbles ... ')
     # 1)    find displacement norms if mean displ is small
     # 1)    remember average centroid -> frozen object 'lives' around this point
     # 1)    remember mean area and area stdev
@@ -675,10 +679,12 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             nodes = segments_fb[ID]
             G.remove_nodes_from(nodes)
             remove_nodes.extend(nodes)
-    # ===============================================================================================
-    # =================== REDEFINE SEGMENTS AFTER FROZEN BUBBLES ARE REMOVED ========================
-    # ===============================================================================================
-    # WHY:  frozen nodes were stripped from graph, have to recalc connectivity and segments
+    """
+    ===============================================================================================
+    =================== REDEFINE SEGMENTS AFTER FROZEN BUBBLES ARE REMOVED ========================
+    ===============================================================================================
+    WHY:  frozen nodes were stripped from graph, have to recalculate segments (chains)
+    """
     print(f'\n{timeHMS()}:({doX_s}) Detecting frozen bubbles ... DONE')
     segments2 = graph_extract_paths(G, min_length = seg_min_length)
 
@@ -686,7 +692,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     
     # store information on segment view graph and update node ownership
     for owner,segment in enumerate(segments2):
-        G2_set_parameters(G, G2, segment, owner)
+        G2_set_parameters(segment, owner)
         for node in segment:
             G_owner_set(node, owner)
             #G.nodes[node]["owner"] = owner
@@ -694,85 +700,77 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     #if doX >= 0:
     #    for_graph_plots(G, segs = segments2)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     print(f'\n{timeHMS()}:({doX_s}) Determining connectivity between segments... ')
-    # ===============================================================================================
-    # ========================== FIND CONNECTIVITY BETWEEN SEGMENTS =================================
-    # ===============================================================================================
-    # WHAT: find if segments are conneted pairwise: one segment ends -> other begins
-    # WHY:  its either one bubble which has optically disrupted trajectory or merge/split of multiple bubbles 
-    # HOW:  read 'graphs_general:graph_check_paths()' comments.
-    # HOW:  in short: 1) find all start-end pairs that exist with time interval of length 'lr_maxDT'
-    # HOW:  check if there is a path between two segments. first by custom funciton, then nx.has_path()
-
+    """
+    ===============================================================================================
+    ========================== FIND CONNECTIVITY BETWEEN SEGMENTS =================================
+    ===============================================================================================
+    WHAT: find if segments are connected pairwise: one segment ends -> other begins
+    WHY:  its either one bubble which has optically disrupted trajectory or merge/split of multiple bubbles 
+    HOW:  read 'graphs_general:graph_check_paths()' comments.
+    HOW:  in short: 1) find all start-end pairs that exist with time interval of length 'lr_maxDT'
+    HOW:  check if there is a path between two segments. first by custom funciton, then nx.has_path()
+    """
     lr_maxDT = 60   # search connections with this many time steps.
 
     t_has_holes_report = {}
-    G2 = graph_check_paths(G, G2, lr_maxDT, t_has_holes_report)
+    G2 = graph_check_paths(lr_maxDT, t_has_holes_report)
 
     print(f'\n{timeHMS()}:({doX_s}) Paths that have failed hole test: {t_has_holes_report}')
      
     print(f'\n{timeHMS()}:({doX_s}) Working on one-to-one (121) segment connections ... ')
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # ===============================================================================================
-    # === PROCESS SEGMENT-SEGMENT CONNECTIONS THAT ARE CONNECTED ONLY TOGETHER (ONE-TO-ONE; 121) ====
-    # ===============================================================================================
-    # WHY:  long graph segment (which is a chain of one contour nodes) is likely a single bubble
-    # WHY:  raising without merges and splits. sometimes, due to optical lighting artifacts or other 
-    # WHY:  artifacts, next to bubble pops out an unwanted object, or its a same bubble that visually
-    # WHY:  splits and recombines. that means that solo contour trajectory is interrupted by a 'hole'
-    # WHY:  in graph, which is actually an 'explositon' of connections into 'stray' nodes and 'collapse' 
-    # WHY:  back to a solo trajectory.
-    # WHY:  these holes can be easily patched, but first they have to be identified
-    # WHY:  if this happens often, then instead of analyzing such 'holes' locally, we can analyze 
-    # WHY:  whole trajectory with all holes and patch them more effectively using longer bubble history.
+    """
+    ===============================================================================================
+    === PROCESS SEGMENT-SEGMENT CONNECTIONS THAT ARE CONNECTED ONLY TOGETHER (ONE-TO-ONE; 121) ====
+    ===============================================================================================
+    WHY:    Sometimes, due to optical lighting artifacts or other artifacts, next to bubble pops out
+    WHY:    an unwanted object, or its a same bubble that visually splits and recombines. 
+    WHY:    That means that solo contour trajectory is interrupted by a 'hole'  in graph, which is actually
+    WHY:    an 'explositon' of connections into 'stray' nodes and 'collapse' back to a solo trajectory.
+    WHY:    These holes can be easily patched, but first they have to be identified
+    WHY:    if this happens often, then instead of analyzing such 'holes' individually, we can analyze 
+    WHY:    whole trajectory with all holes and patch them more effectively using longer bubble history.
 
-    # FLOWCHART OF PROCESSING 121 (one-to-one) SEGMENTS:
-    #
-    # (121.A) isolate 121 connections
-    # (121.B) extract inter-segment nodes as time slices : {t1:[*subIDs],...}
-    # (121.C) detect which cases are zero-path ZP. its 121 that splits into segment and a node. byproduct of a method.
-    # (121.D) resolve case with ZP
-    # (121.E) find which 121 form a long chain- its an interrupted solo bubble's trejctory.
-    #           missing data in 'holes' is easier to interpolate from larger chains 
-    # DEL-(121.F) chain edges may be terminated by artifacts - 'fake' events, find them and refine chain list elements.
-    # (121.G) hole interpolation
-    # (121.H) prep data (area, centroids) for all subID combinations
-    # (121.I) generate permutations from subIDs
-    # (121.K) generate all possible evolutions of subIDs perms though time. 
-    # (121.J) find best fit evolution by minimizing area and isplacement criterium
-    # (121.L) save data into graps and storage.
-
-    # ===============================================================================================
-    # === extract segment-segment connections that are connected only together (one-to-one; 121) ====
-    # ===============================================================================================
-    #
-    # ===============================================================================================
-    # === DETERMINE EDGE TYPES OF EVENTS (PREP FOR FAKE EVENT DETECTION ON EDGES OF 121 CHAINS) =====
-    # ===============================================================================================
-    # WHAT: extract all 121 type connections. splits merges are not important now.
+    FLOWCHART OF PROCESSING 121 (one-to-one) SEGMENTS:
+    
+    (121.A) isolate 121 connections
+    (121.B) extract inter-segment nodes as time slices : {t1:[*subIDs],...}
+    (121.C) detect which cases are zero-path ZP. its 121 that splits into segment and a node. byproduct of a method.
+    (121.D) resolve case with ZP
+    (121.E) find which 121 form a long chain- its an interrupted solo bubble's trejctory.
+              missing data in 'holes' is easier to interpolate from larger chains 
+    DEL-(121.F) chain edges may be terminated by artifacts - 'fake' events, find them and refine chain list elements.
+    (121.G) hole interpolation
+    (121.H) prep data (area, centroids) for all subID combinations
+    (121.I) generate permutations from subIDs
+    (121.K) generate all possible evolutions of subIDs perms though time. 
+    (121.J) find best fit evolution by minimizing area and isplacement criterium
+    (121.L) save data into graps and storage.
+    """
+    
     #print(id(G2))
     G2, lr_ms_edges_main = get_event_types_from_segment_graph(G2)
     #print(id(G2))
     t_conn_121 = lr_ms_edges_main['solo']
-    # ===================================================================================================
-    # ==================== SLICE INTER-SEGMENT (121) NOTE-SUBID SPACE W.R.T TIME ========================
-    # ===================================================================================================
-    # WHAT: 121 segments are connected via stay (non-segment) nodes. extract them and reformat into  {TIME1:[*SUBIDS_AT_TIME1],...}
-    # WHY:  at each time step bubble may be any combination of SUBIDS_AT_TIMEX. most likely whole SUBIDS_AT_TIMEX. but possibly not
-
+    """
+    ===================================================================================================
+    ==================== SLICE INTER-SEGMENT (121) NOTE-SUBID SPACE W.R.T TIME ========================
+    ===================================================================================================
+    WHAT: 121 segments are connected via stay (non-segment) nodes. extract them and reformat into  {TIME1:[*SUBIDS_AT_TIME1],...}
+    WHY:  at each time step bubble may be any combination of SUBIDS_AT_TIMEX. most likely whole SUBIDS_AT_TIMEX. but possibly not
+    """
     lr_big121s_perms_pre = {}
     for fr, to in t_conn_121:
             
-        node_from, node_to = G2_n_end(fr)       , G2_n_start(to)
+        node_from, node_to = G2_n_to(fr)        , G2_n_from(to)
         time_from, time_to = G_time(node_from)  , G_time(node_to)
 
         # isolate stray nodes on graph at time interval between two connected segments
-        dist      = G2_edge_dist((fr,to))#G2.edges[(fr,to)]['dist']
+        dist      = G2_edge_dist((fr,to))
         if dist   == 2:# zero-path connections have to include edge times.
             nodes_keep = [n for n in G.nodes() if time_from <= G_time(n) <= time_to]
-            #nodes_keep = [n for n, t in G.nodes(data='time') if time_from <= t <= time_to]
         else:
             nodes_keep    = [node for node in G.nodes() if time_from < G_time(node) < time_to and G_owner(node) is None] 
-            #nodes_keep = [n for n, t in G.nodes(data='time') if time_from < t < time_to and G_owner(n) in (None, -1)]
             nodes_keep.extend([node_from,node_to])
             
         # extract connected nodes using depth search. not sure why i switched from connected components. maybe i used it wrong and it was slow
@@ -792,12 +790,14 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         a = 1
 
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # ===================================================================================================
-    # ============================ SEPARATE 121 PATHS WITH ZERO INTER LENGTH ============================
-    # ===================================================================================================
-    # WHAT:     121 connection with no internal nodes = nothing to restore. segment+ node -> split case
-    # HOW:      absorb split/merge node into segment and stick together
-    # NOTE:     dont particularly like how its done
+    """
+   ===================================================================================================
+   ============================ SEPARATE 121 PATHS WITH ZERO INTER LENGTH ============================
+   ===================================================================================================
+   WHAT:     121 connection with no internal nodes = nothing to restore. segment + node -> split case
+   HOW:      absorb split/merge node into segment and stick together
+   NOTE:     dont particularly like how its done
+    """
     lr_zp_redirect = {i: i for i,_ in enumerate(segments2)}
     if 1 == 1:
         t_conn_121_zero_path = []
@@ -840,9 +840,9 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             G.remove_nodes_from(nodes_solo) 
             G.add_edges_from(edges)
             # composite not is new and does not exist on G. add it and its params
-            set_custom_node_parameters(G, g0_contours, nodes_composite, fr_new, calc_hull = 1)
+            set_custom_node_parameters( g0_contours, nodes_composite, fr_new, calc_hull = 1)
             # inherit G2 params. time end, node end and successors:
-            G2_set_parameters(G, G2, segments2[fr_new], fr_new)
+            G2_set_parameters(segments2[fr_new], fr_new)
 
             successors   = G2.successors(to)
             edges_next = [(fr_new, i) for i in successors]
@@ -853,22 +853,20 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             lr_zp_redirect[to] = fr_new
             print(f'zero path: joined segments: {conn}')
 
-            #for node in nodes_next: G.nodes[node]["owner"] =  fr_new
-            #G2.nodes()[fr_new]['node_end']  = G2_n_end(to)
-            #G2.nodes()[fr_new]["t_end"]     = G2_t_end(to) 
 
     
     t_conn_121              = lr_reindex_masters(lr_zp_redirect, t_conn_121, remove_solo_ID = 1)
     
     # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<  
-    # ===============================================================================================
-    # ============================== FIND CHAINS OF 121 CONNECTED SEGMENTS ==========================
-    # ===============================================================================================
-    # WHAT: find which segments are continiously connected via 121 connection to other segments
-    # WHY:  they are most likely single bubble which has an optical split.
-    # HOW:  use 121 edges and condence to a graph, extract connected compontents
-    # NOTE: same principle as in 'fb_segment_clusters'
-    
+    """
+    ===============================================================================================
+    ============================== FIND CHAINS OF 121 CONNECTED SEGMENTS ==========================
+    ===============================================================================================
+    WHAT: find which segments are continiously connected via 121 connection to other segments
+    WHY:  they are most likely single bubble which has an optical split.
+    HOW:  use 121 edges and condence to a graph, extract connected compontents
+    NOTE: same principle as in 'fb_segment_clusters'
+    """
     lr_big_121s_chains = extract_clusters_from_edges(t_conn_121)
 
     print(f'\n{timeHMS()}:({doX_s}) Working on joining all continious 121s together: {lr_big_121s_chains}')
@@ -877,13 +875,14 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         
         t_big121s_edited = lr_big_121s_chains.copy()
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        # ===============================================================================================
-        # ==================== 121 CHAINS: INTERPOLATE DATA IN HOLES OF LONG CHAINS =====================
-        # ===============================================================================================
-        # WHAT: we have chains of segments that represent solo bubble. its at least 2 segments (1 hole). interpolate data
-        # WHY:  if there are more than 2 segments, we will have more history and interpolation will be of better quality
-        # HOW:  scipy interpolate 
-        
+        """
+        ===============================================================================================
+        ==================== 121 CHAINS: INTERPOLATE DATA IN HOLES OF LONG CHAINS =====================
+        ===============================================================================================
+        WHAT: we have chains of segments that represent solo bubble. its at least 2 segments (1 hole). interpolate data
+        WHY:  if there are more than 2 segments, we will have more history and interpolation will be of better quality
+        HOW:  scipy interpolate 
+        """
         lr_big121s_edges_relevant = []
         lr_big121s_interpolation        = defaultdict(dict)
 
@@ -918,14 +917,14 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                     lr_big121s_interpolation[conn_new]['centroids'] = np.array(centroids)
                     lr_big121s_interpolation[conn_new]['areas'    ] = areas
                     lr_big121s_interpolation[conn_new]['times'    ] = times
-                    
-        # ===================================================================================================
-        # ================ 121 CHAINS: CONSTRUCT PERMUTATIONS FROM CLUSTER ELEMENT CHOICES ==================
-        # ===================================================================================================
-        # WHAT: generate different permutation of subIDs for each time step.
-        # WHY:  Bubble may be any combination of contour subIDs at a given time. should consider all combs as solution
-        # HOW:  itertools combinations of varying lenghts
-
+        """            
+        ===================================================================================================
+        ================ 121 CHAINS: CONSTRUCT PERMUTATIONS FROM CLUSTER ELEMENT CHOICES ==================
+        ===================================================================================================
+        WHAT: generate different permutation of subIDs for each time step.
+        WHY:  Bubble may be any combination of contour subIDs at a given time. should consider all combs as solution
+        HOW:  itertools combinations of varying lenghts
+        """
         print(f'\n{timeHMS()}:({doX_s}) Computing contour element permutations for each time step...')
         
         # if "lr_zp_redirect" is not trivial, drop resolved zp edges
@@ -947,10 +946,12 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                     lr_big121s_perms[edge][time] = combs_different_lengths(subIDs)
 
         lr_big121s_conn_121 = lr_big121s_edges_relevant
-        # ===============================================================================================
-        # =========== 121 CHAINS: PRE-CALCULATE HULL CENTROIDS AND AREAS FOR EACH PERMUTATION ===========
-        # ===============================================================================================
-        # WHY: these will be reused alot in next steps, store beforehand
+        """
+        ===============================================================================================
+        =========== 121 CHAINS: PRE-CALCULATE HULL CENTROIDS AND AREAS FOR EACH PERMUTATION ===========
+        ===============================================================================================
+        WHY: these will be reused alot in next steps, store beforehand
+        """
         print(f'\n{timeHMS()}:({doX_s}) Calculating parameters for possible contour combinations...')
         
         lr_big121s_perms_areas      = {}
@@ -970,27 +971,29 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                     lr_big121s_perms_mom_z[     conn][time][perm] = mom_z
 
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        # ===============================================================================================
-        # ========== 121 CHAINS: CONSTUCT UNIQUE EVOLUTIONS THROUGH CONTOUR PERMUTATION SPACE ===========
-        # ===============================================================================================
-        # WHAT: using subID permutations at missing time construct choice tree. 
-        # WHY:  each branch represents a bubbles contour ID evolution through unresolved intervals.
-        # HOW:  either though itertools product or, if number of branches is big, dont consider
-        # HOW:  branches where area changes more than a set threshold. 
-        # -----------------------------------------------------------------------------------------------
-        # NOTE: number of branches (evolutions) from start to finish may be very large, depending on 
-        # NOTE: number of time steps and contour permutation count at each step. 
-        # NOTE: it can be calculated as 't_branches_count' = len(choices_t1)*len(choices_t2)*...
-        # case 0)   if count is small, then use combinatorics product function.
-        # case 1a)  if its large, dont consider evoltions where bubble changes area rapidly from one step to next.
-        # case 1b)  limit number of branches retrieved by 't_max_paths'. we can leverage known assumption to
-        #           get better branches in this batch. assumption- bubbles most likely include all 
-        #           subcontours at each time step. Transitions from large cluster to large cluster has a priority.
-        #           if we create a graph with large to large cluster edges first, pathfinding method
-        #           will use them to generate first evolutions. so you just have to build graph in specific order.
-        # case 2)   optical splits have 121 chains in inter-segment space. these chains are not atomized into
-        #           solo nodes, but can be included into evolutions as a whole. i.e if 2 internal chains are
-        #           present, you can create paths which include 1st, 2nd on both branches simultaneously.
+        """
+        ===============================================================================================
+        ========== 121 CHAINS: CONSTUCT UNIQUE EVOLUTIONS THROUGH CONTOUR PERMUTATION SPACE ===========
+        ===============================================================================================
+        WHAT: using subID permutations at missing time construct choice tree. 
+        WHY:  each branch represents a bubbles contour ID evolution through unresolved intervals.
+        HOW:  either though itertools product or, if number of branches is big, dont consider
+        HOW:  branches where area changes more than a set threshold. 
+        -----------------------------------------------------------------------------------------------
+        NOTE: number of branches (evolutions) from start to finish may be very large, depending on 
+        NOTE: number of time steps and contour permutation count at each step. 
+        NOTE: it can be calculated as 't_branches_count' = len(choices_t1)*len(choices_t2)*...
+        case 0)   if count is small, then use combinatorics product function.
+        case 1a)  if its large, dont consider evoltions where bubble changes area rapidly from one step to next.
+        case 1b)  limit number of branches retrieved by 't_max_paths'. we can leverage known assumption to
+                  get better branches in this batch. assumption- bubbles most likely include all 
+                  subcontours at each time step. Transitions from large cluster to large cluster has a priority.
+                  if we create a graph with large to large cluster edges first, pathfinding method
+                  will use them to generate first evolutions. so you just have to build graph in specific order.
+        case 2)   optical splits have 121 chains in inter-segment space. these chains are not atomized into
+                  solo nodes, but can be included into evolutions as a whole. i.e if 2 internal chains are
+                  present, you can create paths which include 1st, 2nd on both branches simultaneously.
+        """
         print(f'\n{timeHMS()}:({doX_s}) Generating possible bubble evolution paths from prev combinations...')
 
         lr_big121s_perms_cases = {}
@@ -1043,20 +1046,21 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         [lr_big121s_perms_cases.pop(tc, None) for tc in lr_drop_huge_perms]
         [lr_big121s_perms_times.pop(tc, None) for tc in lr_drop_huge_perms]
         print(f'\n{timeHMS()}:({doX_s}) Dropping huge permutations: {lr_drop_huge_perms}') 
-        # ===============================================================================================
-        # ========= 121 CHAINS: FIND BEST FIT EVOLUTIONS OF CONTOURS THOUGH HOLES (TIME-WISE) ===========
-        # ===============================================================================================
-        # WHAT: calculate how area and centroids behave for each evolution
-        # WHY:  evolutions with least path length and area changes should be right ones pregenerated data
-        # HOW:  for each conn explore permutations fo each evolution. generate trajectory and areas from.
-        # HOW:  evaluate 4 criterions and get evolution indicies where there crit are the least:
-        # HOW:  1) displacement error form predicted trajetory (interpolated data)
-        # HOW:  2) sum of displacements for each evolution = total path. should be minimal
-        # HOW:  3) relative area chainges its mean and stdev values (least mean rel area change, least mean stdev)
-        # HOW:  4) same with moment z, which is very close to 3) except scaled. (although min result is different) 
-        # HOW:  currently you get 4 bins with index of evolution with minimal crit. ie least 1) is for evol #1
-        # HOW:  least #2 is for evol 64, least #3 is for #1 again,.. etc
-          
+        """
+        ===============================================================================================
+        ========= 121 CHAINS: FIND BEST FIT EVOLUTIONS OF CONTOURS THOUGH HOLES (TIME-WISE) ===========
+        ===============================================================================================
+        WHAT: calculate how area and centroids behave for each evolution
+        WHY:  evolutions with least path length and area changes should be right ones pregenerated data
+        HOW:  for each conn explore permutations fo each evolution. generate trajectory and areas from.
+        HOW:  evaluate 4 criterions and get evolution indicies where there crit are the least:
+        HOW:  1) displacement error form predicted trajetory (interpolated data)
+        HOW:  2) sum of displacements for each evolution = total path. should be minimal
+        HOW:  3) relative area chainges its mean and stdev values (least mean rel area change, least mean stdev)
+        HOW:  4) same with moment z, which is very close to 3) except scaled. (although min result is different) 
+        HOW:  currently you get 4 bins with index of evolution with minimal crit. ie least 1) is for evol #1
+        HOW:  least #2 is for evol 64, least #3 is for #1 again,.. etc
+        """ 
         print(f'\n{timeHMS()}:({doX_s}) Determining evolutions thats are closest to interpolated missing data...')
         # NOTE: >>> this needs refactoring, not internals, but argument data management <<<<
         temp_centroids = {tc:d['centroids'] for tc, d in lr_big121s_interpolation.items()}
@@ -1083,8 +1087,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         for conn in lr_big121s_conn_121:
             fr, to = conn
             fr_new, to_new = old_conn_2_new(conn,lr_121chain_redirect)
-            print(f'edge :({fr},{to}) or = {G2_n_end(fr_new)}->{G2_n_start(to_new)}')  
-            save_connections_two_ways(t_segments_new, lr_big121s_perms_pre[conn], fr, to, G, G2, lr_121chain_redirect, g0_contours)
+            print(f'edge :({fr},{to}) or = {G2_n_to(fr_new)}->{G2_n_from(to_new)}')  
+            save_connections_two_ways(t_segments_new, lr_big121s_perms_pre[conn], fr, to, lr_121chain_redirect, g0_contours)
 
         # zp relations (edges) were not used in saving 121s. so they were not relinked.
         for slave, master in t_zp_redirect_inheritance.items():
@@ -1101,12 +1105,13 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
         #for_graph_plots(G, segs = t_segments_new) 
         print(f'\n{timeHMS()}:({doX_s}) Working on real and fake events (merges/splits):\nPreparing data...')
-        # ===============================================================================================
-        # ============ RECALCULATE MERGE/SPLIT/MIXED EVENTS (FOR ACTUAL EVENT PROCESSING) ===============
-        # ===============================================================================================
-        # NOTE: same as process before 121 recovery. except now mixed type is calculated.
-        # NOTE: describtion is in "get_event_types_from_segment_graph" body/
-
+        """
+        ===============================================================================================
+        ============ RECALCULATE MERGE/SPLIT/MIXED EVENTS (FOR ACTUAL EVENT PROCESSING) ===============
+        ===============================================================================================
+        NOTE: same as process before 121 recovery. except now mixed type is calculated.
+        NOTE: describtion is in "get_event_types_from_segment_graph" body/
+        """
         # for_graph_plots(G, segs = t_segments_new, suptitle = f'{doX}_before', show = True)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         if 1 == 1: 
 
@@ -1118,16 +1123,17 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
             t_merge_real_to_ID_relevant = []
             t_split_real_from_ID_relevant = []
-
-            # ----------------------------------------------------------------------------------------------
-            # ------ GENERATE INFORMATON ABOUT REAL AND FAKE MERGE/SPLIT EVENTS----
-            # ----------------------------------------------------------------------------------------------
-            # IDEA: for real events gather possible choices for contours for each time step during merge event (t_perms)
-            # IDEA: for fake events gather evolutions of contours which integrate fake branches and stray nodes (t_combs)
-            # WORKFLOW: take master event ID- either node into which merge happens or node from which spit happens
-            # WORKFLOW: real: find branches, gather nodes between branches and master, find all options for time steps
-            # WORKFLOW: fake: determine branches and their parents, gather options that go though branch parent- master path
-            # NOTE: everything is held in one dictionary, but keys and contents are different
+            """
+            ----------------------------------------------------------------------------------------------
+            ------ GENERATE INFORMATON ABOUT REAL AND FAKE MERGE/SPLIT EVENTS----
+            ----------------------------------------------------------------------------------------------
+            IDEA: for real events gather possible choices for contours for each time step during merge event (t_perms)
+            IDEA: for fake events gather evolutions of contours which integrate fake branches and stray nodes (t_combs)
+            WORKFLOW: take master event ID- either node into which merge happens or node from which spit happens
+            WORKFLOW: real: find branches, gather nodes between branches and master, find all options for time steps
+            WORKFLOW: fake: determine branches and their parents, gather options that go though branch parent- master path
+            NOTE: everything is held in one dictionary, but keys and contents are different
+            """
             print('Generating information for:')
             # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             t_event_start_end_times = {'merge':{}, 'split':{}, 'mixed':{}}
@@ -1145,7 +1151,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                 if time_end - time_start_min <= 1: continue            # no time steps between from->to =  nothing to resolve
 
                 # pre-isolate graph segment where all sub-events take place
-                node_to = G2_n_start(to)  #t_segments_new[to][0]
+                node_to = G2_n_from(to)  #t_segments_new[to][0]
                 nodes_keep    = [n for n in G.nodes() if time_start_min < G_time(n) < time_end and G_owner(n) in (None, -1)] 
                 nodes_keep.append(node_to)
 
@@ -1181,7 +1187,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                 time_start          = G2_t_end(fr_new)
                 times               = {t: np.arange(time_start, t_end + 1, 1) for t, t_end in times_end.items()}
                 
-                node_from           = G2_n_end(fr_new)      #t_segments_new[fr_new][-1]
+                node_from           = G2_n_to(fr_new)      #t_segments_new[fr_new][-1]
                 # pre-isolate graph segment where all sub-events take place
                 time_end_max        = max(times_end.values())
 
@@ -1224,8 +1230,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                 times_end   = {i: G2_t_end(   i)  for i in fr_all_new   }
                 times_start = {i: G2_t_start( i)  for i in to_all       }
                                                         
-                nodes_from  = {i: G2_n_end(   i)  for i in fr_all_new   }
-                nodes_to    = {i: G2_n_start( i)  for i in to_all       } #t_segments_new[t][0]
+                nodes_from  = {i: G2_n_to(   i)  for i in fr_all_new   }
+                nodes_to    = {i: G2_n_from( i)  for i in to_all       } #t_segments_new[t][0]
 
                 # pre-isolate graph segment where all sub-events take place
                 time_start_min    = min(times_end.values())    # take earliest branch time
@@ -1256,7 +1262,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                 G.add_edges_from(fake_edges)
                 subgraph = G.subgraph(nodes_keep)   
 
-                ref_node = G2_n_start(to_all[0])      #t_segments_new[to_all[0]][0]
+                ref_node = G2_n_from(to_all[0])      #t_segments_new[to_all[0]][0]
 
                 clusters    = nx.connected_components(subgraph.to_undirected())
                 
@@ -1285,14 +1291,14 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                                                                 'active_IDs'    :   active_IDs}
 
         # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    
-    # ===============================================================================================
-    # ====  Determine interpolation parameters ====
-    # ===============================================================================================
-    # we are interested in segments that are not part of psuedo branches (because they will be integrated into path)
-    # pre merge segments will be extended, post split branches also, but backwards. 
-    # for pseudo event can take an average paramets for prev and post segments.
-
+    """
+    ===============================================================================================
+    ====  Determine interpolation parameters ====
+    ===============================================================================================
+    we are interested in segments that are not part of psuedo branches (because they will be integrated into path)
+    pre merge segments will be extended, post split branches also, but backwards. 
+    for pseudo event can take an average paramets for prev and post segments.
+    """
     print(f'\n{timeHMS()}:({doX_s}) Determining interpolation parameters k and s for segments...')
     
     # get segments that have possibly inherited other segments and that are not branches
@@ -1342,10 +1348,11 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             t_segment_k_s_diffs[t_ID]   = None
 
     # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-    # ===============================================================================================
-    # ====  deal with fake event recovery ====
-    # ===============================================================================================
+    """
+    ===============================================================================================
+    ================================ DEAL WITH FAKE EVENT RECOVERY ================================
+    ===============================================================================================
+    """
     print(f'\n{timeHMS()}:({doX_s}) Working on fake events...')
     # -------------- determine segment start and end, find k_s, store info --------------------------
 
@@ -1382,14 +1389,15 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
 
     # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # ===============================================================================================
-    # ============================  EXTEND REAL MERGE/SPLIT BRANCHES ================================
-    # ===============================================================================================
-    # iteratively extend branches though split/merge event. to avoid conflicts with shared nodes
-    # extension is simultaneous for all branches at each time step and contours are redistributed conservatively
-    # -> at time T, two branches [B1, B2] have to be recovered from node cluster C = [1,2,3]
-    # -> try node redistributions- ([partition_B1,partition_B2], ..) = ([[1],[2,3]], [[2],[1,3]], [[3]lr_fake_redirect,[1,2]])    
-
+    """
+    ===============================================================================================
+    ============================  EXTEND REAL MERGE/SPLIT BRANCHES ================================
+    ===============================================================================================
+    iteratively extend branches though split/merge event. to avoid conflicts with shared nodes
+    extension is simultaneous for all branches at each time step and contours are redistributed conservatively
+    -> at time T, two branches [B1, B2] have to be recovered from node cluster C = [1,2,3]
+    -> try node redistributions- ([partition_B1,partition_B2], ..) = ([[1],[2,3]], [[2],[1,3]], [[3]lr_fake_redirect,[1,2]])    
+    """
     t_out                   = defaultdict(dict)
     t_extrapolate_sol       = defaultdict(dict)
     t_extrapolate_sol_comb  = defaultdict(dict)
@@ -1404,10 +1412,11 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     ms_early_termination = {}
     print(f'\n{timeHMS()}:({doX_s}) Analyzing real merge/split events. extending branches: {ms_branch_extend_IDs} ... ')
     for t_ID, state in ms_branch_extend_IDs:
-
-        # ===========================================================================================
-        # =================== DETERMINE BRANCHES, START AND END TIMES OF EVENT ======================
-        # ===========================================================================================
+        """
+        ===========================================================================================
+        =================== DETERMINE BRANCHES, START AND END TIMES OF EVENT ======================
+        ===========================================================================================
+        """
         if state in ('merge','split'):
             branches = t_event_start_end_times[state][t_ID]['branches']
             times_target = []
@@ -1428,10 +1437,11 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         else:
             t_start = min(t_event_start_end_times[state][t_ID]['t_start'].values())
             t_end   = t_event_start_end_times[state][t_ID]['t_end']
-
-        # ===========================================================================================
-        # =============================== PREPARE DATA FOR EACH BRANCH ==============================
-        # ===========================================================================================
+        """
+        ===========================================================================================
+        =============================== PREPARE DATA FOR EACH BRANCH ==============================
+        ===========================================================================================
+        """
         all_norm_buffers, all_traj_buffers, all_area_buffers, all_time_buffers, t_all_k_s  = {}, {}, {}, {}, {}
          
         for branch_ID in branches: 
@@ -1440,11 +1450,11 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             if state in ('merge','mixed'):
                 
                 t_from    = t_event_start_end_times[state][t_ID]['t_start'][branch_ID] # last of branch
-                node_from = G2_n_end(branch_ID_new)     
+                node_from = G2_n_to(branch_ID_new)     
 
                 if state == 'merge':
                     t_to      = t_event_start_end_times[state][t_ID]['t_end']                # first of target
-                    node_to   = G2_n_start(t_ID)      
+                    node_to   = G2_n_from(t_ID)      
                     conn = (branch_ID, t_ID)
                 else: 
                     t_to = max(t_event_start_end_times[state][t_ID]['t_end'].values())
@@ -1454,14 +1464,16 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                 conn = (t_ID, branch_ID)
                 t_from    = t_event_start_end_times[state][t_ID]['t_start'] # last of branch
                 t_to      = t_event_start_end_times[state][t_ID]['t_end'][branch_ID]                # first of target
-                node_from = G2_n_end(t_ID)                #t_segments_new[t_ID][-1]
-                node_to   = G2_n_start(branch_ID)       #t_segments_new[branch_ID][0]
+                node_from = G2_n_to(t_ID)                #t_segments_new[t_ID][-1]
+                node_to   = G2_n_from(branch_ID)       #t_segments_new[branch_ID][0]
             if state in ('split', 'merge') and np.abs(t_to - t_from) < 2:    # note: there are mixed cases with zero event nodes
                 t_out[t_ID][branch_ID] = None
                 continue
-            # =======================================================================================
-            # ============== GET SHORT PRIOR HISTORY FOR CENTROIDS, AREAS OF A BRANCH  ==============
-            # =======================================================================================
+            """
+            =======================================================================================
+            ============== GET SHORT PRIOR HISTORY FOR CENTROIDS, AREAS OF A BRANCH  ==============
+            =======================================================================================
+            """
             if state in ('merge','mixed'):
                 nodes = [n for n in t_segments_new[branch_ID_new] if G_time(n) > t_from - h_interp_len_max2]
             else:
@@ -1501,14 +1513,15 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         
 
         # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        # ===========================================================================================
-        # ================================ START BRANCH EXTRAPOLATION ===============================
-        # ===========================================================================================
-        # walk times from start of an event to end. each time step there are branches "t_branch_IDs" that have to be recovered 
-        # by default branch is being recovered from time it ended to end of event => "t_branch_IDs_OG" = "t_branch_IDs",
-        # but once branch recovery is terminated it should not be considered anymore, so t_branch_IDs_OG is wrong. refine
-        # each step branches use contours from pool of contours "subIDs". some branches may start later.
-
+        """
+        ===========================================================================================
+        ================================ START BRANCH EXTRAPOLATION ===============================
+        ===========================================================================================
+        walk times from start of an event to end. each time step there are branches "t_branch_IDs" that have to be recovered 
+        by default branch is being recovered from time it ended to end of event => "t_branch_IDs_OG" = "t_branch_IDs",
+        but once branch recovery is terminated it should not be considered anymore, so t_branch_IDs_OG is wrong. refine
+        each step branches use contours from pool of contours "subIDs". some branches may start later.
+        """
         branch_failed = []
         t_report = set()
         for time_next, t_branch_IDs_OG in t_event_start_end_times[state][t_ID]['active_IDs'].items():
@@ -1702,16 +1715,16 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         if len(t_combs) == 0: continue                              # no extension, skip.
 
         if state in ('merge', 'mixed') and t_conn not in ms_mixed_completed['full']:
-            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from_new,  None, G, G2, lr_fake_redirect, g0_contours)
+            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from_new,  None, lr_fake_redirect, g0_contours)
         elif state == 'split':
-            save_connections_splits(t_segments_new, t_extrapolate_sol_comb[t_conn], None,  t_to, G, G2, lr_fake_redirect, g0_contours)
+            save_connections_splits(t_segments_new, t_extrapolate_sol_comb[t_conn], None,  t_to, None, lr_fake_redirect, g0_contours)
         else:
             t_to = ms_mixed_completed['full'][t_conn]['targets'][0]
             # remove other edges from mixed connection segment graph
             t_from_other_predecessors = [lr_fake_redirect[t] for t in G2.predecessors(t_to) if t != t_conn[0]]
             edges = [(t, t_to) for t in t_from_other_predecessors]
             G2.remove_edges_from(edges)
-            save_connections_two_ways(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from_new,  t_to, G, G2, lr_fake_redirect, g0_contours)
+            save_connections_two_ways(t_segments_new, t_extrapolate_sol_comb[t_conn], t_from_new,  t_to, lr_fake_redirect, g0_contours)
 
 
     # for_graph_plots(G, segs = t_segments_new, suptitle = f'{doX}_after', show = True)        
@@ -1724,17 +1737,19 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     tt = []
     for n in G.nodes():
         if "time" not in G.nodes[n]:
-            set_custom_node_parameters(G, g0_contours, [n], None, calc_hull = 1)
+            set_custom_node_parameters(g0_contours, [n], None, calc_hull = 1)
             tt.append(n)
     print(f'were missing: {tt}')
     
 
     print(f'\n{timeHMS()}:({doX_s}) Final. Recompute new straight segments')
-    # ===============================================================================================
-    # ============== Final passes. New straight segments. ===================
-    # ===============================================================================================
-    # WHY: after merge/split/merge extensions there may be explicit branches left over in event area
-    # HOW: analyze recent graph for straight segments and determine which segments are different from old
+    """
+    ===============================================================================================
+    ============== Final passes. New straight segments. ===================
+    ===============================================================================================
+    WHY: after merge/split/merge extensions there may be explicit branches left over in event area
+    HOW: analyze recent graph for straight segments and determine which segments are different from old
+    """
     t_segments_fin = graph_extract_paths(G, min_length = 2)
 
     unresolved_new = list(range(len(t_segments_fin)))
@@ -1772,9 +1787,8 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
         node_start, node_end = t_segments_new[ID_new][0], t_segments_new[ID_new][-1] # t_segments_new[ID_new][[0, -1]]
 
-        #set_custom_node_parameters(G, g0_contours_hulls, t_segments_fin[ID], ID_new, calc_hull = 0) # straight hulls since solo nodes 
-        set_custom_node_parameters(G, g0_contours, t_segments_fin[ID], ID_new, calc_hull = 1)        # 
-        G2_set_parameters(G, G2, t_segments_fin[ID], ID_new)#, G_time)
+        set_custom_node_parameters(g0_contours, t_segments_fin[ID], ID_new, calc_hull = 1)        # 
+        G2_set_parameters(t_segments_fin[ID], ID_new)#, G_time)
 
 
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -1784,7 +1798,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     #G2.add_edges_from(G2.edges())
     fin_connectivity_graphs = defaultdict(list) #fin_additional_segments_IDs
     t_has_holes_report = {}
-    G2 = graph_check_paths(G, G2, lr_maxDT, t_has_holes_report)
+    G2 = graph_check_paths(lr_maxDT, t_has_holes_report)
 
     print(f'\n{timeHMS()}:({doX_s}) Paths that have failed hole test: {t_has_holes_report}')
 
@@ -1797,12 +1811,14 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
     if 1 == 1:
         print(f'\n{timeHMS()}:({doX_s}) Final. Extrapolate edges. Branches of splits/merges')
-        # ===============================================================================================
-        # ========================= Final passes. recompute split/merge/mixed info ======================
-        # ===============================================================================================
-        # NOTE 0: same as pre- merge/split/mixed extension (which was same as pre 121 recovery)
-        # NOTE 1: extension of branches requires more or equal number contours than branches.
-        # NOTE 1: thats why there is no point in recovering branches past this stage. recover only to earliest case.
+        """
+        ===============================================================================================
+        ========================= Final passes. recompute split/merge/mixed info ======================
+        ===============================================================================================
+        NOTE 0: same as pre- merge/split/mixed extension (which was same as pre 121 recovery)
+        NOTE 1: extension of branches requires more or equal number contours than branches.
+        NOTE 1: thats why there is no point in recovering branches past this stage. recover only to earliest case.
+        """
         fin_extend_info = defaultdict(dict)
             
         #G2_dir, fin_edges_main = get_event_types_from_segment_graph(G2)   
@@ -1853,13 +1869,15 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         a = 1
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     print(f'\n{timeHMS()}:({doX_s}) Final. Extrapolate edges. Terminated segments')
-    # ===============================================================================================
-    # =========== Final passes. examine edges of terminated segments. retrieve nodes  ===============
-    # ===============================================================================================
-    # WHAT: segments not connected to any other segments, on one or both sides, may still have 
-    # WHAT: stray nodes on ends. These cases were not explored previously.
-    # HOW: find segments with no successors or predecessors. Using Depth Search extract trailing nodes...
-    # NOTE: element order in t_conn now is fixed (from, to), numbering hierarchy does not represent order anymore.
+    """
+    ===============================================================================================
+    =========== Final passes. examine edges of terminated segments. retrieve nodes  ===============
+    ===============================================================================================
+    WHAT: segments not connected to any other segments, on one or both sides, may still have 
+    WHAT: stray nodes on ends. These cases were not explored previously.
+    HOW: find segments with no successors or predecessors. Using Depth Search extract trailing nodes...
+    NOTE: element order in t_conn now is fixed (from, to), numbering hierarchy does not represent order anymore.
+    """
     start_points  = []
     end_points    = []
 
@@ -1875,13 +1893,13 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     if 1 == 1:
         back_d = defaultdict(set)
         for ID in start_points:
-            node_from = G2_n_start(ID)#t_segments_new[ID][0]
+            node_from = G2_n_from(ID)#t_segments_new[ID][0]
             dfs_pred(G, node_from, time_lim = G2_t_start(ID) - 10, node_set = back_d[ID])
         back_d = {i:v for i,v in back_d.items() if len(v) > 1}
 
         forw_d = defaultdict(set)
         for ID in end_points:
-            node_from = G2_n_end(ID)#t_segments_new[ID][-1]
+            node_from = G2_n_to(ID)#t_segments_new[ID][-1]
             dfs_succ(G, node_from, time_lim = G2_t_end(ID) + 10, node_set = forw_d[ID])
         forw_d = {i:v for i,v in forw_d.items() if len(v) > 1}
 
@@ -1913,11 +1931,11 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         if state == 'forward':
             time_from   = G2_t_end(t_ID)#t_segments_new[t_ID][-1][0]
             nodes       = [n for n in t_segments_new[t_ID] if G_time(n) > time_from - h_interp_len_max2]
-            node_from   = G2_n_end(t_ID)#t_segments_new[t_ID][-1]
+            node_from   = G2_n_to(t_ID)#t_segments_new[t_ID][-1]
         else:
             time_to     = G2_t_start(t_ID)#t_segments_new[t_ID][0][0]
             nodes       = [n for n in t_segments_new[t_ID] if G_time(n) < time_to   + h_interp_len_max2]
-            node_from   = G2_n_start(t_ID)#t_segments_new[t_ID][0]
+            node_from   = G2_n_from(t_ID)#t_segments_new[t_ID][0]
 
         trajectory = np.array([G_centroid(  n) for n in nodes])
         time       = np.array([G_time(      n) for n in nodes])
@@ -2094,10 +2112,11 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
 
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # ===============================================================================================
-    # =========== Final passes. examine edges of terminated segments. solve conflicts  ===============
-    # ===============================================================================================
-
+    """
+    ===============================================================================================
+    =========== Final passes. examine edges of terminated segments. solve conflicts  ===============
+    ===============================================================================================
+    """
     # check if there are contested nodes in all extrapolated paths
     duplicates = conflicts_stage_1(t_extrapolate_sol_comb)
     
@@ -2138,10 +2157,11 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             #lr_conn_merges_good.update(t_conns_relevant) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< not correct anymore
 
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # ===============================================================================================
-    # =========== Final passes. examine edges of terminated segments. save extensions  ===============
-    # ===============================================================================================
-
+    """
+    ===============================================================================================
+    =========== Final passes. examine edges of terminated segments. save extensions  ===============
+    ===============================================================================================
+    """
     #for (t_ID,state), t_conns in lr_conn_merges_good.items():
     for conn, combs in t_extrapolate_sol_comb.items():
         (ID, state) = conn
@@ -2149,9 +2169,9 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         if len(combs) == 0: continue                              # no extension, skip.
 
         if state == 'forward':
-            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[conn], ID,  None, G, G2, lr_fake_redirect, g0_contours)
+            save_connections_merges(t_segments_new, t_extrapolate_sol_comb[conn], ID,  None, lr_fake_redirect, g0_contours)
         elif state == 'back':
-            save_connections_splits(t_segments_new, t_extrapolate_sol_comb[conn], None,  ID, G, G2, lr_fake_redirect, g0_contours)
+            save_connections_splits(t_segments_new, t_extrapolate_sol_comb[conn], None,  ID, lr_fake_redirect, g0_contours)
 
 
     # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -2159,7 +2179,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     tt = []
     for n in G.nodes():
         if "time" not in G.nodes[n]:
-            set_custom_node_parameters(G, g0_contours, [n], None, calc_hull = 1)
+            set_custom_node_parameters(g0_contours, [n], None, calc_hull = 1)
             tt.append(n)
     print(f'were missing: {tt}')
 
@@ -2170,28 +2190,42 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     # ======= EXPORT. RECALCULATE CONNECTIONS BETWEEN SEGMENTS ========================
     
     t_has_holes_report = {}
-    G2 = graph_check_paths(G, G2, lr_maxDT, t_has_holes_report)                        
+    G2 = graph_check_paths(lr_maxDT, t_has_holes_report)                        
     # ========== EXPORT. DETERMINE TYPE OF EVENTS BETWEEN SEGMENTS ==========
     G2, export_ms_edges_main = get_event_types_from_segment_graph(G2)
 
 
     trajectories_all_dict[doX]  = t_segments_new
-    graphs_all_dict[doX]        = [G,G2]
+    graphs_all_dict[doX]        = [copy.deepcopy(G),copy.deepcopy(G2)]
     events_split_merge_mixed[doX] = export_ms_edges_main
 
 contours_all_dict      = g0_contours
 
 if 1 == 1:
+    #[key_time, key_area, key_centroid, key_owner]
+    #[key_t_start, key_t_end, key_n_start, key_n_end, key_e_dist] 
     t_merges_splits_rects = {'merge':defaultdict(list), 'split': defaultdict(list), 'mixed':defaultdict(list)}
     minTime = 100000000; maxTime = 0
-    for doX, [G,G2] in graphs_all_dict.items():
+    for doX, [Gb,G2b] in graphs_all_dict.items():
+        # G and G2 are defined from last iteration but are referenced to intial object defined in modules/graphs_general
+        # in order for G_ and G2_ functions to work they have to use old reference. so clear their contents and copy new data
+
+        G.clear()
+        G2.clear()
+        
+        G.add_nodes_from(Gb.nodes(data=True))
+        G.add_edges_from(Gb.edges(data=True))
+
+        G2.add_nodes_from(G2b.nodes(data=True))
+        G2.add_edges_from(G2b.edges(data=True))
+
         #contours  = contours_all_dict[doX]['contours']
         for node in G.nodes():
-            [cx,cy] = G.nodes[node]['centroid']
-            del G.nodes[node]['centroid']
+            [cx,cy] = G_centroid(node)#G.nodes[node]['centroid']
+            del G.nodes[node][key_centroid]
             G.nodes[node]['cx'] = cx
             G.nodes[node]['cy'] = cy
-            if G.nodes[node]['owner'] == None: G.nodes[node]['owner'] = -1
+            if G_owner(node) == None: G_owner_set(node, -1)
             t_time, *subIDs = node
 
         if len(trajectories_all_dict[doX]) > 0:
@@ -2218,21 +2252,21 @@ if 1 == 1:
 
         for t_seg in G2.nodes():
 
-            minTime = min(minTime,  G2.nodes[t_seg]['t_start'   ])
-            maxTime = max(maxTime,  G2.nodes[t_seg]['t_end'     ])
+            minTime = min(minTime,  G2_t_start( t_seg)) # G2.nodes[t_seg]['t_start'   ]
+            maxTime = max(maxTime,  G2_t_end(   t_seg)) # G2.nodes[t_seg]['t_end'     ]
 
             state_from = 'merge'
             if t_seg in events_split_merge_mixed[doX][state_from]:
                 predecessors  = events_split_merge_mixed[doX][state_from][t_seg]
-                t_nodes_min_max = [trajectories_all_dict[doX][t_seg][0]] + [trajectories_all_dict[doX][t_pred][-1] for t_pred in predecessors] 
-                t_combine_contours = []
+                t_nodes_min_max = [G2_n_from(t_seg)] + [G2_n_to(t_pred) for t_pred in predecessors] 
+                t_combine_contours = [] # 
                 for t_time,*subIDs in t_nodes_min_max:
                     for t_subID in subIDs:
                         t_combine_contours.append(contours_all_dict[t_time][t_subID])
                 t_rb_params = cv2.boundingRect(np.vstack(t_combine_contours))
 
-                t_time_max  = G2.nodes[t_seg]["t_start"]
-                t_time_min  = min([G2.nodes[t]["t_end"] for t in predecessors])
+                t_time_max  = G2_t_start(t_seg) #G2.nodes[t_seg]["t_start"]
+                t_time_min  = min([G2_t_end(n) for n in predecessors]) #G2.nodes[t]["t_end"] 
                 
                 for t in np.arange(t_time_min, t_time_max + 1):
                     t_merges_splits_rects[state_from][t].append(t_rb_params)
@@ -2240,22 +2274,22 @@ if 1 == 1:
             state_to = 'split'
             if t_seg in events_split_merge_mixed[doX][state_to]:
                 t_successors    = events_split_merge_mixed[doX][state_to][t_seg]
-                t_nodes_min_max = [trajectories_all_dict[doX][t_seg][-1]] + [trajectories_all_dict[doX][t_succ][0] for t_succ in t_successors]
+                t_nodes_min_max = [G2_n_to(t_seg)] + [G2_n_from(t_succ) for t_succ in t_successors]
                 t_combine_contours = []
                 for t_time,*subIDs in t_nodes_min_max:
                     for t_subID in subIDs:
                         t_combine_contours.append(contours_all_dict[t_time][t_subID])
                 t_rb_params = cv2.boundingRect(np.vstack(t_combine_contours))
 
-                t_time_max  = max([G2.nodes[t]["t_start"] for t in t_successors])
-                t_time_min  = G2.nodes[t_seg]["t_end"]
+                t_time_max  = max([G2_t_start(n) for n in t_successors])    #G2.nodes[t]["t_start"]
+                t_time_min  = G2_t_end(t_seg)                               #G2.nodes[t_seg]["t_end"]
                 
                 for t in np.arange(t_time_min, t_time_max + 1):
                     t_merges_splits_rects[state_to][t].append(t_rb_params)
         state = 'mixed'
         for t_froms, t_tos in  events_split_merge_mixed[doX][state].items():
-            t_nodes_last_from   = [trajectories_all_dict[doX][t_from][-1]   for t_from  in t_froms] 
-            t_nodes_first_to    = [trajectories_all_dict[doX][t_to  ][0]    for t_to    in t_tos]
+            t_nodes_last_from   = [G2_n_to(    t_from  )   for t_from  in t_froms  ] 
+            t_nodes_first_to    = [G2_n_from(  t_to    )   for t_to    in t_tos    ]
             t_nodes_all         = t_nodes_last_from + t_nodes_first_to
             t_combine_contours = []
             for t_time,*subIDs in t_nodes_all:
@@ -2263,15 +2297,16 @@ if 1 == 1:
                     t_combine_contours.append(contours_all_dict[t_time][t_subID])
             t_rb_params = cv2.boundingRect(np.vstack(t_combine_contours))
 
-            t_time_max  = max([G2.nodes[t]["t_start"] for t in t_froms + t_tos])
-            t_time_min  = min([G2.nodes[t]["t_end"] for t in t_froms + t_tos])
+            t_time_max  = max([G2_t_start(  n) for n in t_froms + t_tos])
+            t_time_min  = min([G2_t_end(    n) for n in t_froms + t_tos])
                 
             for t in np.arange(t_time_min, t_time_max + 1):
                 t_merges_splits_rects[state][t].append(t_rb_params)
 
+        # save edied graphs into storage
+        graphs_all_dict[doX]    = [copy.deepcopy(G),copy.deepcopy(G2)]
 
 
-    
     print(f"\n{timeHMS()}: Saving Archives...")
     with open(graphsPath,   'wb')   as handle:
         pickle.dump(graphs_all_dict,        handle) 

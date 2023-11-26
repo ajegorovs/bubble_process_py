@@ -1149,179 +1149,22 @@ if  1 == -1:
         print("Ranges do not overlap.")
 
 
-import numpy as np, time, pickle
+import numpy as np, time, pickle, sys
 from scipy.sparse import coo_matrix, triu
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 from tqdm import tqdm
 
+path_modues = r'.\modules'      
+sys.path.append(path_modues) 
 
-def gen_sparse_matrices_symm_and_non(edges, num_particles):
-    # generate sparse matrix from edges
-    sm = coo_matrix((np.ones(len(edges)), np.array(edges).T), shape=(num_particles, num_particles), dtype=int)
-    # find elements which are symmetric and non symmetric:
-    sm_symm         = (sm + sm.T) == 2                  # like sm == sm.T, except dont want  0 == 0
-    sm_non_symm     = coo_matrix((sm - sm.T) == 1)
-    sm_symm_u       = triu(sm_symm)                     # since symmetric can take only upper triangle (or lower)
-    return sm_symm_u, sm_non_symm
+from misc import (addd, HH, prrr)
 
-def draw_plot(ax, positions, pos_set, x_min, x_max, y_min, y_max, i):
-    for IDs in edges_spring:
-        arrow = FancyArrowPatch(positions[IDs[0]], positions[IDs[1]], color='red', arrowstyle='->', mutation_scale=15, linewidth=2)
-        ax.add_patch(arrow)
-
-    # Plot arrows for edges_repel
-    for IDs in edges_repel:
-        arrow = FancyArrowPatch(positions[IDs[0]], positions[IDs[1]], color='blue', arrowstyle='->', mutation_scale=15, linewidth=1)
-        ax.add_patch(arrow)
-
-    ax.scatter(positions[:, 0], positions[:, 1])  # Assuming a scatter plot for 2D positions
-    if len(pos_set) > 0:
-        ax.scatter(positions[pos_set, 0], positions[pos_set, 1], marker = 'x', color = 'green')
-    ax.set_title(f'Iteration {i}')
-    ax.set_xlim((x_min,x_max))
-    ax.set_ylim((y_min,y_max))
-    ax.grid(True)
-
-with open('spring_iter_data.pickle', 'rb') as handle:
-    [stray_nodes, seg_nodes, positions, positions_t_OG, conns_spring, conn_repel] = pickle.load(handle)
-
-nodes_all = stray_nodes + seg_nodes
-node_enum = {n:i for i,n in enumerate(nodes_all)}
-ids_set     = range(len(stray_nodes),len(stray_nodes) + len(seg_nodes))
-#positions       = np.array([(0, 0), (1, 0), (1, 1), (0, 1)], float)
-velocities      = np.zeros_like(positions, float)
-forces          = np.zeros_like(positions, float)
-num_particles   = len(positions)
-
-edges_spring    = [(node_enum[a],node_enum[b]) for a,b in conns_spring] # [(0, 1), (1, 0), (1, 2), (2, 1), (2, 3), (3, 2), (3, 0), (0, 3)]
-edges_repel     = [(node_enum[a],node_enum[b]) for a,b in conn_repel]   # [(0,2),(2,0), (1,3),(3,1),(1,2)]
-
-#sm_spring = coo_matrix((np.ones(len(edges_spring)), np.array(edges_spring).T), shape=(num_particles, num_particles), dtype=int)
-
-sm_su_spring, sm_ns_spring    = gen_sparse_matrices_symm_and_non(edges_spring , num_particles)
-
-sm_su_repel, sm_ns_repel      = gen_sparse_matrices_symm_and_non(edges_repel  , num_particles)
-
-
-fig, ax = plt.subplots()
-dt = 0.01
-num_iter = 2200
-x_min,x_max = min(positions[:,0]) - 1, max(positions[:,0]) + 1
-x_min,x_max = 369,386
-y_min,y_max = min(positions[:,1]) - 1, max(positions[:,1]) + 1
-start_time = time.time()
-def integration(positions,velocities,forces, sm_su_spring, sm_ns_spring, sm_su_repel, sm_ns_repel, positions_t_OG, s_k, t_k, r_k, i_start, i_num, t_k_ramp = [], s_k_ramp = [], r_k_ramp = [], doPlot = False):
-    if len(s_k_ramp) > 0:
-        a, b, L     = s_k_ramp
-        s_k_vals    = np.concatenate([np.linspace(a, b, min(L, i_num)), np.full(i_num - L, b)])  
-
-    if len(t_k_ramp) > 0:
-        a, b, L     = t_k_ramp
-        t_k_vals    = np.concatenate([np.linspace(a, b, min(L, i_num)), np.full(i_num - L, b)])  
-
-    if len(r_k_ramp) > 0:
-        a, b, L     = r_k_ramp
-        r_k_vals    = np.concatenate([np.linspace(a, b, min(L, i_num)), np.full(i_num - L, b)])  
-
-    if doPlot:
-        edges_spring    =  (    list(zip(sm_su_spring.row, sm_su_spring.col))   + 
-                                list(zip(sm_su_spring.col, sm_su_spring.row))   +
-                                list(zip(sm_ns_spring.col, sm_ns_spring.row))   )
-
-        edges_repel     =  (    list(zip(sm_su_repel.row, sm_su_repel.col))     + 
-                                list(zip(sm_su_repel.col, sm_su_repel.row))     +
-                                list(zip(sm_ns_repel.col, sm_ns_repel.row))     )
-
-    for k in tqdm( range(i_num) ):
-        i = k + i_start
-        if len(s_k_ramp) >0: s_k = s_k_vals[k]
-        if len(t_k_ramp) >0: t_k = t_k_vals[k]
-        if len(r_k_ramp) >0: r_k = r_k_vals[k]
-
-        positions += (velocities*dt + 0.5 * forces * dt**2)
-
-        d_spring_s  = positions[sm_su_spring.col    ]   - positions[sm_su_spring.row    ]
-        d_spring_ns = positions[sm_ns_spring.col  ]   - positions[sm_ns_spring.row  ]
-
-        d_repel_s   = positions[sm_su_repel.col     ]   - positions[sm_su_repel.row     ]
-        d_repel_ns  = positions[sm_ns_repel.col   ]   - positions[sm_ns_repel.row   ]
-
-        forces_new              = np.zeros_like(positions) 
-        force_attractive_s      = s_k * d_spring_s
-        force_attractive_ns     = s_k * d_spring_ns
-
-        force_attractive_s[:,0] = 0.0   # drop x component
-        force_attractive_ns[:,0]= 0.0
-
-        def lj_repel(dist_n, dist):
-            return -24 * r_k**6 * (1 / dist_n**8)[:, np.newaxis] * dist / dist_n[:, np.newaxis]
-
-        force_repulsive_s       = lj_repel(np.linalg.norm(d_repel_s     , axis = 1),    d_repel_s)
-        force_repulsive_ns      = lj_repel(np.linalg.norm(d_repel_ns    , axis = 1),    d_repel_ns)
-
-
-        np.add.at(forces_new, sm_su_spring.row  , force_attractive_s)
-        np.add.at(forces_new, sm_su_spring.col  , -force_attractive_s)
-        np.add.at(forces_new, sm_ns_spring.row, force_attractive_ns)
-
-        np.add.at(forces_new, sm_su_repel.row   , force_repulsive_s)
-        np.add.at(forces_new, sm_su_repel.col   , -force_repulsive_s)
-        np.add.at(forces_new, sm_ns_repel.row , force_repulsive_ns)
-
-        # time constraints
-        drs = positions[:,0] - positions_t_OG
-        forces_x = -1 * t_k * np.abs(drs) * drs
-        forces_new[:,0] += forces_x
-
-        velocities += (0.5 * (forces + forces_new) * dt - 0.1* velocities)
-
-        forces = forces_new
-
-        if doPlot and i % 50 == 0 :
-            ax.clear()  # Clear the previous data from the figure
-            draw_plot(ax, positions, ids_set, edges_spring, edges_repel, x_min, x_max, y_min, y_max, i)
-            fig.savefig(f'particle_movement/img{i}.png')
-
-    return positions, velocities, forces
-
-
-start   = 0
-num     = 2000 #(positions,velocities,forces, sm_su_spring, sm_ns_spring, sm_su_repel, sm_ns_repel, positions_t_OG, s_k, t_k, r_k, i_start, i_num, t_k_ramp = [], s_k_ramp = [], r_k_ramp = [])
-positions, velocities, forces = integration(positions, velocities, forces, 
-                                            sm_su_spring, sm_ns_spring, sm_su_repel, sm_ns_repel, positions_t_OG, 
-                                            s_k = 2, t_k = 50, r_k = 0.1, i_start = start, i_num = num,
-                                            t_k_ramp = [], s_k_ramp = [], r_k_ramp = [], doPlot = False)
-
-draw_plot(ax, positions, ids_set, x_min, x_max, y_min, y_max, -1)
-plt.show()
-
-start += num
-num     = 2000
-positions, velocities, forces = integration(positions, velocities, forces, 
-                                            sm_su_spring, sm_ns_spring, sm_su_repel, sm_ns_repel, positions_t_OG, 
-                                            s_k = 2, t_k = 50, r_k = 0.1, i_start = start, i_num = num,
-                                            t_k_ramp = [50,200,int(3/4*num)], s_k_ramp = [], r_k_ramp = [], doPlot = True)
-
-#draw_plot(ax, positions, ids_set, x_min, x_max, y_min, y_max, -1)
-#plt.show()
-start += num
-num     = 2000
-
-positions, velocities, forces = integration(positions, velocities, forces, 
-                                            sm_su_spring, sm_ns_spring, sm_su_repel, sm_ns_repel, positions_t_OG, 
-                                            s_k = 1, t_k = 10, r_k = 0.2, i_start = start, i_num = num,
-                                            t_k_ramp = [200, 300, int(3/4*num)], s_k_ramp = [], r_k_ramp = [0.1, 0.2, int(num/2)] , doPlot = True)
-
-end_time = time.time()
-
-elapsed_time = end_time - start_time
-
-print(f"\nTime elapsed: {elapsed_time:.6f} seconds")
-
-#draw_plot(ax, positions, ids_set, x_min, x_max, y_min, y_max, -1)
-#plt.show()
+addd([1,2,3])
+HH.add_nodes_from([4,5])
+prrr()
 a = 1
+
 
 
 k = cv2.waitKey(0)

@@ -1,6 +1,6 @@
 
 
-import numpy as np, time as time_lib, copy, networkx as nx
+import numpy as np, time as time_lib, copy, networkx as nx, cv2
 import datetime, itertools
 from collections import deque
 from collections import defaultdict
@@ -204,6 +204,311 @@ def find_common_intervals(data):
             common_times_dict[pair] = sorted(common_times)
 
     return common_times_dict
+
+
+def find_final_master(slave_master_relations, start_with):
+    """
+    say you have a pool of people [1,2,3,4], some of them are masters, some slaves
+    if given relations of type slave:master i.e 'slave_master_relations' = {1: 1, 2: 1, 3: 2, 4: 4}
+    which describes that slave is owned by a master. you see that 3 is a slave of 2
+    and 2 is a slave of 1. that means that 3 is a slave of 1.
+    goal if this code is to get final relation of who is has the final master of 'start_with'.
+    """
+    current = start_with
+    while current in slave_master_relations and slave_master_relations[current] != current:
+        current = slave_master_relations[current]
+    return current
+
+def find_final_master_all(slave_master_relations):
+    """
+    extension of 'find_final_master()' which does it for every entry in a relations dictionary.
+    """
+    relations_new = {}
+    for slave in slave_master_relations:
+        master = find_final_master(slave_master_relations, slave)
+        relations_new[slave] = master
+
+    return relations_new
+
+def zp_process(edges, node_segments, contours_dict, inheritance_dict):
+    """
+    WHAT: find segment connections that dont have stray nodes in-between
+    WHY:  very much likely that its the same trajectory. interruption is very brief. 
+    WHY:  connection has a stray node/s and edges, which have confused chain extraction method.
+    HOW:  best i can do is to 'absorb' stray nodes into solo contour nodes by forming a composite node.
+    """
+    from graphs_general import (set_custom_node_parameters, G2_set_parameters)
+    from graphs_general import (G, G2, G2_t_start, G2_t_end, G_time, G_owner)
+
+    #inheritance_dict = {i: i for i,v in enumerate(node_segments) if len(v) > 0}
+
+    # analyze zero path cases:
+    for fr, to in edges:
+        fr = inheritance_dict[fr]         # in case there is a sequence of ZP events one should account for inheritance of IDs
+        time_buffer = 5
+        # take a certain buffer zone about ZP event. its width should not exceed sizes of segments on both sides
+        # which is closer to event from left  : start of  left segment    or end      - buffer size?
+        time_from   = max(G2_t_start(fr), G2_t_end(fr) - time_buffer    )   # test: say, time_buffer = 1e20 -> time_from = G2_t_start(fr)   # (1)
+        # which is closer to event from right : end   of  right segment   or start    + buffer size?
+        time_to     = min(G2_t_end(to)  , G2_t_start(to) + time_buffer  )
+        # NOTE: at least one node should be left in order to reconnect recovered segment back. looks like current approach does it. by (1) and (2)
+        nodes_keep              = []
+        nodes_stray             = [node for node in G.nodes() if time_from < G_time(node) < time_to and G_owner(node) is None] 
+        nodes_extra_segments    = [n for n in node_segments[fr] if G_time(n) > time_from] + [n for n in node_segments[to] if G_time(n) < time_to]   # (2)
+
+        nodes_keep.extend(nodes_stray)
+        nodes_keep.extend(nodes_extra_segments)   
+        
+        clusters    = nx.connected_components(G.subgraph(nodes_keep).to_undirected())
+        sol         = next((cluster for cluster in clusters if nodes_extra_segments[0] in cluster), None)
+        assert sol is not None, 'cannot find connected components'
+
+        nodes_composite = [(t,) + tuple(IDs) for t, IDs in disperse_nodes_to_times(sol, sort = True).items()] 
+
+        node_segments[fr]   =       [n for n in node_segments[fr] if G_time(n) <= time_from]                                                           
+        node_segments[fr].extend(   nodes_composite)                                                     
+        node_segments[fr].extend(   [n for n in node_segments[to] if G_time(n) >= time_to]    )
+        node_segments[to]   = []
+         
+        G.remove_nodes_from(nodes_stray)           # stray nodes are absorbed into composite nodes. they have to go from G
+        
+        G.remove_nodes_from(nodes_extra_segments)  # old parts of segments have to go. they will be replaced by composite nodes.
+
+        G.add_nodes_from(nodes_composite)
+        set_custom_node_parameters( contours_dict, node_segments[fr], fr, calc_hull = 1)
+
+        # have to reconnect reconstructed interval on G. get nodes on interval edges
+
+        ref_left    = next((n for n in node_segments[fr] if G_time(n) == time_from))
+        ref_right   = next((n for n in node_segments[fr] if G_time(n) == time_to))
+
+        # generate edges by staggered zip method.
+
+        nodes_temp = [ref_left] + nodes_composite + [ref_right]
+
+        edges = [(a, b) for (a, b) in zip(nodes_temp[:-1], nodes_temp[1:])]
+
+        G.add_edges_from(edges)
+
+        edges_next = [(fr, i) for i in G2.successors(fr)]
+       
+        G2_set_parameters(node_segments[fr], fr, edges = edges_next)
+            
+        G2.remove_node(to)
+            
+        inheritance_dict[to] = fr
+
+        """ 
+        some comments on inheritance: 
+        if there is chain of zp (or 121) events -> A->B->C, where A,B,C are segments
+        if you resolve (A,B) before (B,C), segment B will seize to exist because it will be absorbed into A.
+        so you have to resolve (A,C) instea of (B,C) in order to use most recent state of graphs.
+        thats why you track if 'from' segment was absorbed/inherited by someone.
+        although inheritances holds incorrect for global scope: if (B,C) is resolved first, then inheritance
+        states that SLAVE:MASTER = C:B. if in global scope you are interested in connection (C,X),
+        C will redirect only one step away, to B. while real target should be A !!!
+        so its ok for this specific stage resolution but not to be used for global scope
+        """
+        return None
+
+def f121_disperse_stray_nodes(edges):
+    """
+    WHAT: 121 segments are connected via stay (non-segment) nodes. extract them and reformat into  {TIME1:[*SUBIDS_AT_TIME1],...}
+    WHY:  at each time step bubble may be any combination of SUBIDS_AT_TIMEX. most likely whole SUBIDS_AT_TIMEX. but possibly not
+    """
+    from graphs_general import (G,  G2_n_to, G2_n_from, G_time, G_owner)
+
+    output_dict = {}
+    for fr, to in edges:
+            
+        node_from, node_to = G2_n_to(fr)        , G2_n_from(to)
+        time_from, time_to = G_time(node_from)  , G_time(node_to)
+
+        # isolate stray nodes on graph at time interval between two connected segments
+        
+        nodes_keep    = [node for node in G.nodes() if time_from < G_time(node) < time_to and G_owner(node) is None] 
+        nodes_keep.extend([node_from,node_to])
+            
+        clusters    = nx.connected_components(G.subgraph(nodes_keep).to_undirected())
+        sol         = next((cluster for cluster in clusters if node_from in cluster), None)
+        assert sol is not None, 'cannot find connected components'
+        
+        output_dict[(fr,to)] = disperse_nodes_to_times(sol, sort = True)
+
+    return output_dict
+
+def f121_interpolate_holes(chains, node_segments):
+    """
+    WHAT: we have chains of segments that represent solo bubble. its at least 2 segments (1 hole). interpolate data
+    WHY:  if there are more than 2 segments, we will have more history and interpolation will be of better quality
+    HOW:  scipy interpolate 
+    """
+    from interpolation import (interpolateMiddle2D_2, interpolateMiddle1D_2)
+    from graphs_general import (G2_t_start, G2_t_end, G_time, G_area, G_centroid)
+
+    edges_relevant      = []
+    interpolation_data  = {}
+
+    for subIDs in chains:
+
+        # prepare data: resolved  time steps, centroids, areas G2
+        temp_nodes_all  = sum(      [node_segments[i]   for i   in subIDs       ], [])
+        #temp_nodes_all  = sorted(temp_nodes_all, key = G_time)
+        known_times     = np.array( [G_time(n)      for n   in temp_nodes_all   ])
+        known_areas     = np.array( [G_area(n)      for n   in temp_nodes_all   ])
+        known_centroids = np.array( [G_centroid(n)  for n   in temp_nodes_all   ])
+                
+        # generate time steps in holes for interpolation
+        edges_times_dict = {}
+        for (fr, to) in zip(subIDs[:-1], subIDs[1:]):
+            edges_times_dict[(fr, to)]  = range(G2_t_end(fr) + 1, G2_t_start(to), 1)
+
+        edges_relevant.extend(edges_times_dict.keys())
+        times_missing = []; [times_missing.extend(times) for times in edges_times_dict.values()]
+        
+        # interpolate composite (long) parameters 
+        t_interpolation_centroids_0 = interpolateMiddle2D_2(known_times, known_centroids, times_missing, s = 15         , debug = 0 , aspect = 'equal', title = subIDs)
+        t_interpolation_areas_0     = interpolateMiddle1D_2(known_times, known_areas    , times_missing, rescale = True , s = 15    , debug = 0, aspect = 'auto', title = subIDs)
+        # form dict = {time:centroid} for convinience
+        t_interpolation_centroids_1 = {t: c for t, c in zip(times_missing,t_interpolation_centroids_0)}
+        t_interpolation_areas_1     = {t: c for t, c in zip(times_missing,t_interpolation_areas_0)    }
+        # save data with t_conns keys
+        for edge, times in edges_times_dict.items():
+            interpolation_data[edge] = {}
+            centroids   = np.array([c    for t, c    in t_interpolation_centroids_1.items()  if t in times])
+            areas       = np.array([a    for t, a    in t_interpolation_areas_1.items()      if t in times])
+
+            interpolation_data[edge]['centroids'] = centroids
+            interpolation_data[edge]['areas'    ] = areas
+            interpolation_data[edge]['times'    ] = times
+
+    return edges_relevant, interpolation_data
+
+def f121_calc_permutations( disperesed_dict):
+    """            
+    WHAT: generate different permutation of subIDs for each time step.
+    WHY:  Bubble may be any combination of contour subIDs at a given time. should consider all combs as solution
+    HOW:  itertools combinations of varying lenghts
+    """
+    permutations_dict           = {}
+    
+    for edge, time_IDs_dict in disperesed_dict.items():
+        permutations_dict[edge] = {}
+        for time, IDs in time_IDs_dict.items():
+            permutations_dict[edge][time] = combs_different_lengths(IDs)
+
+    return permutations_dict
+
+def f121_precompute_params(times_perms_dict_cases, contours):
+    """
+    WHY: these will be reused alot in next steps, store beforehand
+    """
+    from bubble_params  import centroid_area_cmomzz
+
+    areas, centroids, moms_z = {}, {}, {}
+            
+    for conn, times_perms_dict in times_perms_dict_cases.items():
+
+        areas[     conn]  = {t:{} for t in times_perms_dict}
+        centroids[ conn]  = {t:{} for t in times_perms_dict}
+        moms_z[    conn]  = {t:{} for t in times_perms_dict}
+
+        for time, permutations in times_perms_dict.items():
+            for IDs in permutations:
+                hull = cv2.convexHull(np.vstack([contours[time][subID] for subID in IDs]))
+                centroid, area, mom_z           = centroid_area_cmomzz(hull)
+                areas[      conn][time][IDs]    = area
+                centroids[  conn][time][IDs]    = centroid
+                moms_z[     conn][time][IDs]    = mom_z
+
+    return areas, centroids, moms_z
+
+
+def f121_get_evolutions(permutations_dict, permutations_dict_areas, sort_len_diff_f, max_paths):
+
+    """
+     WHAT: using subID permutations at missing time construct choice tree. 
+     WHY:  each branch represents a bubbles contour ID evolution through unresolved intervals.
+     HOW:  either though itertools product or, if number of branches is big, dont consider
+     HOW:  branches where area changes more than a set threshold. 
+     -----------------------------------------------------------------------------------------------
+     NOTE: number of branches (evolutions) from start to finish may be very large, depending on 
+     NOTE: number of time steps and contour permutation count at each step. 
+     NOTE: it can be calculated as 't_branches_count' = len(choices_t1)*len(choices_t2)*...
+     case 0)   if count is small, then use combinatorics product function.
+     case 1a)  if its large, dont consider evoltions where bubble changes area rapidly from one step to next.
+     case 1b)  limit number of branches retrieved by 't_max_paths'. we can leverage known assumption to
+               get better branches in this batch. assumption- bubbles most likely include all 
+               subcontours at each time step. Transitions from large cluster to large cluster has a priority.
+               if we create a graph with large to large cluster edges first, pathfinding method
+               will use them to generate first evolutions. so you just have to build graph in specific order.
+     case 2)   optical splits have 121 chains in inter-segment space. these chains are not atomized into
+               solo nodes, but can be included into evolutions as a whole. i.e if 2 internal chains are
+               present, you can create paths which include 1st, 2nd on both branches simultaneously.
+     """
+    from graphs_general import (comb_product_to_graph_edges, find_paths_from_to_multi)
+    permutations_dict_cases = {}
+    permutations_dict_times = {}
+    lr_drop_huge_perms = []
+
+    for edge, times_IDs_dict in permutations_dict.items():
+
+        func = lambda edge_test : edge_crit_func(edge, edge_test, permutations_dict_areas, 2)
+        
+        values            = list(times_IDs_dict.values())
+
+        times             = list(times_IDs_dict.keys())
+
+        branches_count    = itertools_product_length(values) # large number of paths is expected
+
+        if branches_count >= max_paths:
+            # 1a) keep only tranitions that dont change area very much
+            choices                       = [[(t,) + p for p in perms] for t, perms in zip(times,values)]
+
+            edges, nodes_start, nodes_end   = comb_product_to_graph_edges(choices, func)
+
+            if len(nodes_end) == 0: # finding paths will fail, since no target node
+
+                nodes_end.add(choices[-1][0])   # add last, might also want edges to that node, since they have failed
+
+                edges.extend(list(itertools.product(*choices[-2:])))
+                
+            # 1b) resort edges for pathfining graph: sort by large to large first subIDs first: ((1,2),(3,4)) -> ((1,2),(3,))
+            # 1b) for same size sort by cluster size uniformity e.g ((1,2),(3,4)) -> ((1,2,3),(4,)) 
+            sorted_edges    = sorted(edges, key = sort_len_diff_f, reverse=True) 
+
+            sequences, fail = find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = True, graph = None, edges = sorted_edges, only_subIDs = True, max_paths = max_paths - 1)
+
+            # 'fail' can be either because 't_max_paths' is reached or there is no path from source to target
+            if fail == 'to_many_paths':    # add trivial solution where evolution is transition between max element per time step number clusters 
+                
+                seq_0 = list(itertools.product(*[[t[-1]] for t in values] ))
+
+                if seq_0[0] not in sequences: sequences = seq_0 + sequences # but first check. in case of max paths it should be on top anyway.
+
+            elif fail == 'no_path': # increase rel area change threshold
+
+                func = lambda edge_test : edge_crit_func(edge, edge_test, permutations_dict_areas, 5)
+
+                edges, nodes_start, nodes_end   = comb_product_to_graph_edges(choices, func)
+
+                sorted_edges                    = sorted(edges, key=sort_len_diff_f, reverse=True) 
+
+                sequences, fail = find_paths_from_to_multi(nodes_start, nodes_end, construct_graph = True, graph = None, edges = sorted_edges, only_subIDs = True, max_paths = max_paths - 1)
+
+        # 0) -> t_branches_count < t_max_paths. use product
+        else:
+            sequences = list(itertools.product(*values))
+                
+        if len(sequences) == 0: # len = 0 because second pass of rel_area_thresh has failed.
+            sequences   = []    # since there is no path, dont solve this conn
+            times       = []
+            lr_drop_huge_perms.append(edge)
+
+        permutations_dict_cases[edge] = sequences
+        permutations_dict_times[edge] = times
+
+    return permutations_dict_cases, permutations_dict_times, lr_drop_huge_perms
 
 
 def unique_active_segments(start, end, segments_active_dict):
@@ -569,31 +874,30 @@ def lr_weighted_sols(t_conns, weights, t_sols, lr_permutation_cases):
 
 
 def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_to, ID_remap, contours_dict):
+    """
+    NOTE: G_time and such are not implemented
+    *** is used to modify graphs and data storage with info about resolved connections between segments ***
+    ----------------------------------------------------------------------------------------------------
+    (1) drop all edges from last known node going into intermediate solution.
+    (2) same as (1), but with other side
+    (3) in case when extension (merge for example) is stopped earlier, and last intermediate node is 
+    (3) composite, this node has to inherit forward edges of each solo node it consists of
+    (4) reconstruct path using chain of nodes
+    (5) i have to drop disperesed nodes so edges are also dropped. but also parameters will be dropped
+    (5) if resolved combs may stay solo. their parameters should be copied on top of clean nodes
+    (6) drop disperse nodes (this way unwanted edges are also dropped) and reconstruct only useful edges
+    ----------------------------------------------------------------------------------------------------
+    from sols_dict {time1:[ID1,ID2,..],..} regenerate composite nodes if there are, but also
+    disperse into original solo nodes, which are a part of event space (node paths between segments)
+    """
     from graphs_general import (set_custom_node_parameters, G2_set_parameters, G_owner_set)
     from graphs_general import (G, G2, G2_n_from, G2_n_to, G_time)
 
     graph_nodes = G
     graph_segments = G2
+    
 
-    #G2_n_from  = lambda node: seg_n_from(  node, graph_segments)
-    #G2_n_to    = lambda node: seg_n_to(    node, graph_segments)
-    #G_time      = lambda node: node_time(   node, graph_nodes   )
-    #G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
-
-    # NOTE: G_time and such are not implemented
-    # *** is used to modify graphs and data storage with info about resolved connections between segments ***
-    # ----------------------------------------------------------------------------------------------------
-    # (1) drop all edges from last known node going into intermediate solution.
-    # (2) same as (1), but with other side
-    # (3) in case when extension (merge for example) is stopped earlier, and last intermediate node is 
-    # (3) composite, this node has to inherit forward edges of each solo node it consists of
-    # (4) reconstruct path using chain of nodes
-    # (5) i have to drop disperesed nodes so edges are also dropped. but also parameters will be dropped
-    # (5) if resolved combs may stay solo. their parameters should be copied on top of clean nodes
-    # (6) drop disperse nodes (this way unwanted edges are also dropped) and reconstruct only useful edges
-    # ----------------------------------------------------------------------------------------------------
-    # from sols_dict {time1:[ID1,ID2,..],..} regenerate composite nodes if there are, but also
-    # disperse into original solo nodes, which are a part of event space (node paths between segments)
+    
 
     nodes_solo, nodes_composite = [],[]
     for time, subIDs in sols_dict.items():                     
@@ -605,12 +909,12 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
     segment_from_new        = ID_remap[segment_from]      # get reference of master of this segment
     ID_remap[segment_to]    = segment_from_new            # add let master inherit slave of this segment
 
-    node_from_last          = G2_n_to(segment_from_new)#node_segments[segment_from_new][-1]        # (1)
+    node_from_last          = G2_n_to(segment_from_new)#node_segments[segment_from_new][-1]         # (1)
     from_successors         = list(graph_nodes.successors(node_from_last))                          # (1)
     from_successors_edges   = [(node_from_last, node) for node in  from_successors]                 # (1)
     graph_nodes.remove_edges_from(from_successors_edges)                                            # (1)
 
-    node_to_first           = G2_n_from(segment_to)#node_segments[segment_to][0]                   # (2)
+    node_to_first           = G2_n_from(segment_to)#node_segments[segment_to][0]                    # (2)
     to_predecessors         = list(graph_nodes.predecessors(node_to_first))                         # (2)
     to_predecessors_edges   = [(node, node_to_first) for node in  to_predecessors]                  # (2)
     graph_nodes.remove_edges_from(to_predecessors_edges)                                            # (2)
@@ -654,7 +958,7 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
         #graph_nodes.nodes[t]["owner"] = segment_from_new
             
     set_custom_node_parameters(contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)    
-    G2_set_parameters(node_segments[segment_from_new], segment_from_new, edges = t_edges, remove_nodes = [segment_to]))
+    G2_set_parameters(node_segments[segment_from_new], segment_from_new, edges = t_edges, remove_nodes = [segment_to])
     
 def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to, ID_remap, contours_dict):
     # *** is used to modify graphs and data storage with info about resolved extensions of merge branches (from left to merge node) ***

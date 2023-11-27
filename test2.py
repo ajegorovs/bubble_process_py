@@ -543,8 +543,8 @@ if 1 == -1:
     lr_big121s_perms_areas = AutoCreateDict()
 
     # Use it to store values
-    lr_big121s_perms_pre = {(2,3):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]},(10,11):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]}}
-    for t_conn, t_dict in lr_big121s_perms_pre.items():
+    lr_121_stray_disperesed = {(2,3):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]},(10,11):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]}}
+    for t_conn, t_dict in lr_121_stray_disperesed.items():
         for t_time,t_perms in t_dict.items():
             for t_perm in t_perms:
                 lr_big121s_perms_areas[     t_conn][t_time][t_perm] = 52
@@ -554,8 +554,8 @@ if 1 == -1:
     print(stored_area)  # Output: 42
 
 
-    #lr_big121s_perms_pre = {(2,3):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]},(10,11):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]}}
-    #lr_big121s_perms = {t_conn:{t_time:t_perms for t_time,t_perms in t_dict.items()} for t_conn,t_dict in lr_big121s_perms_pre.items()}
+    #lr_121_stray_disperesed = {(2,3):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]},(10,11):{279: [3], 280: [6, 9], 281: [3, 6], 282: [6]}}
+    #lr_big121s_perms = {t_conn:{t_time:t_perms for t_time,t_perms in t_dict.items()} for t_conn,t_dict in lr_121_stray_disperesed.items()}
     #lr_big121s_perms_areas0      = lr_init_perm_precomputed0(lr_big121s_perms,0)
     #lr_big121s_perms_areas      = lr_init_perm_precomputed(lr_big121s_perms,0)
     #lr_big121s_perms_areas[     t_conn][t_time][t_perm] = t_area

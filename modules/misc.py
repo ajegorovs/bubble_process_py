@@ -116,6 +116,14 @@ def find_key_by_value(my_dict, value_to_find):
     # In this example, I'm returning None.
     return None
 
+def itertools_product_length(choices):
+    # product takes L = [[a1], [a2, b2], [a3]] and produces [[a1,a2,a3],[a1,b2,a3]]
+    # number of sequences is their individual choice product 1*2*1 = 2
+    sequences_length = 1
+    for sublist in choices:
+        sequences_length *= len(sublist)
+    return sequences_length
+
 class CircularBuffer:
     def __init__(self, size, initial_data=None):
         self.size   = size
@@ -237,7 +245,7 @@ def zp_process(edges, node_segments, contours_dict, inheritance_dict):
     WHY:  connection has a stray node/s and edges, which have confused chain extraction method.
     HOW:  best i can do is to 'absorb' stray nodes into solo contour nodes by forming a composite node.
     """
-    from graphs_general import (set_custom_node_parameters, G2_set_parameters)
+    from graphs_general import (set_custom_node_parameters, G2_set_parameters, get_connected_components)
     from graphs_general import (G, G2, G2_t_start, G2_t_end, G_time, G_owner)
 
     #inheritance_dict = {i: i for i,v in enumerate(node_segments) if len(v) > 0}
@@ -252,16 +260,20 @@ def zp_process(edges, node_segments, contours_dict, inheritance_dict):
         # which is closer to event from right : end   of  right segment   or start    + buffer size?
         time_to     = min(G2_t_end(to)  , G2_t_start(to) + time_buffer  )
         # NOTE: at least one node should be left in order to reconnect recovered segment back. looks like current approach does it. by (1) and (2)
-        nodes_keep              = []
-        nodes_stray             = [node for node in G.nodes() if time_from < G_time(node) < time_to and G_owner(node) is None] 
-        nodes_extra_segments    = [n for n in node_segments[fr] if G_time(n) > time_from] + [n for n in node_segments[to] if G_time(n) < time_to]   # (2)
-
-        nodes_keep.extend(nodes_stray)
-        nodes_keep.extend(nodes_extra_segments)   
         
-        clusters    = nx.connected_components(G.subgraph(nodes_keep).to_undirected())
-        sol         = next((cluster for cluster in clusters if nodes_extra_segments[0] in cluster), None)
-        assert sol is not None, 'cannot find connected components'
+        #nodes_keep              = []
+        #nodes_stray             = [node for node in G.nodes() if time_from < G_time(node) < time_to and G_owner(node) is None] 
+        #nodes_extra_segments    = [n for n in node_segments[fr] if G_time(n) > time_from] + [n for n in node_segments[to] if G_time(n) < time_to]   # (2)
+        
+        #nodes_keep.extend(nodes_stray)
+        #nodes_keep.extend(nodes_extra_segments)   
+        
+        #clusters    = nx.connected_components(G.subgraph(nodes_keep).to_undirected())
+        #sol         = next((cluster for cluster in clusters if nodes_extra_segments[0] in cluster), None)
+        #assert sol is not None, 'cannot find connected components'
+
+        nodes_extra_segments    = [n for n in node_segments[fr] if G_time(n) > time_from] + [n for n in node_segments[to] if G_time(n) < time_to]
+        sol, nodes_stray = get_connected_components(time_from, time_to, nodes_extra_segments, nodes_extra_segments[0], edges_extra = [])
 
         nodes_composite = [(t,) + tuple(IDs) for t, IDs in disperse_nodes_to_times(sol, sort = True).items()] 
 
@@ -637,66 +649,6 @@ def dfs_succ(graph, node, time_lim, node_set):
     for successor in successors:
         if successor not in node_set and graph.nodes[successor]['time'] < time_lim:
             dfs_succ(graph, successor, time_lim, node_set)
-
-#def getNodePos2(dic0, S = 20):
-#    dups, cnts = np.unique([a for a in dic0.values()], return_counts = True)
-#    # relate times to 'local IDs', which are also y-positions or y-indexes
-#    dic = {a:np.arange(b) for a,b in zip(dups,cnts)} # each time -> arange(numDups)
-#    # give duplicates different y-offset 0,1,2,..
-#    dic2 = {t:{s:k for s,k in zip(c,[tID for tID, t_time in dic0.items() if t_time == t])} for t,c in dic.items()}
-#    node_positions = {}
-#    # offset scaled by S
-#    #S = 20
-#    for t,c in dic.items():
-#        # scale and later offset y-pos by mid-value
-#        d = c*S
-#        meanD = np.mean(d)
-#        for c2,key in dic2[t].items():
-#            if len(dic2[t]) == 1:
-#                dy = np.random.randint(low=-3, high=3)
-#            else: dy = 0
-#            # form dict in form key: position. time is x-pos. y is modified by order.
-#            node_positions[key] = (t,c2*S-meanD + dy)
-
-#    return node_positions
-
-#def getNodePos(test):
-#    dups, cnts = np.unique([a[0] for a in test], return_counts = True)
-#    # relate times to 'local IDs', which are also y-positions or y-indexes
-#    dic = {a:np.arange(b) for a,b in zip(dups,cnts)}
-#    # give duplicates different y-offset 0,1,2,..
-#    dic2 = {t:{s:k for s,k in zip(c,[a for a in test if a[0] == t])} for t,c in dic.items()}
-#    node_positions = {}
-#    # offset scaled by S
-#    S = 20
-#    for t,c in dic.items():
-#        # scale and later offset y-pos by mid-value
-#        d = c*S
-#        meanD = np.mean(d)
-#        for c2,key in dic2[t].items():
-#            # form dict in form key: position. time is x-pos. y is modified by order.
-#            node_positions[key] = (t,c2*S-meanD)
-#    return node_positions
-
-
-
-#segments2 = []
-#def segment_conn_end_start_points(connections, segment_list = segments2, nodes = 0):
-#    if connections is not None:
-#        if type(connections) == tuple:
-#            start,end = connections
-#            if nodes == 1:
-#                return (segment_list[start][-1],    segment_list[end][0])
-#            else:
-#                return (segment_list[start][-1][0], segment_list[end][0][0])
-#        if type(connections) == list:
-#            if nodes == 1:
-#                return [(segment_list[start][-1],   segment_list[end][0]) for start,end in connections]
-#            else:
-#                return [(segment_list[start][-1][0],segment_list[end][0][0]) for start,end in connections]
-#        else:
-#            return None
-
 
 def old_conn_2_new(conn,transform):
     return (transform[conn[0]], transform[conn[1]])
@@ -1194,45 +1146,39 @@ def set_ith_elements_multilist(index, entries, *lists):
     return
 
 
-def set_ith_elements_multilist_at_depth(indices, entry, *nested_lists):
-    # The function set_elements_at_depth allows you to modify elements in
-    # nested lists at a specific depth using provided indices.
-    # DOES the following- from:
-    # t_segments_121_centroids[t_from_new][t_node]   = t_centroid
-    # t_segments_121_areas[    t_from_new][t_node]   = t_area
-    # t_segments_121_mom_z[    t_from_new][t_node]   = t_mom_z
-    # to:
-    # set_ith_elements_multilist_at_depth([t_from_new,t_node], [t_centroid,t_area,t_mom_z], t_segments_121_centroids,t_segments_121_areas,t_segments_121_mom_z)
+#def set_ith_elements_multilist_at_depth(indices, entry, *nested_lists):
+#    # The function set_elements_at_depth allows you to modify elements in
+#    # nested lists at a specific depth using provided indices.
+#    # DOES the following- from:
+#    # t_segments_121_centroids[t_from_new][t_node]   = t_centroid
+#    # t_segments_121_areas[    t_from_new][t_node]   = t_area
+#    # t_segments_121_mom_z[    t_from_new][t_node]   = t_mom_z
+#    # to:
+#    # set_ith_elements_multilist_at_depth([t_from_new,t_node], [t_centroid,t_area,t_mom_z], t_segments_121_centroids,t_segments_121_areas,t_segments_121_mom_z)
         
-    current_lists = nested_lists
-    for idx in indices[:-1]:
-        current_lists = [lst[idx] for lst in current_lists]
-    for lst, val in zip(current_lists, entry):
-        lst[indices[-1]] = val
-    return
+#    current_lists = nested_lists
+#    for idx in indices[:-1]:
+#        current_lists = [lst[idx] for lst in current_lists]
+#    for lst, val in zip(current_lists, entry):
+#        lst[indices[-1]] = val
+#    return
 
-def combine_dictionaries_multi(t_from_new, t_to, *dictionaries):
-    # DOES the following- from:
-    #t_segments_121_centroids[   t_from_new] = {**t_segments_121_centroids[   t_from_new],  **t_segments_121_centroids[   t_to]}
-    #t_segments_121_areas[       t_from_new] = {**t_segments_121_areas[       t_from_new],  **t_segments_121_areas[       t_to]}
-    #t_segments_121_mom_z[       t_from_new] = {**t_segments_121_mom_z[       t_from_new],  **t_segments_121_mom_z[       t_to]}
-    # to
-    #combine_dictionaries_multi(t_from_new,t_to,t_segments_121_centroids,t_segments_121_areas,t_segments_121_mom_z)
-    for dictionary in dictionaries:
-        dictionary[t_from_new] = {**dictionary[t_from_new], **dictionary[t_to]}
-    return
+#def combine_dictionaries_multi(t_from_new, t_to, *dictionaries):
+#    # DOES the following- from:
+#    #t_segments_121_centroids[   t_from_new] = {**t_segments_121_centroids[   t_from_new],  **t_segments_121_centroids[   t_to]}
+#    #t_segments_121_areas[       t_from_new] = {**t_segments_121_areas[       t_from_new],  **t_segments_121_areas[       t_to]}
+#    #t_segments_121_mom_z[       t_from_new] = {**t_segments_121_mom_z[       t_from_new],  **t_segments_121_mom_z[       t_to]}
+#    # to
+#    #combine_dictionaries_multi(t_from_new,t_to,t_segments_121_centroids,t_segments_121_areas,t_segments_121_mom_z)
+#    for dictionary in dictionaries:
+#        dictionary[t_from_new] = {**dictionary[t_from_new], **dictionary[t_to]}
+#    return
 
-def lr_init_perm_precomputed(possible_permutation_dict, initialize_value):
-    return {t_conn: {t_time: 
-                            {t_perm:initialize_value for t_perm in t_perms}
-                        for t_time,t_perms in t_times_perms.items()}
-            for t_conn,t_times_perms in possible_permutation_dict.items()}
+#def lr_init_perm_precomputed(possible_permutation_dict, initialize_value):
+#    return {t_conn: {t_time: 
+#                            {t_perm:initialize_value for t_perm in t_perms}
+#                        for t_time,t_perms in t_times_perms.items()}
+#            for t_conn,t_times_perms in possible_permutation_dict.items()}
 
-def itertools_product_length(choices):
-    # product takes L = [[a1], [a2, b2], [a3]] and produces [[a1,a2,a3],[a1,b2,a3]]
-    # number of sequences is their individual choice product 1*2*1 = 2
-    sequences_length = 1
-    for sublist in choices:
-        sequences_length *= len(sublist)
-    return sequences_length
+
 

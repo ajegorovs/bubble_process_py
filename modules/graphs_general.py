@@ -40,9 +40,41 @@ G_owner      = lambda node, graph = G: graph.nodes[node][key_owner     ]
 
 def node_owner_set(node, graph, owner):
     graph.nodes[node][key_owner] = owner
-
+    return
 def G_owner_set(node, owner):
     G.nodes[node][key_owner] = owner
+    return
+
+def get_connected_components(time_min, time_max, nodes_extra, ref_node, edges_extra = []):
+    """ 
+    function retrieves stray nodes connecting one segment to other.
+    it should be already known that there is connection between segments. for info check 'graph_check_paths()'.
+    work principle is similar. isolate on subgraph stray nodes and segment end points. 
+    use 'nx.connected_components()' to get a web of nodes between segments.
+    'nodes_extra' are segment nodes to keep on subgraph.
+    'ref_node' is needed if there are multiple clusters found. ussualy i set one 'nodes_extra' nodes
+    'edges_extra' is for extra/ghost edges to keep cluster together. they are deleted after.
+    """
+    nodes_keep  = []
+
+    nodes_stray = [n for n in G.nodes() if time_min < G_time(n) < time_max and G_owner(n) in (None, -1)] 
+
+    nodes_keep.extend(nodes_stray)
+    nodes_keep.extend(nodes_extra)
+
+    G.add_edges_from(edges_extra)
+
+    clusters_gen    = nx.connected_components(G.subgraph(nodes_keep).to_undirected())
+
+    solution     = next((cluster for cluster in clusters_gen if ref_node in cluster), None)
+
+    assert solution is not None, 'cannot find connected components'
+    
+    G.remove_edges_from(edges_extra)
+
+    return solution, nodes_stray
+
+
 
 def graph_extract_paths(graph, min_length = 2, f_sort = lambda x: (x[0], x[1:])):
     """

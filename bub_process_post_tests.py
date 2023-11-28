@@ -117,7 +117,7 @@ from image_processing import (convertGray2RGB, undistort)
 
 from bubble_params  import (centroid_area_cmomzz, centroid_area)
 
-from graphs_general import (graph_extract_paths, find_paths_from_to_multi, graph_check_paths,
+from graphs_general import (graph_extract_paths, find_paths_from_to_multi, graph_check_paths, get_connected_components,
                             comb_product_to_graph_edges, for_graph_plots,  extract_clusters_from_edges,
                             set_custom_node_parameters, G2_set_parameters, get_event_types_from_segment_graph)
 
@@ -881,35 +881,48 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
         #for_graph_plots(G, segs = t_segments_new) 
         print(f'\n{timeHMS()}:({doX_s}) Working on real and fake events (merges/splits):\nPreparing data...')
+
+
         """
+        ===============================================================================================
+        ============ GENERAL DESCRIPTION METHOD OF PROCESSING MERGES/SPLITS/MIXED EVENTS ==============
+        ===============================================================================================
+        event branches will extended-extrapolated into event node to resolve edges between nodes closer
+        that we have after proximity (overlap) criteria
+        1) detemine from G2 connectivity what type of event it is many-to-one = merge, one-to-many = split
+            many-to-many = mixed event
+        2) collect data for recovery. 
+            we will resolve (extend) all branches for a given event simultaneously
+            this will help to split available nodes betwenn branches in a conservative way.
+            this means we have to start from branch end and take available stray nodes and split them
+            between all branches that have to be extended at this time step.
+            by default i assume that all branches need extension from their initial end-point to event node.
+            i hold this information in active_IDs dictionary.
+        3) obrain k and s parameters for extrapolation: method is not fit for extrapolation, but with proper
+            parameters it can be done. you can find them by performing tests on already existing data
+        4) peform extension
+        5) save changes
+        
         ===============================================================================================
         ============ RECALCULATE MERGE/SPLIT/MIXED EVENTS (FOR ACTUAL EVENT PROCESSING) ===============
         ===============================================================================================
-        NOTE: same as process before 121 recovery. except now mixed type is calculated.
-        NOTE: describtion is in "get_event_types_from_segment_graph" body
+        """
+        G2, lr_ms_edges_main = get_event_types_from_segment_graph(G2)
+
+        """
+        ===============================================================================================
+        ====================== GENERATE INFORMATON ABOUT MERGE/SPLIT/MIXED EVENTS =====================
+        ===============================================================================================
+        common steps: 
+        1) get time interval of event.
+        2) extract nodes which connect event segments.
+        3) disperse them into poll of contour IDs for each time step.
         """
         # for_graph_plots(G, segs = t_segments_new, suptitle = f'{doX}_before', show = True)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         if 1 == 1: 
-
-            G2, lr_ms_edges_main = get_event_types_from_segment_graph(G2)
-
-            # -----------------------------------------------------------------------------------------------
-            # ------ PREPARE DATA INTO USABLE FORM ----
-            # -----------------------------------------------------------------------------------------------
-
             t_merge_real_to_ID_relevant     = []
             t_split_real_from_ID_relevant   = []
-            """
-            ----------------------------------------------------------------------------------------------
-            ------ GENERATE INFORMATON ABOUT REAL AND FAKE MERGE/SPLIT EVENTS----
-            ----------------------------------------------------------------------------------------------
-            IDEA: for real events gather possible choices for contours for each time step during merge event (t_perms)
-            IDEA: for fake events gather evolutions of contours which integrate fake branches and stray nodes (t_combs)
-            WORKFLOW: take master event ID- either node into which merge happens or node from which spit happens
-            WORKFLOW: real: find branches, gather nodes between branches and master, find all options for time steps
-            WORKFLOW: fake: determine branches and their parents, gather options that go though branch parent- master path
-            NOTE: everything is held in one dictionary, but keys and contents are different
-            """
+            
             print('Generating information for:')
             # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             t_event_start_end_times = {'merge':{}, 'split':{}, 'mixed':{}}
@@ -927,15 +940,12 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                 if time_end - time_start_min <= 1: continue            # no time steps between from->to =  nothing to resolve
 
                 # pre-isolate graph segment where all sub-events take place
-                node_to = G2_n_from(to)  #t_segments_new[to][0]
-                nodes_keep    = [n for n in G.nodes() if time_start_min < G_time(n) < time_end and G_owner(n) in (None, -1)] 
-                nodes_keep.append(node_to)
+                node_to = G2_n_from(to)  
 
-                dfs_sol = set()
-                dfs_pred(G.subgraph(nodes_keep), node_to, time_lim = time_start_min , node_set = dfs_sol)
-                node_subIDs_all = disperse_nodes_to_times(dfs_sol) # reformat sol into time:subIDs
-                node_subIDs_all = {t:sorted(node_subIDs_all[t]) for t in sorted(node_subIDs_all)}
-                
+                sol,_ = get_connected_components(time_start_min, time_end, [node_to], node_to, edges_extra = [])
+
+                node_subIDs_all = disperse_nodes_to_times(sol, sort = True) # reformat sol into time:subIDs
+                                
                 active_IDs = {t:[] for t in np.arange(time_start_min + 1, time_end)}
 
                 for fr, times_all in times.items():
@@ -943,14 +953,12 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                         active_IDs[time].append(fr)
 
                 t_event_start_end_times[state][to] = {
-                                                            't_start'       :   times_end,
-                                                            'branches'      :   predecessors,
-                                                            't_end'         :   time_end,
-                                                            'times'         :   times,
-                                                            't_perms'       :   {},
-                                                            'subIDs'        :   node_subIDs_all,
-                                                            'active_IDs'    :   active_IDs
-                                                            }
+                                                        't_start'       :   times_end,
+                                                        'branches'      :   predecessors,
+                                                        't_end'         :   time_end,
+                                                        'subIDs'        :   node_subIDs_all,
+                                                        'active_IDs'    :   active_IDs
+                                                        }
 
                 t_merge_real_to_ID_relevant.append(to)
                 
@@ -969,13 +977,10 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
                 if time_end_max - time_start <= 1: continue
 
-                nodes_keep          = [n for n in G.nodes() if time_start < G_time(n) < time_end_max and G_owner(n) in (None, -1)]
-                nodes_keep.append(node_from)
-                dfs_sol             = set()
-                dfs_succ(G.subgraph(nodes_keep), node_from, time_lim = time_end_max , node_set = dfs_sol)
-                node_subIDs_all     = disperse_nodes_to_times(dfs_sol) # reformat sol into time:subIDs
-                node_subIDs_all     = {t:sorted(node_subIDs_all[t]) for t in sorted(node_subIDs_all)}
+                sol,_ = get_connected_components(time_start, time_end_max, [node_from], node_from)
 
+                node_subIDs_all     = disperse_nodes_to_times(sol, sort = True) # reformat sol into time:subIDs
+                
                 active_IDs          = {t:[] for t in np.arange(time_end_max -1, time_start, -1)} #>>> reverse for reverse re
 
                 for fr, times_all in times.items():
@@ -983,14 +988,12 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                         active_IDs[time].append(fr)
 
                 t_event_start_end_times[state][fr_new] = {
-                                                                't_start'       :   time_start,
-                                                                'branches'      :   successors,
-                                                                't_end'         :   times_end,
-                                                                'times'         :   times,
-                                                                't_perms'       :   {},
-                                                                'subIDs'        :   node_subIDs_all,
-                                                                'active_IDs'    :   active_IDs
-                                                                }
+                                                            't_start'       :   time_start,
+                                                            'branches'      :   successors,
+                                                            't_end'         :   times_end,
+                                                            'subIDs'        :   node_subIDs_all,
+                                                            'active_IDs'    :   active_IDs
+                                                            }
 
                 t_split_real_from_ID_relevant.append(fr_new)
 
@@ -1000,71 +1003,61 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             state = 'mixed'
             for fr_all, to_all in lr_ms_edges_main[state].items():
+                """
+                mixed event has to be delt with differenly than 121 or split/merge because there may be internal
+                segments and if they are dropped from graph before connected component search, some nodes will be dropped
+                >> for example: graph (a->b->c->d) & (a->d). if we strip segments, stray nodes at b->c will <<
+                >> be disconnected because there is no path from b->d or a->c.                              <<
+                basically just include internal branches and then remove them from cluster.
+                i include extra time step from 'to' sement first node, in addition to stray node
+                so i can test wheter branch was extended into it. (*)
+                """
 
                 fr_all_new  = tuple([lr_121chain_redirect[i] for i in fr_all ])
                           
                 times_end   = {i: G2_t_end(   i)  for i in fr_all_new   }
                 times_start = {i: G2_t_start( i)  for i in to_all       }
                                                         
-                nodes_from  = {i: G2_n_to(   i)  for i in fr_all_new   }
-                nodes_to    = {i: G2_n_from( i)  for i in to_all       } #t_segments_new[t][0]
+                nodes_from  = {i: G2_n_to(    i)  for i in fr_all_new   }
+                nodes_to    = {i: G2_n_from(  i)  for i in to_all       }
 
                 # pre-isolate graph segment where all sub-events take place
-                time_start_min    = min(times_end.values())    # take earliest branch time
-                time_end_max      = max(times_start.values()) 
+                time_start_min= min(times_end.values())    # take earliest branch time
+                time_end_max  = max(times_start.values()) 
                 times_all     = np.arange(time_start_min, time_end_max + 1, 1)
                 active_IDs    = {t:[] for t in times_all[1:]}
 
-                # get non-segment nodes within event time inteval
-                nodes_keep    = [n for n in G.nodes() if time_start_min < G_time(n) < time_end_max and G_owner(n) in (None, -1)] 
-                
-                # i had problems with nodes due to internal events. node_subIDs_all was missing times.
-                # ill add all relevant segments to subgraph along stray nodes. gather connected components
-                # and then subract all segment nodes, except first target nodes. 
-                # EDIT 12.12.2023 idk what was the issue then. i add all branches, then delete from segments, then add target nodes..
-                # EDIT 12.12.2023 it works for zero inter-event node cases.
-                nodes_segments_all    = []
                 branches_all          = fr_all_new + to_all
-                for i in branches_all:
-                    nodes_segments_all.extend(t_segments_new[i])
-                nodes_keep.extend(nodes_segments_all)
-
+                # get event segment nodes that are inside an event + include edges
+                in_interval = lambda n: time_start_min <= G_time(n) <= time_end_max
+                nodes_segments_all = [n for i in branches_all for n in t_segments_new[i] if in_interval(n)]
                 # had cases where target nodes are decoupled and are split into different CC clusters.
                 # for safety create fake edges by connecting all branches in sequence. but only those that not exist already
                 x = {**nodes_from, **nodes_to} # inc segments last node, target seg first node
                 fake_edges = [(x[a],x[b]) for a,b in zip(branches_all[:-1], branches_all[1:]) if not G.has_edge(x[a],x[b])]
+
+                ref_node = G2_n_from(to_all[0])
+
+                sol,_ = get_connected_components(time_start_min, time_end_max, nodes_segments_all, ref_node, edges_extra = fake_edges)
+
+                sol     = [t for t in sol if t not in nodes_segments_all]     # strip extra segment nodes
+
+                sol.extend(nodes_to.values())                                 # but add 'to' nodes, as in (*)
                 
-
-                G.add_edges_from(fake_edges)
-                subgraph = G.subgraph(nodes_keep)   
-
-                ref_node = G2_n_from(to_all[0])      #t_segments_new[to_all[0]][0]
-
-                clusters    = nx.connected_components(subgraph.to_undirected())
-                
-                sol     = next((cluster for cluster in clusters if ref_node in cluster), None)
-                assert sol is not None, 'cannot find connected components'
-                sol     = [t for t in sol if t not in nodes_segments_all]
-
-                sol.extend(nodes_to.values())
-
-                G.remove_edges_from(fake_edges)
-                node_subIDs_all = disperse_nodes_to_times(sol) # reformat sol into time:subIDs
-                node_subIDs_all = {t:node_subIDs_all[t] for t in sorted(node_subIDs_all)}
+                node_subIDs_all = disperse_nodes_to_times(sol, sort = True) # reformat sol into time:subIDs
 
                 for fr in fr_all_new: # from end of branch time to event max time
                     for time in np.arange(times_end[fr] + 1, time_end_max + 1, 1):
                         active_IDs[time].append(fr)
 
                 t_event_start_end_times[state][fr_all] = {
-                                                                't_start'       :   times_end,
-                                                                'branches'      :   fr_all_new,
-                                                                't_end'         :   times_start,
-                                                                'times'         :   {},
-                                                                't_perms'       :   {},
-                                                                'target_nodes'  :   nodes_to,
-                                                                'subIDs'        :   node_subIDs_all,
-                                                                'active_IDs'    :   active_IDs}
+                                                            't_start'       :   times_end,
+                                                            'branches'      :   fr_all_new,
+                                                            't_end'         :   times_start,
+                                                            'target_nodes'  :   nodes_to,
+                                                            'subIDs'        :   node_subIDs_all,
+                                                            'active_IDs'    :   active_IDs
+                                                            }
 
         # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     """

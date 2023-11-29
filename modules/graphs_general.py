@@ -31,7 +31,7 @@ G2_n_from      = lambda node, graph = G2: graph.nodes[node][key_n_start]
 G2_n_to        = lambda node, graph = G2: graph.nodes[node][key_n_end  ] 
 G2_edge_dist   = lambda edge, graph = G2: graph.edges[edge][key_e_dist ]
 
-keys_segments = [key_time, key_area, key_centroid, key_owner, key_momz] = ['time', 'area', 'centroid', 'owner', 'moment_z']
+keys_segments = [key_time, key_area, key_centroid, key_owner, key_momz,key_state_from, key_state_to] = ['time', 'area', 'centroid', 'owner', 'moment_z', 'state_from', 'state_to']
 
 G_time       = lambda node, graph = G: graph.nodes[node][key_time      ]
 G_area       = lambda node, graph = G: graph.nodes[node][key_area      ]
@@ -594,30 +594,30 @@ def get_event_types_from_segment_graph(graph, solo_only = False):
         graph.edges[edge]["in_events"] = set()
 
     get_in_events   = lambda edge: graph.edges[edge]["in_events"]
-    get_to_state    = lambda node: graph.nodes[node]["state_to"]
-    get_from_state  = lambda node: graph.nodes[node]["state_from"]
+    get_to_state    = lambda node: graph.nodes[node][key_state_to]
+    get_from_state  = lambda node: graph.nodes[node][key_state_from]
 
     # determine type of connections (edges) between nodes.
     #  it depends on number of successors and predecessors
     for seg_ID in graph.nodes(): 
         seg_successors = list(graph.successors(seg_ID))
         if len(seg_successors) == 0 :
-            graph.nodes[seg_ID]["state_to"] = 'end'
+            graph.nodes[seg_ID][key_state_to] = 'end'
         elif len(seg_successors) == 1: 
-            graph.nodes[seg_ID]["state_to"] = 'solo'
+            graph.nodes[seg_ID][key_state_to] = 'solo'
             graph.edges[(seg_ID,seg_successors[0])]["in_events"].add('solo')
         else:
-            graph.nodes[seg_ID]["state_to"] = 'split'
+            graph.nodes[seg_ID][key_state_to] = 'split'
             [graph.edges[(seg_ID,t)]["in_events"].add('split') for t in seg_successors]
 
         seg_predecessors = list(graph.predecessors(seg_ID))
         if len(seg_predecessors) == 0 :
-            graph.nodes[seg_ID]["state_from"] = 'start'
+            graph.nodes[seg_ID][key_state_from] = 'start'
         elif len(seg_predecessors) == 1: 
-            graph.nodes[seg_ID]["state_from"] = 'solo'
+            graph.nodes[seg_ID][key_state_from] = 'solo'
             graph.edges[(seg_predecessors[0],seg_ID)]["in_events"].add('solo')
         else:
-            graph.nodes[seg_ID]["state_from"] = 'merge'
+            graph.nodes[seg_ID][key_state_from] = 'merge'
             [graph.edges[(t,seg_ID)]["in_events"].add('merge') for t in seg_predecessors]
 
     connections_together = {'solo':[], 'solo_zp':[], 'merge':{}, 'split':{}, 'mixed':{}}

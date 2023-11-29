@@ -239,7 +239,7 @@ def find_final_master_all(slave_master_relations):
 
     return relations_new
 
-def zp_process(edges, node_segments, contours_dict, inheritance_dict):
+def zp_process(edges, node_segments, contours_dict, inheritance_dict, time_buffer = 5):
     """
     WHAT: find segment connections that dont have stray nodes in-between
     WHY:  very much likely that its the same trajectory. interruption is very brief. 
@@ -254,7 +254,7 @@ def zp_process(edges, node_segments, contours_dict, inheritance_dict):
     # analyze zero path cases:
     for fr, to in edges:
         fr = inheritance_dict[fr]         # in case there is a sequence of ZP events one should account for inheritance of IDs
-        time_buffer = 6
+        #time_buffer = 6
         # take a certain buffer zone about ZP event. its width should not exceed sizes of segments on both sides
         # which is closer to event from left  : start of  left segment    or end      - buffer size?
         time_from   = max(G2_t_start(fr), G2_t_end(fr) - time_buffer    )   # test: say, time_buffer = 1e20 -> time_from = G2_t_start(fr)   # (1)
@@ -762,7 +762,7 @@ def lr_weighted_sols(t_conns, weights, t_sols, lr_permutation_cases):
             a = 1
     return lr_weighted_solutions_max, lr_weighted_solutions_accumulate_problems
 
-#def perms_with_branches(t_to_branches,t_segments_new,t_times_contours, return_nodes = False):
+#def perms_with_branches(t_to_branches,segments2,t_times_contours, return_nodes = False):
 #    # if branch segments are present their sequences will be continuous and present fully
 #    # means soolution will consist of combination of branches + other free nodes.
             
@@ -776,7 +776,7 @@ def lr_weighted_sols(t_conns, weights, t_sols, lr_permutation_cases):
 #    t_branch_comb_variants = []
 #    # drop all branches from choices. i will construct more different pools of contour combinations, where branches are frozen
 #    for tID in t_to_branches: 
-#        for t, (t_time, *t_subIDs) in enumerate(t_segments_new[tID]):
+#        for t, (t_time, *t_subIDs) in enumerate(segments2[tID]):
 #            for t_subID in t_subIDs:
 #                t_times_contours_drop[t_time].remove(t_subID)
 #    # pre compute non-frozen node combinations
@@ -790,7 +790,7 @@ def lr_weighted_sols(t_conns, weights, t_sols, lr_permutation_cases):
 #        t_branch_comb_variants.append(copy.deepcopy(t_contour_combs_perms))    # copy a primer.
 #        t_temp = {}                                                            # this buffer will gather multiple branches and their ID together
 #        for t_branch_ID in t_branch_IDs:
-#            for t_time, *t_subIDs in t_segments_new[t_branch_ID]:
+#            for t_time, *t_subIDs in segments2[t_branch_ID]:
 #                if t_time not in t_temp: t_temp[t_time] = []
 #                t_temp[t_time] += list(t_subIDs)                              # fill buffer
 #        for t_time, t_subIDs in t_temp.items():
@@ -972,7 +972,9 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
                         
         nodes_composite.append((time,) + tuple(subIDs))  
 
-    if report is not None: report.append([segment_from, ID_remap[segment_from], segment_to, G2_n_from(segment_to), nodes_composite[-1]])
+    if report is not None: 
+        temp = -1 if segment_from not in ID_remap else ID_remap[segment_from]
+        report.append([segment_from, temp, segment_to, G2_n_from(segment_to), nodes_composite[-1]])
 
     node_to_first           = G2_n_from(segment_to)#node_segments[segment_to][0]                   # (2)
     to_predecessors         = graph_nodes.predecessors(node_to_first)                               # (2)

@@ -239,7 +239,7 @@ def for_graph_plots(graph = G, segs = [], optimize_pos = True, show = True, supt
     # by 'jumping' from one segment in cluster to other you can reach form min to max cluster time
     # cluster elements are sorted by internal index and clusters themself are sorted by first element.
     # it should inherit proper order with which they were found on graph.
-    overlapping_clusters = extract_clusters_from_edges(edges = pairs_overlap, nodes = paths)
+    overlapping_clusters = extract_clusters_from_edges(edges = pairs_overlap, nodes = paths, sort_f_in = G2_t_start)
     # determine maximal number of layers in all clusters
     max_layers = max([len(subIDs) for subIDs in overlapping_clusters])
     # create empty layers for all clusters. global max layers for every cluster storage
@@ -263,8 +263,8 @@ def for_graph_plots(graph = G, segs = [], optimize_pos = True, show = True, supt
     
     for clusterID, layer_dict in positions.items():
         if max_layers <= 1:         continue        # 1 layer means theres nothing to reshuffle. maybe break instead of continue
-        num_IDs_layer = lambda layer: len(layer_dict[layer])
-        last_ID_layer = lambda layer: layer_dict[layer][-1]
+        layer_empty     = lambda layer: len(layer_dict[layer]) == 0
+        last_ID_layer   = lambda layer: layer_dict[layer][-1]
         for layer, seg_subIDs in layer_dict.items():# initially each layer has 1 element (or zero). have to drop them down.
             if layer == 0:              continue    # dont do anything with first layer.
             if len(seg_subIDs) == 0:    break       # first empty, then rest are also empty.
@@ -272,10 +272,9 @@ def for_graph_plots(graph = G, segs = [], optimize_pos = True, show = True, supt
             interval = time_intervals[ID]        
             # start walking layers below. take last ID on that layer and check overlap. take first case w/o overlap
             first_match = next(
-                (l for l in range(2,layer) if num_IDs_layer(l)                                          == 0 or 
-                                            not ranges_overlap(interval, time_intervals[last_ID_layer(l)])    
-                 )
-                , None)
+                (
+                    l for l in range(0,layer) if layer_empty(l) or not ranges_overlap(interval, time_intervals[last_ID_layer(l)])    
+                 ), None)
 
             if first_match is not None:
                 positions[clusterID][first_match].append(ID)# add to end of layer with free spot
@@ -286,11 +285,9 @@ def for_graph_plots(graph = G, segs = [], optimize_pos = True, show = True, supt
     # have to get new layer counts
     num_layers_cluster = {}
     # position holds values: {cluster_ID: {layer_1:list_sub_IDs, layer_2:...},...}
-    for clusterID, layer_dict in positions.items():
-        num_IDs_layer = lambda layer: len(layer_dict[layer])
-        # check how many layers are left after collapse. count up to first empty.
-        max_layers_cluster = next((l for l in range(max_layers) if num_IDs_layer(l) == 0 ), max_layers)
-        num_layers_cluster[clusterID] = max_layers_cluster
+    for clusterID, layer_dict in positions.items(): # get number of first non empty layers in cluster
+        layer_empty                     = lambda layer: len(layer_dict[layer]) == 0
+        num_layers_cluster[clusterID]   = next((l for l in range(max_layers) if layer_empty(l)), max_layers)
         
     max_layers_2 = max(num_layers_cluster.values())
     # move clusters vertically individually

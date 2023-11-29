@@ -230,6 +230,7 @@ def find_final_master(slave_master_relations, start_with):
 def find_final_master_all(slave_master_relations):
     """
     extension of 'find_final_master()' which does it for every entry in a relations dictionary.
+    IT HAS BEEN TESTED ON SOLO AND PAIR OF SEQUENTIAL ZP EVENTS.
     """
     relations_new = {}
     for slave in slave_master_relations:
@@ -253,25 +254,13 @@ def zp_process(edges, node_segments, contours_dict, inheritance_dict):
     # analyze zero path cases:
     for fr, to in edges:
         fr = inheritance_dict[fr]         # in case there is a sequence of ZP events one should account for inheritance of IDs
-        time_buffer = 5
+        time_buffer = 6
         # take a certain buffer zone about ZP event. its width should not exceed sizes of segments on both sides
         # which is closer to event from left  : start of  left segment    or end      - buffer size?
         time_from   = max(G2_t_start(fr), G2_t_end(fr) - time_buffer    )   # test: say, time_buffer = 1e20 -> time_from = G2_t_start(fr)   # (1)
         # which is closer to event from right : end   of  right segment   or start    + buffer size?
         time_to     = min(G2_t_end(to)  , G2_t_start(to) + time_buffer  )
-        # NOTE: at least one node should be left in order to reconnect recovered segment back. looks like current approach does it. by (1) and (2)
         
-        #nodes_keep              = []
-        #nodes_stray             = [node for node in G.nodes() if time_from < G_time(node) < time_to and G_owner(node) is None] 
-        #nodes_extra_segments    = [n for n in node_segments[fr] if G_time(n) > time_from] + [n for n in node_segments[to] if G_time(n) < time_to]   # (2)
-        
-        #nodes_keep.extend(nodes_stray)
-        #nodes_keep.extend(nodes_extra_segments)   
-        
-        #clusters    = nx.connected_components(G.subgraph(nodes_keep).to_undirected())
-        #sol         = next((cluster for cluster in clusters if nodes_extra_segments[0] in cluster), None)
-        #assert sol is not None, 'cannot find connected components'
-
         nodes_extra_segments    = [n for n in node_segments[fr] if G_time(n) > time_from] + [n for n in node_segments[to] if G_time(n) < time_to]
         sol, nodes_stray = get_connected_components(time_from, time_to, nodes_extra_segments, nodes_extra_segments[0], edges_extra = [])
 
@@ -285,7 +274,7 @@ def zp_process(edges, node_segments, contours_dict, inheritance_dict):
         G.remove_nodes_from(nodes_stray)           # stray nodes are absorbed into composite nodes. they have to go from G
         
         G.remove_nodes_from(nodes_extra_segments)  # old parts of segments have to go. they will be replaced by composite nodes.
-
+        # i could have removed only newly created nodes and kept old. search for 't_common_nodes'
         G.add_nodes_from(nodes_composite)
         set_custom_node_parameters( contours_dict, node_segments[fr], fr, calc_hull = 1)
 
@@ -302,7 +291,7 @@ def zp_process(edges, node_segments, contours_dict, inheritance_dict):
 
         G.add_edges_from(edges)
 
-        edges_next = [(fr, i) for i in G2.successors(fr)]
+        edges_next = [(fr, i) for i in G2.successors(to)]
        
         G2_set_parameters(node_segments[fr], fr, edges = edges_next)
             
@@ -321,7 +310,7 @@ def zp_process(edges, node_segments, contours_dict, inheritance_dict):
         C will redirect only one step away, to B. while real target should be A !!!
         so its ok for this specific stage resolution but not to be used for global scope
         """
-        return None
+    return None
 
 def f121_disperse_stray_nodes(edges):
     """
@@ -825,7 +814,7 @@ def lr_weighted_sols(t_conns, weights, t_sols, lr_permutation_cases):
 #        return out
 
 
-def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_to, ID_remap, contours_dict):
+def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_to, ID_remap, contours_dict, report = None):
     """
     NOTE: G_time and such are not implemented
     *** is used to modify graphs and data storage with info about resolved connections between segments ***
@@ -847,9 +836,6 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
 
     graph_nodes = G
     graph_segments = G2
-    
-
-    
 
     nodes_solo, nodes_composite = [],[]
     for time, subIDs in sols_dict.items():                     
@@ -858,8 +844,10 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
                         
         nodes_composite.append((time,) + tuple(subIDs))   # tuple([time] + list(subIDs))
 
+    # i could use 'ID_remap' in the start and overwrite 'segment_to' instead of carrying 'segment_from_new' around
     segment_from_new        = ID_remap[segment_from]      # get reference of master of this segment
     ID_remap[segment_to]    = segment_from_new            # add let master inherit slave of this segment
+    if report is not None: report.append([segment_from, segment_from_new, segment_to, G2_n_to(segment_from_new), G2_n_from(segment_to)])
 
     node_from_last          = G2_n_to(segment_from_new)#node_segments[segment_from_new][-1]         # (1)
     from_successors         = list(graph_nodes.successors(node_from_last))                          # (1)
@@ -891,12 +879,7 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
 
     segment_successors  = graph_segments.successors(segment_to) 
     t_edges             = [(segment_from_new,successor) for successor in segment_successors]
-    #graph_segments.remove_nodes_from([segment_to])
-    #graph_segments.add_edges_from(t_edges)
-    
-    #graph_segments.nodes()[segment_from_new]["t_end"    ] = node_segments[segment_from_new][-1][0]
-    #graph_segments.nodes()[segment_from_new]["node_end" ] = node_segments[segment_from_new][-1]
-            
+                
     t_common_nodes      = set(nodes_solo).intersection(set(nodes_composite))                        # (5)
     t_composite_nodes   = set(nodes_composite) - set(nodes_solo)                                    # (5)
     t_node_params       = {t:dict(graph_nodes.nodes[t]) for t in t_common_nodes}                    # (5)
@@ -907,12 +890,13 @@ def save_connections_two_ways(node_segments, sols_dict, segment_from,  segment_t
     for t,t_params in t_node_params.items():    
         graph_nodes.add_node(t, **t_params)
         G_owner_set(t,segment_from_new) 
-        #graph_nodes.nodes[t]["owner"] = segment_from_new
             
     set_custom_node_parameters(contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)    
     G2_set_parameters(node_segments[segment_from_new], segment_from_new, edges = t_edges, remove_nodes = [segment_to])
     
-def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to, ID_remap, contours_dict):
+    return 
+    
+def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to, ID_remap, contours_dict, report = None):
     # *** is used to modify graphs and data storage with info about resolved extensions of merge branches (from left to merge node) ***
     # ref save_connections_two_ways() for docs. (2) absent, (3) is new
     from graphs_general import (set_custom_node_parameters, G2_set_parameters, G_owner_set)
@@ -920,10 +904,7 @@ def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to,
 
     graph_nodes = G
     graph_segments = G2
-    #G2_n_to    = lambda node: seg_n_to(    node, graph_segments)
-    #G_time      = lambda node: node_time(   node, graph_nodes   )
-    #G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
-
+    
     nodes_solo, nodes_composite = [],[]
 
     for time,subIDs in sols_dict.items():                     
@@ -933,6 +914,8 @@ def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to,
         nodes_composite.append((time,) + tuple(subIDs))  
 
     segment_from_new        = ID_remap[segment_from]
+
+    if report is not None: report.append([segment_from, segment_from_new, segment_to, G2_n_to(segment_from_new), nodes_composite[-1]])
 
     node_from_last          = G2_n_to(segment_from_new)#node_segments[segment_from_new][-1]        # (1)
     from_successors         = graph_nodes.successors(node_from_last)                                # (1)
@@ -955,8 +938,6 @@ def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to,
 
     node_segments[segment_from_new] += nodes_composite
  
-    #graph_segments.nodes()[segment_from_new]["t_end"    ] = node_segments[segment_from_new][-1][0]
-    #graph_segments.nodes()[segment_from_new]["node_end" ] = node_segments[segment_from_new][-1]
      
     t_common_nodes      = set(nodes_solo).intersection(set(nodes_composite))                        # (5)
     t_composite_nodes   = set(nodes_composite) - set(nodes_solo)                                    # (5)
@@ -968,12 +949,13 @@ def save_connections_merges(node_segments, sols_dict, segment_from,  segment_to,
     for t,t_params in t_node_params.items():    
         graph_nodes.add_node(t, **t_params)
         G_owner_set(t, segment_from_new) 
-        #graph_nodes.nodes[t]["owner"] = segment_from_new
+        
     set_custom_node_parameters(contours_dict, t_composite_nodes, segment_from_new, calc_hull = 1)  
     G2_set_parameters(node_segments[segment_from_new], segment_from_new)
 
+    return
     
-def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,  ID_remap, contours_dict):
+def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,  ID_remap, contours_dict, report = None):
     # *** is used to modify graphs and data storage with info about resolved extensions of split branches (from right to split node) ***
     # ref save_connections_two_ways() for docs. (1) absent, (3) is new
     # >> maybe i have to sort nodes_composite instead of [::-1] <<< later
@@ -981,9 +963,6 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
     from graphs_general import (G, G2, G2_n_from, G_time)
     graph_nodes = G
     graph_segments = G2
-    #G2_n_from  = lambda node: seg_n_from(  node, graph_segments)
-    #G_time      = lambda node: node_time(   node, graph_nodes   )
-    #G_owner_set = lambda node, owner: node_owner_set(node, graph_nodes, owner)
 
     nodes_solo, nodes_composite = [],[]
 
@@ -993,7 +972,7 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
                         
         nodes_composite.append((time,) + tuple(subIDs))  
 
-    #segment_from_new        = ID_remap[segment_from] # should not be used, since splits dont reach it
+    if report is not None: report.append([segment_from, ID_remap[segment_from], segment_to, G2_n_from(segment_to), nodes_composite[-1]])
 
     node_to_first           = G2_n_from(segment_to)#node_segments[segment_to][0]                   # (2)
     to_predecessors         = graph_nodes.predecessors(node_to_first)                               # (2)
@@ -1017,9 +996,6 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
 
     node_segments[segment_to] = nodes_composite[::-1] + node_segments[segment_to]
 
-    #graph_segments.nodes()[segment_to]["t_start"    ] = node_segments[segment_to][0][0]    #nodes_composite[0][0] # should have been nodes_composite[::-1][0]
-    #graph_segments.nodes()[segment_to]["node_start" ] = node_segments[segment_to][0]       # nodes_composite[0]
-     
     t_common_nodes = set(nodes_solo).intersection(set(nodes_composite))                             # (5)
     t_composite_nodes = set(nodes_composite) - set(nodes_solo)                                      # (5)
     t_node_params = {t:dict(graph_nodes.nodes[t]) for t in t_common_nodes}                          # (5)
@@ -1030,11 +1006,11 @@ def save_connections_splits(node_segments, sols_dict, segment_from,  segment_to,
     for t,t_params in t_node_params.items():    
             graph_nodes.add_node(t, **t_params)
             G_owner_set(t, segment_to)
-            #graph_nodes.nodes[t]["owner"] = segment_to
+            
     set_custom_node_parameters(contours_dict, t_composite_nodes, segment_to, calc_hull = 1)  # owner changed
     G2_set_parameters(node_segments[segment_to], segment_to)
 
-
+    return
 
 # ===============================================================================================
 # ====  FOR BRANCH EXTENSION, SEE IF THERE ARE CONTESTED NODES AND REDISTRIBUTE THEM ====

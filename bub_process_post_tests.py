@@ -873,16 +873,16 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
         t_segments_new = copy.deepcopy(segments2)
         lr_121chain_redirect = {i: i for i,v in enumerate(segments2) if len(v) > 0}
+        t_report = []
         for edge in lr_big121s_conn_121:
             fr, to = edge
-            fr_new, to_new = old_conn_2_new(edge,lr_121chain_redirect)
-            print(f'edge :({fr},{to}) or = {G2_n_to(fr_new)}->{G2_n_from(to_new)}')  
-            save_connections_two_ways(t_segments_new, lr_121_stray_disperesed[edge], fr, to, lr_121chain_redirect, g0_contours)
+            save_connections_two_ways(t_segments_new, lr_121_stray_disperesed[edge], fr, to, lr_121chain_redirect, g0_contours, t_report)
+        
+        if len(lr_big121s_conn_121) > 0:
+            report = '; '.join([f'edge = [{L[1]}, {L[2]}] (old [{L[0]}, {L[2]}]) | nodes: {L[3]}->{L[4]}' for L in t_report])
+            print(f'\n{timeHMS()}:({doX_s}) Saved following 121 connections: {report}')
 
         #for_graph_plots(G, segs = t_segments_new) 
-        print(f'\n{timeHMS()}:({doX_s}) Working on real and fake events (merges/splits):\nPreparing data...')
-
-
         """
         ===============================================================================================
         ============ GENERAL DESCRIPTION METHOD OF PROCESSING MERGES/SPLITS/MIXED EVENTS ==============
@@ -909,6 +909,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         """
         G2, lr_ms_edges_main = get_event_types_from_segment_graph(G2)
 
+        # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         """
         ===============================================================================================
         ====================== GENERATE INFORMATON ABOUT MERGE/SPLIT/MIXED EVENTS =====================
@@ -920,21 +921,17 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         """
         # for_graph_plots(G, segs = t_segments_new, suptitle = f'{doX}_before', show = True)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         if 1 == 1: 
-            t_merge_real_to_ID_relevant     = []
-            t_split_real_from_ID_relevant   = []
             
-            print('Generating information for:')
-            # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             t_event_start_end_times = {'merge':{}, 'split':{}, 'mixed':{}}
-            merge_split_mixed_info  = []#{'merge':{}, 'split':{}, 'mixed':{}}
+            merge_split_mixed_info  = []
             # ------------------------------------- REAL MERGE/SPLIT -------------------------------------
             state = 'merge'
-            for to in lr_ms_edges_main[state]: 
-                predecessors            = list(G2.predecessors(to))# G2_t_start G2_t_end
-                predecessors            = [ lr_121chain_redirect[t] for t in G2.predecessors(to)] # update if inherited
+            for to,predecessors in lr_ms_edges_main[state].items(): 
+                #predecessors            = list(G2.predecessors(to))# G2_t_start G2_t_end
+                #predecessors            = [ lr_121chain_redirect[t] for t in G2.predecessors(to)] # update if inherited
                 times_end               = { t: G2_t_end(t) for t in predecessors}
                 time_end                = G2_t_start(to)
-                times                   = { i: np.arange(t_from_end, time_end + 1, 1) for i, t_from_end in times_end.items()}
+                times                   = { i: range(t_from_end, time_end + 1, 1) for i, t_from_end in times_end.items()}
                 time_start_min          =   min(times_end.values())    # take earliest branch time
 
                 if time_end - time_start_min <= 1: continue            # no time steps between from->to =  nothing to resolve
@@ -948,9 +945,9 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                                 
                 active_IDs = {t:[] for t in np.arange(time_start_min + 1, time_end)}
 
-                for fr, times_all in times.items():
+                for i, times_all in times.items():
                     for time in times_all[1:-1]: # remove start-end points
-                        active_IDs[time].append(fr)
+                        active_IDs[time].append(i)
 
                 t_event_start_end_times[state][to] = {
                                                         't_start'       :   times_end,
@@ -960,18 +957,17 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                                                         'active_IDs'    :   active_IDs
                                                         }
                 merge_split_mixed_info.append([state, tuple(predecessors), (to,), node_subIDs_all, active_IDs])
-                t_merge_real_to_ID_relevant.append(to)
                 
             # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             state = 'split'
-            for fr in lr_ms_edges_main[state]:
-                fr_new              = lr_121chain_redirect[fr]
-                successors          = list(G2.successors(fr_new))
+            for fr, successors in lr_ms_edges_main[state].items():
+                #fr_new              = lr_121chain_redirect[fr]
+                #successors          = list(G2.successors(fr_new))
                 times_end           = {to: G2_t_start(to) for to in successors} 
-                time_start          = G2_t_end(fr_new)
-                times               = {t: np.arange(time_start, t_end + 1, 1) for t, t_end in times_end.items()}
+                time_start          = G2_t_end(fr)
+                times               = {t: range(time_start, t_end + 1, 1) for t, t_end in times_end.items()}
                 
-                node_from           = G2_n_to(fr_new)      #t_segments_new[fr_new][-1]
+                node_from           = G2_n_to(fr)      #t_segments_new[fr_new][-1]
                 # pre-isolate graph segment where all sub-events take place
                 time_end_max        = max(times_end.values())
 
@@ -983,11 +979,11 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                 
                 active_IDs          = {t:[] for t in np.arange(time_end_max -1, time_start, -1)} #>>> reverse for reverse re
 
-                for fr, times_all in times.items():
+                for i, times_all in times.items():
                     for time in times_all[1:-1]: # remove start-end points
-                        active_IDs[time].append(fr)
+                        active_IDs[time].append(i)
 
-                t_event_start_end_times[state][fr_new] = {
+                t_event_start_end_times[state][fr] = {
                                                             't_start'       :   time_start,
                                                             'branches'      :   successors,
                                                             't_end'         :   times_end,
@@ -995,7 +991,6 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                                                             'active_IDs'    :   active_IDs
                                                             }
                 merge_split_mixed_info.append([state, (fr,), tuple(successors), node_subIDs_all, active_IDs])
-                t_split_real_from_ID_relevant.append(fr_new)
 
             print(f'\n{timeHMS()}:({doX_s}) Real merges({lr_ms_edges_main["merge"]})/splits({lr_ms_edges_main["split"]})... Done')
 
@@ -1059,7 +1054,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                                                             'active_IDs'    :   active_IDs
                                                             }
                 merge_split_mixed_info.append([state, fr_all, to_all, node_subIDs_all, active_IDs])
-        # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     """
     ===============================================================================================
     ====  Determine interpolation parameters ====
@@ -1073,9 +1068,9 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     # get segments that have possibly inherited other segments and that are not branches
     t_segments_IDs_relevant = [i for i,traj in enumerate(t_segments_new) if len(traj) > 0]
 
-    k_s_buffer_len_max = 8          # i want this long history at max
-    k_s_buffer_len_min = 3      # 
-    k_s_start_at_index = 0   # default start from index 0
+    k_s_buffer_len_max  = 8          # i want this long history at max
+    k_s_buffer_len_min  = 3      # 
+    k_s_start_at_index  = 0   # default start from index 0
     k_s_anal_points_max = 20   # at best analyze this many points, it requires total traj of len k_s_anal_points_max + "num pts for interp"
     k_s_anal_points_min = 5    # 
     k_all = (1,2)
@@ -1142,20 +1137,6 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     # ----------------- Evaluate and find most likely evolutions of path -------------------------
     print(f'\n{timeHMS()}:({doX_s}) Finding most possible path evolutions...')
                 
-    # >>>  this approach of reconnecting lr_121chain_redirect is old. it was used in situation similar to ZP case.
-    # >>>  where inheritance did not automatically resolved during saving. i should fix fake splits & merges and fix this after it.
-    #G_seg_view_2 = nx.Graph()
-    #G_seg_view_2.add_edges_from([(x,y) for y,x in lr_121chain_redirect.items()])
-
-    #lr_C1_condensed_connections = [sorted(c, key = lambda x: x) for c in nx.connected_components(G_seg_view_2)]
-    #lr_C1_condensed_connections = sorted(lr_C1_condensed_connections, key = lambda x: x[0])
-    ## lets condense all sub-segments into one with smallest index. EDIT: give each segment index its master. since number of segments will shrink anyway
-    #t_condensed_connections_all_nodes = sorted(sum(lr_C1_condensed_connections,[])) # neext next
-    #lr_fake_redirect = {tID: tID for tID in range(len(segments2))} 
-    #for subIDs in lr_C1_condensed_connections:
-    #    for t_subID in subIDs:
-    #        lr_fake_redirect[t_subID] = min(subIDs)
-
 
     # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     """
@@ -1167,22 +1148,18 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     -> at time T, two branches [B1, B2] have to be recovered from node cluster C = [1,2,3]
     -> try node redistributions- ([partition_B1,partition_B2], ..) = ([[1],[2,3]], [[2],[1,3]], [[3]lr_fake_redirect,[1,2]])    
     """
+
+    print(f'\n{timeHMS()}:({doX_s}) Analyzing real merge/split events. extending branches: ')
+
     t_out                   = defaultdict(dict)
     t_extrapolate_sol_comb  = defaultdict(dict)
 
     ms_mixed_completed      = {'full': defaultdict(dict),'partial': defaultdict(dict)} 
     lr_post_branch_rec_info = {}
     ms_early_termination    = {}
-    #a = [f'{L[0]}:{L[1]}->{L[2]}; ' for L in merge_split_mixed_info]
-    print(f'\n{timeHMS()}:({doX_s}) Analyzing real merge/split events. extending branches: ')
-    #print(*a)
-    #for t_ID, state in ms_branch_extend_IDs:# merge_split_mixed_info.append({state, fr_all, to_all, node_subIDs_all, active_IDs})
+    
     for state, fr_all, to_all, time_cIDs_dict, time_active_sIDs in merge_split_mixed_info:
-        """
-        ===========================================================================================
-        =================== DETERMINE BRANCHES, START AND END TIMES OF EVENT ======================
-        ===========================================================================================
-        """
+        
         branches = fr_all if state in ('merge','mixed') else to_all
         
         if state == 'mixed':
@@ -1210,7 +1187,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                 t_to    = G2_t_start(branch_ID)
             
             if state in ('split', 'merge') and np.abs(t_to - t_from) < 2:    # there are mixed cases with zero event nodes
-                t_out[t_ID][branch_ID] = None                                # so nothing to resolve. but there are mixed events
+                #t_out[t_ID][branch_ID] = None                                # so nothing to resolve. but there are mixed events
                 continue                                                     # which is worth resolving even if ZP.
 
             """
@@ -1272,7 +1249,7 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             subIDs = time_cIDs_dict[time_next]
 
             if len(subIDs) < len(recover_branches):                                     # more branches than contours available.
-                ms_early_termination[t_ID, state] = [time_next,recover_branches]        # cant resolve this.
+                #ms_early_termination[t_ID, state] = [time_next,recover_branches]        # cant resolve this.
                 branch_failed.extend(recover_branches)                                  # consider both branches failed.
                 continue                                                                # continue to end event time maybe there are any other 
                                                                                         # branches to fix. see "extend_branchs_solo_node_continue.png"
@@ -1379,9 +1356,9 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
                     all_area_buffers[branch_ID].append(permutation_params[tuple(subIDs)][1])
                     all_time_buffers[branch_ID].append(time_next)
                     
-                    if      state == 'merge':   t_conn = (state, branch_ID  , t_ID      )
+                    if      state == 'merge':   t_conn = (state, branch_ID  , to_all[0] )
                     elif    state == 'mixed':   t_conn = (state, branch_ID  , -1        )
-                    else:                       t_conn = (state, t_ID       , branch_ID )
+                    else:                       t_conn = (state, fr_all[0]  , branch_ID )
 
                     if t_conn not in t_extrapolate_sol_comb: t_extrapolate_sol_comb[t_conn] = {}
 
@@ -1441,16 +1418,17 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     # for_graph_plots(G, segs = t_segments_new)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     lr_merge_redirect= {i:i for i,v in enumerate(t_segments_new) if len(v) > 0}
+    t_report_merge, t_report_split, t_report_mixed = [], [], []
     for (state, t_from, t_to), t_combs in t_extrapolate_sol_comb.items():
         t_conn = (state, t_from, t_to)
 
         if len(t_combs) == 0: continue                              # no extension, skip.
 
         if state in ('merge', 'mixed') and t_conn not in ms_mixed_completed['full']:
-            save_connections_merges(t_segments_new, t_combs, t_from ,  None, lr_merge_redirect, g0_contours)
+            save_connections_merges(t_segments_new, t_combs, t_from ,  t_to, lr_merge_redirect, g0_contours, t_report_merge)
 
         elif state == 'split':
-            save_connections_splits(t_segments_new, t_combs, None   ,  t_to, lr_merge_redirect, g0_contours)
+            save_connections_splits(t_segments_new, t_combs, t_from ,  t_to, lr_merge_redirect, g0_contours, t_report_split)
 
         else:
             t_to = ms_mixed_completed['full'][t_conn]['targets'][0]
@@ -1458,19 +1436,28 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
             t_from_other_predecessors = [lr_merge_redirect[t] for t in G2.predecessors(t_to) if t != lr_merge_redirect[t_from]]
             edges = [(t, t_to) for t in t_from_other_predecessors]
             G2.remove_edges_from(edges)
-            save_connections_two_ways(t_segments_new, t_combs, t_from,  t_to, lr_merge_redirect, g0_contours)
+            save_connections_two_ways(t_segments_new, t_combs, t_from,  t_to, lr_merge_redirect, g0_contours, t_report_mixed)
 
+    if len(t_report_merge) > 0:
+        report = '\n'.join([f'edge = [{L[1]}, {L[2]}] (old [{L[0]}, {L[2]}]) | nodes: {L[3]}->{L[4]}' for L in t_report_merge])
+        print(f'\n{timeHMS()}:({doX_s}) Performed following merge branch extension: \n{report}')
+    if len(t_report_split) > 0:
+        report = '\n'.join([f'edge = [{L[1]}, {L[2]}] (old [{L[0]}, {L[2]}]) | nodes: {L[3]}->{L[4]}' for L in t_report_split])
+        print(f'\n{timeHMS()}:({doX_s}) Performed following split branch extension: \n{report}')
+    if len(t_report_mixed) > 0:
+        report = '\n'.join([f'edge = [{L[1]}, {L[2]}] (old [{L[0]}, {L[2]}]) | nodes: {L[3]}->{L[4]}' for L in t_report_mixed])
+        print(f'\n{timeHMS()}:({doX_s}) Connected following edges fully: \n{report}')
 
     # for_graph_plots(G, segs = t_segments_new, suptitle = f'{doX}_after', show = True)        
 
 
-    aaa = defaultdict(set)
-    for t, segment in enumerate(t_segments_new):
-        for node in segment:
-            aaa[t].add(G_owner(node)) #G.nodes[t_node]["owner"]
+    #aaa = defaultdict(set)
+    #for t, segment in enumerate(t_segments_new):
+    #    for node in segment:
+    #        aaa[t].add(G_owner(node)) #G.nodes[t_node]["owner"]
     tt = []
     for n in G.nodes():
-        if "time" not in G.nodes[n]:
+        if key_time not in G.nodes[n]:
             set_custom_node_parameters(g0_contours, [n], None, calc_hull = 1)
             tt.append(n)
     print(f'were missing: {tt}')
@@ -1479,62 +1466,62 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
     print(f'\n{timeHMS()}:({doX_s}) Final. Recompute new straight segments')
     """
     ===============================================================================================
-    ============== Final passes. Find new straight segments. ===================
+    ============== FINAL PASSES. FIND NEW STRAIGHT SEGMENTS, UPDATE OLD IF EXTENDED ===============
     ===============================================================================================
-    WHY: after merge/split/merge extensions there may be explicit branches left over in event area
-    HOW: analyze recent graph for straight segments and determine which segments are different from old
+    WHY: after merge/split/merge extensions you may uncover EXPLICIT BRANCHES
+    WHY: or there are FREE SOLO NODES left on EDGES of segments.
+    HOW: recompute straight segments and compare them to old, find which relates to which.
+    NOTE: so there are new segments or expanded old ones.
     """
-    t_segments_fin = graph_extract_paths(G, min_length = 2)
-
+    t_segments_fin = graph_extract_paths(G, min_length = seg_min_length)
+    # for_graph_plots(G, segs = t_segments_fin)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     unresolved_new = list(range(len(t_segments_fin)))
-    unresolved_old = [t for t, nodes in enumerate(t_segments_new) if len(nodes) > 0]
-    resolved_new = []
-    resolved_old = []
-    for i_new, traj in enumerate(t_segments_fin):                           # first test if first elements are the same
-        for i_old     in unresolved_old:
-            if traj[0] == t_segments_new[i_old][0]:
-                resolved_new.append(i_new)
-                resolved_old.append(i_old)
-                break
-    unresolved_new = [t for t in unresolved_new if t not in resolved_new]
-    unresolved_old = [t for t in unresolved_old if t not in resolved_old]
-    temp_u_new = copy.deepcopy(unresolved_new)                                # (cant iterate though changing massives. copy)
-    temp_u_old = copy.deepcopy(unresolved_old)
-    for i_new in temp_u_new:         # can be improved. minor                 # then test unresolved using set intersection
-        for i_old in temp_u_old:                                              # might be needed if segments got wider
-            if i_old not in resolved_old:
-                intersection_length = len(set(t_segments_fin[i_new]).intersection(set(t_segments_new[i_old])))
-                if intersection_length > 0:
-                    unresolved_new.remove(i_new)
-                    unresolved_old.remove(i_old)
-                    resolved_new.append(i_new)
-                    resolved_old.append(i_old)
-                    break
-    t_start_ID = len(t_segments_new)
-    fin_additional_segments_IDs = list(range(t_start_ID, t_start_ID + len(unresolved_new), 1))
 
+    relations_dict = {}    # for debugging
+    # there will be more or equal number of chain segments on graph. new segments may be longer or equal in length after search
+    # following method uses generators to avoid parsing though all nodes, but returns first match if possible:
+    for old in (t for t, nodes in enumerate(t_segments_new) if len(nodes) > 0):         # walk all old IDs and 
+        first_node_old = G2_n_from(old)                                                 # take their first node.
+        # set up a generator search which will try to find first old node in new segments with set ID
+        search_node = lambda ID: next((True for n in t_segments_fin[ID] if n == first_node_old), False)
+        # now iteratively walk all new unresolved IDs and apply search. first match will be returned. or fail with None
+        first_match_new = next((ID for ID in unresolved_new if search_node(ID)), None)
+        if first_match_new is not None:                                                 # if match is found. 
+            relations_dict[old] = first_match_new                                       # remeber which old ID is connected with new ID
+            unresolved_new.remove(first_match_new)                                      # remove new found ID from search list.
+            # check if segment has changed. test if start/end nodes match
+            chain_changed = True if (   t_segments_new[old][0]  != t_segments_fin[first_match_new][0] or
+                                        t_segments_new[old][-1] != t_segments_fin[first_match_new][-1]) else False
+            if chain_changed:                                                           
+                t_segments_new[old] = t_segments_fin[first_match_new]                   
+                for n in t_segments_new[old]:                                           
+                    G_owner_set(n, old)       
+                    
+                    if not G.has_node(n):                                               # not sure if this check is needed
+                        set_custom_node_parameters(g0_contours, [n], old, calc_hull = 1)
+                        assert -1 == 1, 'check this stage'
+
+                G2_set_parameters(t_segments_new[old], old)
+    
     """
     ===============================================================================================
     ============== FINAL PASSES. ADD NEW UNRESOLVED TO LIST OF OLD RESOLVED SEGMENTS ==============
     ===============================================================================================
     """
+    fin_additional_segments_IDs = []
     for ID in unresolved_new:      # add new segments to end of old storage
 
         ID_new = len(t_segments_new)
 
+        fin_additional_segments_IDs.append(ID_new)
+
         t_segments_new.append(t_segments_fin[ID])
 
-        node_start, node_end = t_segments_new[ID_new][0], t_segments_new[ID_new][-1] # t_segments_new[ID_new][[0, -1]]
-
         set_custom_node_parameters(g0_contours, t_segments_fin[ID], ID_new, calc_hull = 1)        # 
-        G2_set_parameters(t_segments_fin[ID], ID_new)#, G_time)
+        G2_set_parameters(t_segments_fin[ID], ID_new)
 
-
-    # for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    # for_graph_plots(G, segs = t_segments_fin)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    if doX == 12: for_graph_plots(G, segs = t_segments_new)         #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     print(f'\n{timeHMS()}:({doX_s}) Final. Update connectivity')
-    # ============== Final passes. New straight segments. Update connectivity ===================
-    #G2.add_edges_from(G2.edges())
     """
     ===============================================================================================
     ========================= FINAL PASSES. RECOMPUTE SEGMENT CONNECTIVITY ========================
@@ -1566,7 +1553,6 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
         fin_extend_info = defaultdict(dict)
             
-        #G2_dir, fin_edges_main = get_event_types_from_segment_graph(G2)   
         G2, fin_edges_main = get_event_types_from_segment_graph(G2) 
         
         state = 'merge'

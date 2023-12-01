@@ -69,7 +69,128 @@ def interpolate_find_k_s(trajectory, time, params_k, params_s, report_on = False
 
     return temp_diffs_all
 
-def extrapolate_find_k_s(trajectory, time, t_k_s_combs, k_all, k_s_buffer_len_max, k_s_start_at_index = 0, debug = 0, debug_show_num_best = 3):
+def decide_k_s(traj, pts_max, pts_min, buf_max, buf_min):
+
+    start, buf_len, do_k_s = None, None, False
+
+    if  traj.shape[0] > pts_max + buf_max:          # history is large
+        start = traj.shape[0] - pts_max - buf_max   # start far enough to analyze all 'pts_max'
+        buf_len = buf_max                           # with buffer size 'buf_max'
+        do_k_s = True
+
+    elif traj.shape[0] > pts_min + buf_min:         # history is smaller, give prio to interp length rather than inspected point count
+        start = 0                                   # start as early as possible
+        buf_len = traj.shape[0]  - pts_min          # traj [1,2,3,4,5], pts_min = 2 -> 4 & 5, buf_len = 3 
+        do_k_s = True                               # interp segments: [2,3,4 & 5], [1,2,3 & 4]
+
+    return do_k_s, start, buf_len
+
+def extrapolate_find_k_s(trajectory, time, t_k_s_combs, k_s_buffer_len_max, k_s_start_at_index = 0, debug = 0, debug_show_num_best = 3):
+    trajectory_length   = trajectory.shape[0]
+
+    # how many iterations can you pull?
+    # iterations = len(traj) - len(buffer) - K | i.e if len(traj) = len(buffer) + 1 ; K = 0 -> iterations = 1
+    do_work_next_n      = trajectory_length - k_s_buffer_len_max - k_s_start_at_index
+
+    num_params = len(t_k_s_combs)
+    errors_new = np.zeros((num_params,do_work_next_n), float)
+    if debug: predicts = np.zeros((num_params,do_work_next_n, 2), float)
+    buffer_len = k_s_buffer_len_max
+    start = k_s_start_at_index; end = k_s_start_at_index + buffer_len 
+    
+    for i in range(do_work_next_n):
+        centroids = trajectory[ start + i:  end + i]
+        times     = time[       start + i:  end + i]
+        real_real = trajectory[             end + i]
+        time_next = time[                   end + i]
+        
+        for c, (k, s) in enumerate(t_k_s_combs):
+           predict = interpolate_trajectory(centroids, times, which_times = [time_next] ,s = s, k = k, debug = 0 ,axes = 0, title = 'title', aspect = 'equal')[0]
+           errors_new[c,i] = np.linalg.norm(predict - real_real)
+           if debug: predicts[c,i] = predict
+    a = 1
+    errors_new_tot = np.round(np.mean(errors_new, axis = 1),2)
+    min_pos = np.argmin(errors_new_tot)
+    out_k_s = t_k_s_combs[min_pos]
+    out_deltas = errors_new[min_pos]
+
+    #errors_tot_all  = {}
+    #errors_sol_all   = {}
+    #errors_sol_diff_norms_all   = {}
+    ## track previous error value for each k and track wheter iterator for set k should skip rest s.
+    #t_last_error_k  = {k:None for k in k_all} # if during first iteration error is rounded to 0.0, you will have trouble.
+    #t_stop_k        = {k:0 for k in k_all}    # None should force first iteration for k to be finished
+    ## MAYBE redo so same trajectory part is ran with different k and s parameters instead of change parts for one comb of k,s
+    ## EDIT, it does not let you break early if no change is detected. trade off? idk
+
+    #for t_comb in t_k_s_combs:
+    #    k  = t_comb[0]; s = t_comb[1]
+    #    if t_stop_k[k] == 1: continue 
+    #    t_errors        = {}
+    #    t_sols          = {}
+        
+    #    t_traj_buff     = CircularBuffer(k_s_buffer_len_max,  trajectory[k_s_start_at_index:k_s_start_at_index + k_s_buffer_len_max])
+    #    t_time_buff     = CircularBuffer(k_s_buffer_len_max,  time[      k_s_start_at_index:k_s_start_at_index + k_s_buffer_len_max])
+        
+    #    t_indicies = np.arange(k_s_start_at_index, k_s_start_at_index + do_work_next_n , 1)
+    #    for t_start_index in t_indicies:# 
+    #        h_num_points_available = min(k_s_buffer_len_max, trajectory.shape[0] - t_start_index)           # but past start, there are only total-start available
+    #        if t_start_index + h_num_points_available == trajectory_length: break
+    #        t_predict_index = t_start_index + h_num_points_available                                  # some mumbo jumbo with indicies, but its correct
+
+    #        t_real_val      = [trajectory[   t_predict_index]]
+    #        t_predict_time  = [time[         t_predict_index]]
+
+    #        t_sol = interpolate_trajectory(t_traj_buff.get_data(), t_time_buff.get_data(), which_times = t_predict_time ,s = s, k = k, debug = 0 ,axes = 0, title = 'title', aspect = 'equal')
+    #        t_sols[t_predict_index]         = t_sol[0]
+    #        t_errors[t_predict_index]       = np.linalg.norm(np.diff(np.concatenate((t_sol,t_real_val)), axis = 0), axis = 1)[0] 
+
+    #        t_traj_buff.append(trajectory[  t_predict_index])
+    #        t_time_buff.append(time[        t_predict_index])
+
+    #    if len(t_indicies)>0:                   # short trajectory passes without iterations, so skip block inside
+    #        t_errors_tot                        = round(np.sum(list(t_errors.values()))/len(t_errors), 3)
+    #        errors_sol_all[t_comb]              = t_sols
+    #        errors_sol_diff_norms_all[t_comb]   = t_errors
+    
+    #        if t_last_error_k[k] == t_errors_tot:
+    #            t_stop_k[k] = 1;#print(f'stop: k = {k} at s = {s}, err = {t_errors_tot}')
+    #        else:
+    #            t_last_error_k[k] = t_errors_tot
+    #            errors_tot_all[t_comb] = t_errors_tot
+    #    else:
+    #        errors_tot_all[t_comb] = -1
+    #        errors_sol_diff_norms_all[t_comb] = {}
+    #assert len(errors_tot_all)>0 ,'no iterations happened'
+    #t_OG_comb_sol = min(errors_tot_all, key=errors_tot_all.get)
+
+    if debug:
+        (fig_k_s, axes) = plt.subplots(debug_show_num_best, 1, figsize=(12, 8), sharex=True, sharey=True)
+        if debug_show_num_best == 1: axes = [axes]
+        
+        idx         = np.argpartition(errors_new_tot, debug_show_num_best)                  # take 'debug_show_num_best' smallest error IDs
+        idx_sorted  = sorted(idx[:debug_show_num_best], key = lambda x: errors_new_tot[x])  # have to sort IDs by errors
+
+        for ax, ID in zip(axes,idx_sorted):
+            k,s = t_k_s_combs[ID]
+            traj = trajectory[start + buffer_len:]
+            pred = predicts[ID]
+            ax.plot(*traj.T , '-o', c='black')
+            ax.scatter(*pred.T , c='red')
+
+            for p1, p2 in zip(traj, pred):
+                ax.plot([p1[0], p2[0]], [p1[1], p2[1]], color='gray', linestyle='-', linewidth=1)
+
+            ax.set_title(f's = {s}; k = {k}; error= {errors_new_tot[ID]:.2f}')
+            ax.set_aspect('equal')
+
+        fig_k_s.suptitle(f'Best k,s parameters for BSpline extrapolation (buffer len = {buffer_len})', fontsize=16)
+        plt.figure(fig_k_s.number)
+        plt.show()
+    #return t_OG_comb_sol, errors_sol_diff_norms_all
+    return out_k_s, out_deltas
+
+def extrapolate_find_k_s_v2(trajectory, time, t_k_s_combs, k_all, k_s_buffer_len_max, k_s_start_at_index = 0, debug = 0, debug_show_num_best = 3):
     trajectory_length   = trajectory.shape[0]
 
     do_work_next_n          = trajectory_length - k_s_buffer_len_max 
@@ -133,7 +254,7 @@ def extrapolate_find_k_s(trajectory, time, t_k_s_combs, k_all, k_s_buffer_len_ma
             t_comb_sol = min(t_temp, key=t_temp.get)
             t_traj_sol = np.array(list(errors_sol_all[t_comb_sol].values()))
 
-            ax.plot(*trajectory.T , '-o', c='black')
+            ax.plot(*trajectory[start:].T , '-o', c='black')
             ax.scatter(*t_traj_sol.T , c='red')
 
             ax.set_title(f's = {t_comb_sol[1]}; k = {t_comb_sol[0]}; error= {errors_tot_all[t_comb_sol]:.2f}')
@@ -143,7 +264,6 @@ def extrapolate_find_k_s(trajectory, time, t_k_s_combs, k_all, k_s_buffer_len_ma
         plt.figure(fig_k_s.number)
         plt.show()
     return t_OG_comb_sol, errors_sol_diff_norms_all
-
 
 def interpolateMiddle2D_2(t_times,t_traj_concat,t_inter_times, s = 15, k = 1, debug = 0, aspect = 'equal', title = "title"):
 

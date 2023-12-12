@@ -1,11 +1,11 @@
 # bubble_process_py
 
-Algorithm is designed to extract contours from a series of imges depicting bubbles flow. Original case works with images that are of high contrast images as can seen on image below
+Algorithm is designed to extract contours from a series of images depicting bubbles flow. Original case works with images that are of high contrast, for example as an image image below.
 ![My Image](README_FILES/img0027.bmp)
 fish-eye correction is applied to images using predefined (mapx.npy,mapy.npy) parameter array (openCV image calibration):
 ![My Image](README_FILES/fish-eye-correction-overlay-krita.jpg)
-images are cropped by either reading manually edited crop masp, which is an image with red filled rectangle overlay, which specifies remaining image rectangle.
-or, if mask is missing allows you to crop via GUI
+images are cropped by either reading manually edited crop mask (it is an image with red filled rectangle overlay, which specifies remaining image rectangle)
+or, if mask is missing, allows you to select crop window via GUI.
 
 mean sequence image is calculated and its subtracted from each image. result is the following:
 ![My Image](README_FILES/proc_mean.jpg)
@@ -15,73 +15,60 @@ alternative implementation of mean calculation is using more local (time-narrowe
 images are binarized and small elements are removed
 ![My Image](README_FILES/binar.jpg)
 
-we merge nearby contours using dilate-erode morphology operation to join fractured binarry objects (read below) (*)
-contours are extracted and filtered out by size and from FoV periphiry.
+Some bubbles are fractured into smaller objects but stay as a cluster. This problem is very specficic to out case.
+We merge elements of clusters that are within specific threshold distance using dilate-erode morphology operation. This distance is not unversal, so some clusters remain.
+This distance cannot be too large, since it will force false merge event when bubbles pass each other close by.
+Remaining objects are converted to contours, which allows to filter them out by area (remove small) and from FoV periphiry (border components are removed and also bubbles that fully fit inside thick border zone are removed).
 
 Clustering on single frame:
-some bubbles are fractured into smaller visual elements, which are not connected by (*) they are clustered together by proximity. our implementation is simple and fast
-we find bounding boxes for all elements. those that are small, we increase to specific size 100x100 pix.
-check overlaps between all pairs of bounding boxes. collect those that have overlap. to connect these clusters we gather overlap connections on a graph and find connected components
-nodes on graph are IDs of contours on image of specific time steps. and edges are connections between two nodes which have the geometric overlap.
-this is a rough estimate, which will refined after.
+Since some objects remain in clusters we have to take notice of it and do more refined analysis later. Rough clustering is performed using intersection of contour bounding boxes, which is a simple and fast approach. This method is not very good since its not isotropic and small cluster elements tend to be dropped, thats why we boost their size to size of 100x100 pix for this stage.
+We check overlaps between all pairs of bounding boxes on a frame. Those pairs of indicies that overlap are added as edges on a graph and clusters are extracted via connected components method.
+Clusters on a graph are represented as nodes in format (time_step, ID1, ID2,..) which allows to store all most useful info in a name. 
+Overlap of bounding boxes can be replaced by any other proximity criterion. It just works© for us.
 
-analyzing time evolution/connectivity of contours.
-we analyze all pairs of frames and test similar boundary box overlap between previous-next frame bubbles. those who overlap are the same bubble on both frames.
-by doing this analysis on all frames and combining on a 'relation' graph, we can trace which contours on each frames correspond to which progenitor bubble.
+Analyzing time evolution/connectivity of contours.
+We calculate bounding boxes of clusters. Bounding boxes are used to determine which bubbles on one frame are related to which bubbles on next frame.
+Its done, again, by bounding box overla, since bubbles move only a fraction of their size between frames. We take a pair of frames (1,2) and check if object on frame 1 overlap with all objects on frame 2.
+This gives us connections of clusters on this frame pair. This can be repeated on all frame pairs and connections added to a graph as edges.
+Using connected components on this 'relation' graph allows to extract temporal chains of nodes, which show which contours bubble consist of on each frame (time step).
 ![My Image](README_FILES/rect_families_merge.jpg)
 
-by analyzing connected components on the rough time-overlap-relation graph, we can split families of bubble trails, which dont interact with other families.
-We can analyze each familry as isolated partition of graph with more detail. We repeat clustering on each single frame. This time without expanding bounding rectangles for small elements.
-Its possible to replace rectangle overlap with analysis of closest distance between contours. but its slow, so i have disabled it.
+If bubbles were rising  one by one without mergees, we would see only long node chains, and each chain can be extracted and analyzed independently of others.
+Even if bubbles interact, for example merge, which is represented by two chains merging into one, we can still extract that 'chain' family and do a seperate analysis.
 
-Basically, for our case we can say that for most part bubble on each frame is represented as one contour (1C). so when we analyze frame pair,
-we see an overlap between 1C object, on one frame, with other 1C object on next frame. we are pretty sure that if these connections
-evolve as 1C objects, we are observing raise of a single bubble. In code i refer for these chains of single-contour bubble connections as a segments (or a branch).
+And thats what we do. Connected components provide these families of chains. Using more detailed analysis we can redo clustering without expanding small objects, or by any other means.
 
-interactions (merge/split) between two bubbles on relation graph is represented by an event where multiple segments merge or split into other segments.
+In practice we see that most of the time single raising bubble is represented by a single contour (for ring-like objects i take only external contour).
+Our main assumption is that nodes on graph that represent single contour bubble and stay that way for some period of time are most likely single bubble raising without interaction with other bubbles.
+In fact, most of our analysis is based on this assumption. 
 
-merge/split events can be classified by connectivity of branches -- i.e many branches merge into one branch <=> merge event.
+Solo bubble paths:
 
-straight segments-chains is the only thing we are certain at this time, but...
-
-we see cases where bubble, represented as a binary object, splits (is fragmented) into many pieces and joins back again. 
-we know that this is still the same single bubble and splitting is an optical artifact. Although this is still a single bubble evolution, this event is not overlap between one contour objects. 
-instead bubble after optical split creates a cluster, where every fragment of cluster is a separate node on graph.
-
+Thats why first step is to extract node segments that are long chains of nodes. If at some point bubble breaks up into multiple objects either as optical illusion on as a real split, long chain will be terminated and tree of connections will form. Cases where this breakup and merge happen after and before a long single node chain is an optical artifact and our goal is to cover these events and stich chains together. Just for ref these events i call one-to-one (121) or zero path (ZP) events, depending on number of time steps that event spans.
 ![My Image](README_FILES/fake_event_1.jpg)
 
-Ideally, we want to connect all solo bubble segments with are interrupted by this 'fake' event into one true chain. But for this we have to, at least gather clusters back together
-into one object, and patch holes by joining split nodes into one composit node, which will tell that object consists of many contours.
+Merges/splits/mixed events:
 
-Implemented solution is not that simple, instead we evaluate, wheter we can, actually, include all cluster elements together. instead we have to check different partitions of cluster and determine if this or that
-partition fits better previous history of bubble trajectory and if area is conserved.
-
-once these fake events are patched out, we are left again with interaction of long segments. 
-
-by analyzing connectivity we can deduce type of event. merge and split involve one outgoing or incoming branch.
+These events are merges and splits between solo bubble trajectories, so can be retrieved by analyzing connectivity betwenn chains. Its usful to make another graph which represents how chains=segmetns=branches interact. Typical merge is when multiple branches merge into single branch. Splits are the same, but in reverse. 
 ![My Image](README_FILES/branch_extend.jpg)
-
-in practice geometric overlap condition is on overestimate and begins to detect events prematurely.
-this means we have to refine merge event graphs with higher precision than oberlap condition.
-
-for merges and splits we can extend branches closer to merge node by progressively extrapolating trajectory and redistributing nodes for each branch
-
-other type of merges is when multiple branches come into event and multiple leave it.
+Cases where multiple incoming branches lead to multiple outgoing branches are classified as mixed events. These can be unresolved events with splits and merges. Or a false event, where two bubbles moved so close that rectangle overlap detected them as a merge.
 ![My Image](README_FILES/mixed.jpg)
+Overlap criterion is indeed an overestimation, so we have to refine these events by other means. Method we use is to extrapolate bubbles trajetories and other parameters from period where we were certain about them. Trajectory is fairly smooth and so are the changes in area. Using these criteria we can drop faulty edges on graph and resolve bubble trajectories closer to merge/split event.
 
-due to proximity overestimation its hard to say straight away wheter this is real merge or simply bubbles passing close by.
+Other tasks:
 
-to deal with it, we assume that splits are very rare, and they are. and extrapolate these event branches as merges.
-and we check if extrapolation has led on of exit branch.
+Some times graph is to complex to be resolved on first pass, so multiple passes can be done. 
 
-when we do this some nodes may be dropped from event. sometimes these node reveal that there is another, previously hidden branch, is located inside event.
+REMARKS ABOUT THE STATE OF CODE AND CODE ITSELF:
 
-if we do a second iteration of this whole graph refinement process, we can take a second glance at events and achieve additional refinement
+Code is designed to perform tracking of objects that at some point undergo segmentation due to degraded image quality.
+It does analysis only on two time-adjecent frames, so if on one frame objects is dropped will will pop out as a new object.
+Detailed split/merge analysis is not performed. At this point code does its best to resolve events roughly, and returns information such as: these are times at which branches began event X and when event ended these are branches that came out at these times.
+Some parts of code like working simultaneously with multiple criterion are rough and need proper rethinking/reworking. Extrapolation is meh.
 
-> code is not finished. its cleaned in most places, but some stuff is hanging unused.
-> some parts need rework, additional modules, refactoring
 
-WORKFLOW IS AS FOLLOWS (UNFINISHED):
+WORKFLOW IS AS FOLLOWS (UNFINISHED and unedited as 02.12.2023):
+i havent used this code on other projects and havent ported this project to other devices for few months. some required libs in python_libraries_install_list.txt are missing, but nothing major.
 
 0) do a backflip
 1) launch VS project. might want to create empty and copy on top, instead of cloning. something did not go

@@ -1149,21 +1149,10 @@ if  1 == -1:
         print("Ranges do not overlap.")
 
 
-import numpy as np, time, pickle, sys
-from scipy.sparse import coo_matrix, triu
-import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch
-from tqdm import tqdm
+import cv2
 
-path_modues = r'.\modules'      
-sys.path.append(path_modues) 
+frame_device = cv2.cuda_GpuMat()
 
-from misc import (addd, HH, prrr)
-
-addd([1,2,3])
-HH.add_nodes_from([4,5])
-prrr()
-a = 1
 
 
 

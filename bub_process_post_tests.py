@@ -1137,51 +1137,51 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         """
         ===============================================================================================
-        ====  Determine interpolation parameters ====
+        ======================== PREPARE METHODS TO PERFORM BRANCH EXTRAPOLATION ======================
         ===============================================================================================
-        we are interested in segments that are not part of psuedo branches (because they will be integrated into path)
-        pre merge segments will be extended, post split branches also, but backwards. 
-        for pseudo event can take an average paramets for prev and post segments.
+        WHY:    branches are extended in one direction via extrapolation based on BSpline approach. Its bad
+        WHY:    for this task due to how polynomials are constrained. With proper parameters it can be done.
+        NOTE:   you dont have to recalculate parameters when segments havent changed.
         """
         print(f'\n{timeHMS()}:({doX_s}) Determining interpolation parameters k and s for segments...')
 
-        # determine if segments have changed since last k_s calcualtion
         if BIGITER == 0:                                                     # first needs k,s calculation for all
-             segments_lengths = {i: len(v) for i,v in enumerate(segments2)}  # remember state of segments
-             k_s_needs_update = [i for i,v in enumerate(segments2) if len(v) > 0 ]
+             segments_lengths = {i: len(v)  for i, v in enumerate(segments2)}  # remember state of segments
+             k_s_needs_update = [i          for i, v in enumerate(segments2) if len(v) > 0 ]
              
         else:
-            segments_lengths_new = {i: len(v) for i,v in enumerate(segments2)} # create current state of segments
+            segments_lengths_new = {i: len(v) for i,v in enumerate(segments2)}  # create current state of segments
             k_s_needs_update = []
-            for i, num_nodes in segments_lengths_new.items():               # compare to old state if any changes
-                if i in segments_lengths:                                   # have occured - check number of nodes
-                    if num_nodes != segments_lengths[i] and num_nodes != 0: # and drop empty segments from analysis
+            for i, num_nodes in segments_lengths_new.items():                   # compare to old state if any changes
+                if i in segments_lengths:                                       # have occured - check number of nodes
+                    if num_nodes != segments_lengths[i] and num_nodes != 0:     # and drop empty segments from analysis
                         k_s_needs_update.append(i)
-                else:                                                       # if there is a new segment
-                    k_s_needs_update.append(i)                                # it needs processing
+                else:                                                           # if there is a new segment
+                    k_s_needs_update.append(i)                                    # it needs processing
 
-            segments_lengths = segments_lengths_new                         # backup current state as new ref
+            segments_lengths = segments_lengths_new                             # backup current state as new ref
 
         debug = 0 #if doX != 3 else 1
-        k_s_buf_max  = 8          
-        k_s_buf_min  = 3       
-        k_s_start  = 0         # default start from index 0
-        k_s_pts_max = 20        # at best analyze this many points, it requires total traj of len k_s_anal_points_max + "num pts for interp"
-        k_s_pts_min = 5     
-        k_all = (1,2)
+        # you determine k and s parameters by finding pair that produces minimal deviations when applied to known data.
+        k_s_buf_min, k_s_buf_max    = 8, 3       # length of history to extrapolate next point  
+        k_s_pts_min, k_s_pts_max    = 5, 20      # number of points to be analyzed
+
+        k_all = (1,2)                            
         s_all = (0,1,5,10,25,50,100,1000,10000)
-        t_k_s_combs = list(itertools.product(k_all, s_all))
+        t_k_s_combs = list(itertools.product(k_all, s_all))   # different combinations of k and s parameters to eb tested
 
+        # finding params will only be called if needed during prep for extrapolation
         def find_k_s(ID, traj, time, diffs_dict, k_s_dict, def_sol = (1, 5)):
-
+            # 'decide_k_s()' decides if trajectory is worth extrapolating, at which index to start and how big the buffer is.
             do_k_s, start, buf_len = decide_k_s(traj, k_s_pts_max, k_s_pts_min, k_s_buf_max, k_s_buf_min)
+
             if do_k_s:
                 k_s_sol, diffs  = extrapolate_find_k_s(traj, time, t_k_s_combs, buf_len, start, debug = debug, debug_show_num_best = 4)
                 diffs_dict[ ID] = diffs
                 k_s_dict[   ID] = k_s_sol
 
                 return diffs, k_s_sol
-            else:
+            else:               # if trajectory is too small take default k&s combination, extrapolation errors are estimated from traj diff.
                 diffs           = np.linalg.norm(np.diff(traj, axis=0), axis=1)[-k_s_buf_max:]*0.5
                 k_s_sol         = def_sol
                 diffs_dict[ ID] = diffs
@@ -1189,18 +1189,14 @@ for doX, pre_family_nodes in enumerate(pre_node_families):
 
                 return diffs, k_s_sol
 
-        # ----------------- Evaluate and find most likely evolutions of path -------------------------
-        print(f'\n{timeHMS()}:({doX_s}) Finding most possible path evolutions...')
-                
         # for_graph_plots(G, segs = segments2)         <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         """
         ===============================================================================================
         ============================  EXTEND REAL MERGE/SPLIT BRANCHES ================================
         ===============================================================================================
-        iteratively extend branches though split/merge event. to avoid conflicts with shared nodes
-        extension is simultaneous for all branches at each time step and contours are redistributed conservatively
-        -> at time T, two branches [B1, B2] have to be recovered from node cluster C = [1,2,3]
-        -> try node redistributions- ([partition_B1,partition_B2], ..) = ([[1],[2,3]], [[2],[1,3]], [[3]lr_fake_redirect,[1,2]])    
+        Iteratively extend branches through (1) split/merge/mixed event or (2) extend terminal branches. 
+        for (1) mixed events its posible to join in-out segments in 121 fashion. 
+        (1) is performed only on first BIGITER, (2) only on second.
         """
 
         print(f'\n{timeHMS()}:({doX_s}) Analyzing real merge/split events. extending branches: ')

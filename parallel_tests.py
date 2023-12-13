@@ -8,8 +8,6 @@ from torch.nn.functional import conv2d
 import torch.nn as nn
 import torchvision.transforms as T
 import torch.nn.functional as F
-#from scipy.ndimage import generate_binary_structure
-from kornia import morphology as morph
 
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
@@ -55,8 +53,6 @@ def proc_img(idx,imageLink):
 
 def read_img(link):
     return cv2.imread(link, 0)  
-
-
 
 def read_img2(idx, link, mode):
     if idx % 200 == 0:

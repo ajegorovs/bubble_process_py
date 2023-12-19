@@ -3,6 +3,41 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 from collections import defaultdict
 
+# ============================ MANAGE MODULES WITH FUNCTIONS =============================//
+
+# --- IF MODULES ARE NOT IN ROOT FOLDER. MODULE PATH HAS TO BE ADDED TO SYSTEM PATHS EACH RUN ---
+path_modues = r'.\modules'      # os.path.join(mainOutputFolder,'modules')
+sys.path.append(path_modues)    
+
+# NOTE: IF YOU USE MODULES, DONT FORGET EMPTY "__init__.py" FILE INSIDE MODULES FOLDER
+# NOTE: path_modules_init = os.path.join(path_modues, "__init__.py")
+# NOTE: if not os.path.exists(path_modules_init):  with open(path_modules_init, "w") as init_file: init_file.write("")
+
+#--------------------------- IMPORT CUSTOM FUNCITONS -------------------------------------
+from cropGUI import cropGUI
+
+from graphs_brects import (overlappingRotatedRectangles)
+
+from image_processing import (convertGray2RGB, undistort)
+
+from bubble_params  import (centroid_area_cmomzz, centroid_area)
+
+from graphs_general import (graph_extract_paths, find_paths_from_to_multi, graph_check_paths, get_connected_components,
+                            comb_product_to_graph_edges, for_graph_plots,  extract_clusters_from_edges,
+                            set_custom_node_parameters, G2_set_parameters, get_event_types_from_segment_graph)
+
+from graphs_general import (G, G2, key_nodes, keys_segments, G2_t_start, G2_t_end, G2_n_from, G2_n_to, G2_edge_dist, G_time, G_area, G_centroid, G_owner, G_owner_set)
+
+from interpolation import (interpolate_trajectory, extrapolate_find_k_s, interpolateMiddle1D_2, decide_k_s)
+
+from misc import (cyclicColor, timeHMS, modBR, rect2contour, combs_different_lengths, sort_len_diff_f,
+                  disperse_nodes_to_times, disperse_composite_nodes_into_solo_nodes, find_key_by_value, CircularBuffer, CircularBufferReverse, 
+                  split_into_bins, lr_reindex_masters, dfs_pred, dfs_succ, old_conn_2_new, lr_evel_perm_interp_data, lr_weighted_sols, 
+                  save_connections_two_ways, save_connections_merges, save_connections_splits, itertools_product_length, conflicts_stage_1, 
+                  conflicts_stage_2, conflicts_stage_3, edge_crit_func, two_crit_many_branches, find_final_master_all,
+                  zp_process, f121_disperse_stray_nodes, f121_interpolate_holes, f121_calc_permutations, f121_precompute_params, f121_get_evolutions)
+
+import workplace_init
 
 def track_time(reset = False):
     if reset:
@@ -49,110 +84,90 @@ useMeanWindow   = 0                             # averaging intervals will overl
 N               = 700                           # averaging window width
 rotateImageBy   = cv2.ROTATE_180                # -1= no rotation, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_180 
 
-
+do_prerun_output= False
 font = cv2.FONT_HERSHEY_SIMPLEX
 fontScale = 0.7; thickness = 4;
-if 1 == 1:                               # prep image links, get min/max image indexes
-    # ================================================================================================
-    # ============================= GET PATHS TO IMAGES AND RESORT BY ID =============================
-    # 1) get image links
-    # 2) extract integers in name [.\img3509, .\img351, .\img3510, ....] -> [3509, 351, 3510, ...]
-    # 3) filter by index 
-    # 4) sort order by index [.\img3509, .\img351, .\img3510, ...] -> [.\img351, .\img3509, .\img3510, ...]
-    imageLinks = glob.glob(inputImageFolder + "**/*.bmp", recursive=True) 
-    if len(imageLinks) == 0:
-        input("No files inside directory, copy them and press any key to continue...")
-        imageLinks = glob.glob(inputImageFolder + "**/*.bmp", recursive=True)                                          # 1)
+# if 1 == 1:                               # prep image links, get min/max image indexes
+#     # ================================================================================================
+#     # ============================= GET PATHS TO IMAGES AND RESORT BY ID =============================
+#     # 1) get image links
+#     # 2) extract integers in name [.\img3509, .\img351, .\img3510, ....] -> [3509, 351, 3510, ...]
+#     # 3) filter by index 
+#     # 4) sort order by index [.\img3509, .\img351, .\img3510, ...] -> [.\img351, .\img3509, .\img3510, ...]
+#     imageLinks = glob.glob(inputImageFolder + "**/*.bmp", recursive=True) 
+#     if len(imageLinks) == 0:
+#         input("No files inside directory, copy them and press any key to continue...")
+#         imageLinks = glob.glob(inputImageFolder + "**/*.bmp", recursive=True)                                          # 1)
 
-    extractIntergerFromFileName = lambda x: int(re.findall('\d+', os.path.basename(x))[0])                             # 2)
-    imageLinks = list(filter(lambda x: intervalStart <= extractIntergerFromFileName(x) < intervalStop , imageLinks))   # 3)
-    imageLinks.sort(key=extractIntergerFromFileName)                                                                   # 4)
+#     extractIntergerFromFileName = lambda x: int(re.findall('\d+', os.path.basename(x))[0])                             # 2)
+#     imageLinks = list(filter(lambda x: intervalStart <= extractIntergerFromFileName(x) < intervalStop , imageLinks))   # 3)
+#     imageLinks.sort(key=extractIntergerFromFileName)                                                                   # 4)
 
-    intervalStart   = extractIntergerFromFileName(imageLinks[0])        # update start index, so its captures in subfolder name.
-    intervalStop    = extractIntergerFromFileName(imageLinks[-1])       # update end index 
+#     intervalStart   = extractIntergerFromFileName(imageLinks[0])        # update start index, so its captures in subfolder name.
+#     intervalStop    = extractIntergerFromFileName(imageLinks[-1])       # update end index 
+
+"""
+search for images in input folder, get correct subset of images, sort them
+create file system. for more info read docs for each function
+"""
+imageLinks, *idx_interval= workplace_init.process_file_names(inputImageFolder, format, (intervalStart, intervalStop))
+
+out_main, out_aux = workplace_init.create_folders(mainOutputFolder, mainOutputSubFolders, idx_interval, do_prerun_output, 5)
+imageFolder, stagesFolder, dataArchiveFolder, graphsFolder, imageFolder_output, imageFolder_pre_run = out_main
+
+(cropMaskPath, cropMaskMissing, graphsPath, segmentsPath, contoursHulls, mergeSplitEvents, 
+               meanImagePath, meanImagePathArr, archivePath, binarizedArrPath, post_binary_data) = out_aux
+
 """
 ========================================================================================================//
 ======================================== BUILD PROJECT FOLDER HIERARCHY ================================//
 --------------------------------------------------------------------------------------------------------//
 ------------------------------------ CREATE MAIN PROJECT, SUBPROJECT FOLDERS ---------------------------//
 """
-if not os.path.exists(mainOutputFolder): os.mkdir(mainOutputFolder)  
-mainOutputSubFolders.append(f"{intervalStart:05}-{intervalStop:05}")       # sub-project folder hierarhy e.g [exp setup, parameter, subset of data]
+# if not os.path.exists(mainOutputFolder): os.mkdir(mainOutputFolder)  
+# mainOutputSubFolders.append(f"{intervalStart:05}-{intervalStop:05}")       # sub-project folder hierarhy e.g [exp setup, parameter, subset of data]
 
-for folderName in mainOutputSubFolders:     
-    mainOutputFolder = os.path.join(mainOutputFolder, folderName)               
-    if not os.path.exists(mainOutputFolder): os.mkdir(mainOutputFolder)
+# for folderName in mainOutputSubFolders:     
+#     mainOutputFolder = os.path.join(mainOutputFolder, folderName)               
+#     if not os.path.exists(mainOutputFolder): os.mkdir(mainOutputFolder)
 
-# -------------------------------- CREATE VARIOUS OUTPUT FOLDERS -------------------------
+# # -------------------------------- CREATE VARIOUS OUTPUT FOLDERS -------------------------
 
-imageFolder        = os.path.join(mainOutputFolder, 'images'    )
-stagesFolder       = os.path.join(mainOutputFolder, 'stages'    )
-dataArchiveFolder  = os.path.join(mainOutputFolder, 'archives'  )
-graphsFolder       = os.path.join(mainOutputFolder, 'graphs'    )
+# imageFolder        = os.path.join(mainOutputFolder, 'images'    )
+# stagesFolder       = os.path.join(mainOutputFolder, 'stages'    )
+# dataArchiveFolder  = os.path.join(mainOutputFolder, 'archives'  )
+# graphsFolder       = os.path.join(mainOutputFolder, 'graphs'    )
 
-[os.mkdir(folder) for folder in (imageFolder, stagesFolder, dataArchiveFolder, graphsFolder) if not os.path.exists(folder)]
+# [os.mkdir(folder) for folder in (imageFolder, stagesFolder, dataArchiveFolder, graphsFolder) if not os.path.exists(folder)]
 
-imageFolder_pre_run = os.path.join(imageFolder, 'prerun')
-if not os.path.exists(imageFolder_pre_run): os.mkdir(imageFolder_pre_run)
+# imageFolder_pre_run = os.path.join(imageFolder, 'prerun')
+# if not os.path.exists(imageFolder_pre_run): os.mkdir(imageFolder_pre_run)
 
-imageFolder_output = os.path.join(imageFolder, 'output')
-if not os.path.exists(imageFolder_output): os.mkdir(imageFolder_output)
+# imageFolder_output = os.path.join(imageFolder, 'output')
+# if not os.path.exists(imageFolder_output): os.mkdir(imageFolder_output)
 
-# ============================ MANAGE MODULES WITH FUNCTIONS =============================//
-
-# --- IF MODULES ARE NOT IN ROOT FOLDER. MODULE PATH HAS TO BE ADDED TO SYSTEM PATHS EACH RUN ---
-path_modues = r'.\modules'      # os.path.join(mainOutputFolder,'modules')
-sys.path.append(path_modues)    
-
-# NOTE: IF YOU USE MODULES, DONT FORGET EMPTY "__init__.py" FILE INSIDE MODULES FOLDER
-# NOTE: path_modules_init = os.path.join(path_modues, "__init__.py")
-# NOTE: if not os.path.exists(path_modules_init):  with open(path_modules_init, "w") as init_file: init_file.write("")
-
-#--------------------------- IMPORT CUSTOM FUNCITONS -------------------------------------
-from cropGUI import cropGUI
-
-from graphs_brects import (overlappingRotatedRectangles)
-
-from image_processing import (convertGray2RGB, undistort)
-
-from bubble_params  import (centroid_area_cmomzz, centroid_area)
-
-from graphs_general import (graph_extract_paths, find_paths_from_to_multi, graph_check_paths, get_connected_components,
-                            comb_product_to_graph_edges, for_graph_plots,  extract_clusters_from_edges,
-                            set_custom_node_parameters, G2_set_parameters, get_event_types_from_segment_graph)
-
-from graphs_general import (G, G2, key_nodes, keys_segments, G2_t_start, G2_t_end, G2_n_from, G2_n_to, G2_edge_dist, G_time, G_area, G_centroid, G_owner, G_owner_set)
-
-from interpolation import (interpolate_trajectory, extrapolate_find_k_s, interpolateMiddle1D_2, decide_k_s)
-
-from misc import (cyclicColor, timeHMS, modBR, rect2contour, combs_different_lengths, sort_len_diff_f,
-                  disperse_nodes_to_times, disperse_composite_nodes_into_solo_nodes, find_key_by_value, CircularBuffer, CircularBufferReverse, 
-                  split_into_bins, lr_reindex_masters, dfs_pred, dfs_succ, old_conn_2_new, lr_evel_perm_interp_data, lr_weighted_sols, 
-                  save_connections_two_ways, save_connections_merges, save_connections_splits, itertools_product_length, conflicts_stage_1, 
-                  conflicts_stage_2, conflicts_stage_3, edge_crit_func, two_crit_many_branches, find_final_master_all,
-                  zp_process, f121_disperse_stray_nodes, f121_interpolate_holes, f121_calc_permutations, f121_precompute_params, f121_get_evolutions)
 """
 ========================================================================================================
 ============== Import image files and process them, store in archive or import archive =================
 ========================================================================================================
 NOTE: mapXY IS USED TO FIX FISH-EYE DISTORTION. 
 """
-cropMaskName = "-".join(mainOutputSubFolders[:2])+'-crop'
-cropMaskPath = os.path.join(os.path.join(*mainOutputFolder.split(os.sep)[:-1]), f"{cropMaskName}.png")
-cropMaskMissing = True if not os.path.exists(cropMaskPath) else False
+# cropMaskName = "-".join(mainOutputSubFolders[:2])+'-crop'
+# cropMaskPath = os.path.join(os.path.join(*mainOutputFolder.split(os.sep)[:-1]), f"{cropMaskName}.png")
+# cropMaskMissing = True if not os.path.exists(cropMaskPath) else False
 
-graphsPath          =   os.path.join(dataArchiveFolder  ,  "graphs.pickle"    )
-segmentsPath        =   os.path.join(dataArchiveFolder  ,  "segments.pickle"  )
-contoursHulls       =   os.path.join(dataArchiveFolder  ,  "contorus.pickle"  )
-mergeSplitEvents    =   os.path.join(dataArchiveFolder  ,  "ms-events.pickle" )
+# graphsPath          =   os.path.join(dataArchiveFolder  ,  "graphs.pickle"    )
+# segmentsPath        =   os.path.join(dataArchiveFolder  ,  "segments.pickle"  )
+# contoursHulls       =   os.path.join(dataArchiveFolder  ,  "contorus.pickle"  )
+# mergeSplitEvents    =   os.path.join(dataArchiveFolder  ,  "ms-events.pickle" )
 
                      
-meanImagePath       =   os.path.join(dataArchiveFolder  ,  "mean.npz"         )
-meanImagePathArr    =   os.path.join(dataArchiveFolder  ,  "meanArr.npz"      )
+# meanImagePath       =   os.path.join(dataArchiveFolder  ,  "mean.npz"         )
+# meanImagePathArr    =   os.path.join(dataArchiveFolder  ,  "meanArr.npz"      )
                      
-archivePath         =   os.path.join(stagesFolder       ,  "croppedImageArr.npz"        )
-binarizedArrPath    =   os.path.join(stagesFolder       ,  "binarizedImageArr.npz"      )
-post_binary_data    =   os.path.join(stagesFolder       ,  "intermediate_data.pickle"   ) 
+# archivePath         =   os.path.join(stagesFolder       ,  "croppedImageArr.npz"        )
+# binarizedArrPath    =   os.path.join(stagesFolder       ,  "binarizedImageArr.npz"      )
+# post_binary_data    =   os.path.join(stagesFolder       ,  "intermediate_data.pickle"   ) 
 
 print(track_time(reset = True))
 if not os.path.exists(archivePath):
@@ -162,14 +177,14 @@ if not os.path.exists(archivePath):
     IF MASK IS MISSING YOU CAN DRAW IT USING GUI
     """
     if cropMaskMissing: # search for a mask at cropMaskPath (project -> setup -> parameter)
-        print(f"\nNo crop mask in {mainOutputFolder} folder!, creating mask : {cropMaskName}.png")
+        print(f"\nNo crop mask in {mainOutputFolder} folder!, creating mask : {cropMaskPath}")
         mapXY           = (np.load('./mapx.npy'), np.load('./mapy.npy'))
         cv2.imwrite(cropMaskPath, convertGray2RGB(undistort(cv2.imread(imageLinks[0],0), mapXY)))
-
-        p1,p2           = cropGUI(cropMaskPath)
         cropMask        = cv2.imread(cropMaskPath,1)
+        p1,p2           = cropGUI(cropMask)
+        
 
-        cv2.rectangle(cropMask, p1, p2,[0,0,255],-1)
+        cv2.rectangle(cropMask, p1, p2, [0,0,255], -1)
         cv2.imwrite(  cropMaskPath,cropMask)
     else:
         cropMask = cv2.imread(cropMaskPath,1)

@@ -1,6 +1,5 @@
-import os
-import sys
-import cv2
+import cv2, numpy as np
+from threading import Thread
 
 # The coordinates defining the square selected will be kept in this list.
 select_coords = [(0,0),(0,0)]
@@ -22,26 +21,21 @@ def resizeToMaxHW(image,width=1200,height=600):
     else:
         return resizeImage(image,beta)
 
-def cropGUI(filename, width=1200, height=600):
+def cropGUI(img, width=1200, height=600):
     global select_coords, selecting, image, clone
-    #filename = r'post_tests\cropTest.png'#sys.argv[1]
-    #basename = os.path.basename(filename)
-    basename = 'cropGUI'
-    cropped_basename = 'cropped'
-    image = cv2.imread(filename)
+    basename = 'cropGUI: drag crop rectangle. press "c" to crop'
+    cropped_basename = 'cropGUI: press "Esc" to close'
+    image = img
     h, w = image.shape[:2]
     scale = 1
-    if h > 600 or w > 1200:
+    if h > width or w > width:
         alpha,beta = width/w,height/h
         scale = min(alpha, beta)
     image = resizeImage(image,scale)
 
-    # The cropped image will be saved with this filename.
-    #cropped_filename = os.path.splitext(filename)[0] + '_sq.png'
-    #cropped_basename = os.path.basename(cropped_filename)
     # Store a clone of the original image (without selected region annotation).
     clone = image.copy() 
-    print('Drag mouse to expand rectangle diagonal. PRESS C to CROP! Esc to close after')
+    #print('Drag mouse to expand rectangle diagonal. PRESS C to CROP! Esc to close after')
     def region_selection(event, x, y, flags, param): 
         """Callback function to handle mouse events related to region selection."""
         global select_coords, selecting, image, clone
@@ -61,7 +55,6 @@ def cropGUI(filename, width=1200, height=600):
             # Left mouse button up: the selection has been made.
             select_coords[1] = (x, y)
             selecting = False
-    # Load the image and get its filename without path and dimensions.
     
     # Name the main image window after the image filename.
     cv2.namedWindow(basename) 
@@ -80,15 +73,40 @@ def cropGUI(filename, width=1200, height=600):
     if select_coords[1] != (0,0): 
 
         # Crop the image to the selected region and display in a new window.
-        x0,y0 = select_coords[0]
-        x1,y1 = select_coords[1]
-        cropped_image = clone[y0:y1, x0:x1]
+        xes     = [a[0] for a in select_coords]
+        yses    = [a[1] for a in select_coords]
+
+        xmin, xmax = min(xes)   , max(xes)
+        ymin, ymax = min(yses)  ,   max(yses)
+        cropped_image = clone[ymin:ymax, xmin:xmax]
         cv2.imshow(cropped_basename, cropped_image) 
-        #cv2.imwrite(cropped_filename, cropped_image)
-        # Wait until any key press.
     
     k = cv2.waitKey(0)
     if k == 27:  # close on ESC key
         cv2.destroyAllWindows()
+    xyhw = np.array([xmin, ymin, xmax - xmin, ymax - ymin])/scale
+    p1p2 = np.array([[xmin, ymin],[xmax, ymax]])/scale
+    
+    return np.uint(xyhw), np.uint(p1p2)
+    #return [tuple([int(x/scale) for x in a]) for a in  select_coords]
 
-    return [tuple([int(x/scale) for x in a]) for a in  select_coords]
+class crop_gui_thread(Thread):
+    def __init__(self, image, width = 1200, height = 600):
+        Thread.__init__(self)
+        self.image = image
+        self.width = width
+        self.height = height
+        self.result = None
+    # function executed in a new thread
+    def run(self):
+        self.result = cropGUI(self.image, self.width, self.height)
+# >>>> example
+# base_img            = cv2.imread(cropMaskPath, 1)
+# check_ready_thread  = crop_gui_thread(base_img)#Thread(target=cropGUI, args = (base_img))
+# check_ready_thread.start()
+# for i in range(1,5):
+#     time.sleep(1)
+#     print('asd')
+
+# check_ready_thread.join()
+# [X, Y, W, H], (p1,p2) = check_ready_thread.result

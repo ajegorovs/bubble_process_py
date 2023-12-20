@@ -1,6 +1,7 @@
 
 import numpy as np, itertools, networkx as nx, sys, copy,  cv2, os, glob, re, pickle, time, datetime, os
 from multiprocessing import shared_memory, Manager, Pool, Event
+from skimage.morphology import flood_fill
 #from matplotlib import pyplot as plt
 #from tqdm import tqdm
 #from collections import defaultdict
@@ -13,7 +14,7 @@ from multiprocessing import shared_memory, Manager, Pool, Event
 # from torch.utils.data import Dataset
 # from torch.utils.data import DataLoader
 
-calc_GPU = True
+calc_GPU = False#True
 
 if __name__ == '__main__':
     path_modues = r'.\modules'      # os.path.join(mainOutputFolder,'modules')
@@ -28,7 +29,7 @@ if __name__ == '__main__':
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         cuda_ref_type = torch.float16
 
-        def b_pipe(i, buffer, batch, image_blurred, threshold, cuda_ref_type, cpu_ref_type, debug = 0):
+        def GPU_binary_pipe(i, buffer, batch, image_blurred, threshold, cuda_ref_type, cpu_ref_type, debug = 0):
             kernel_5 = kernel_circular(5, dtype = cuda_ref_type, normalize = False, device = device)
             kernel_9 = kernel_circular(9, dtype = cuda_ref_type, normalize = False, device = device)
             batch = batch.to(device).to(cuda_ref_type)
@@ -57,7 +58,80 @@ if __name__ == '__main__':
             buffer[i:i + len(batch),...] = batch.squeeze(1).to('cpu').numpy().astype(cpu_ref_type)
             # cv2.imshow('binar', buffer[0]); cv2.imshow('binar_old', buffer[1])
             return 
+# need functions for workers. eval out of main.            
+if not calc_GPU:
+    def mean_slice(from_to, crop_arr_shape, crop_arr_type, queue, report = False):
+        global first_iter#, crop_arr_shape, crop_arr_type
 
+        buf_mean    = shared_memory.SharedMemory(name='buf_cropped')
+        mean_np     = np.ndarray(crop_arr_shape, dtype = crop_arr_type, buffer=buf_mean.buf)
+        if report:
+            if not first_iter:  print2(f'time between iterations: {track_time()}')
+            else:               first_iter = False
+
+        s_from, s_to    = from_to
+        res             = np.mean(mean_np[s_from: s_to,...], axis = 0)
+        queue.put((s_to - s_from , res))
+        if report: print2(f'{from_to} iteration time: {track_time()}')
+        return 
+
+
+    def mean_slice_finish(num_elems, img_dims, queue):
+        weights = np.zeros(num_elems)
+        buffer  = np.zeros((num_elems, *img_dims))
+        #print2(f'reserved mem {track_time()}')
+        i = 0
+        while not queue.empty():
+            weight, image = queue.get()
+            weights[i] = weight
+            buffer[i,:,:] = image
+            #print2(f'retrieved queue {i} w: {weight} {track_time()}')
+            i += 1
+        #print2(f'w: {weights}')
+        return np.average(buffer, axis=0, weights=weights)
+
+    def CPU_binary_pipe(fr_to, bin_thresh, crop_arr_shape, crop_arr_type, debug = False):
+
+        buf_cropped = shared_memory.SharedMemory(name='buf_cropped')
+        cropped_np  = np.ndarray(crop_arr_shape, dtype = crop_arr_type, buffer=buf_cropped.buf)
+
+        kernel_5    = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5))
+        kernel_9    = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(9,9))
+
+        (fr,to) = fr_to
+        for i in range(fr, to, 1):
+            if debug:
+                out = [cropped_np[i].copy()]
+                out_txt = ['1) before', '2) mean_subtract', '3) threshold', '4) morph_opening', '5) dilate_big','6) erode']
+                pid = os.getpid()
+
+            # subract mean image and clip to [0,255]
+            cropped_np[i] = np.clip( cropped_np[i] - mean_image, 0, 255).astype(crop_arr_type)
+            if debug: out.append(cropped_np[i].copy())
+
+            #threhold in place
+            cv2.threshold(src = cropped_np[i], thresh = bin_thresh, maxval = 255, type = cv2.THRESH_BINARY, dst = cropped_np[i]) 
+            if debug: out.append(cropped_np[i].copy())
+
+            # apply morph opening ( remove small white elements)
+            cv2.morphologyEx(src = cropped_np[i], op = cv2.MORPH_OPEN, kernel = kernel_5, dst = cropped_np[i], borderValue = 0)
+            if debug: out.append(cropped_np[i].copy())
+
+            # apply dilate (expand white) to bridge clusters.
+            cv2.dilate(  src = cropped_np[i], kernel = kernel_9, dst = cropped_np[i], borderValue = 0)
+            if debug: out.append(cropped_np[i].copy())
+
+            cv2.erode(   src = cropped_np[i], kernel = kernel_5, dst = cropped_np[i], borderValue = 0)
+
+            if debug: 
+                out.append(cropped_np[i].copy())
+                for a,b in zip(out, out_txt):
+                    cv2.imshow(f'PID [{pid:>{5}}]: {b}', a)
+
+                k = cv2.waitKey(0)
+                if k == 27:  # close on ESC key
+                    cv2.destroyAllWindows()
+                
 
 def track_time(reset = False):
     if reset:
@@ -77,128 +151,6 @@ def track_time(reset = False):
 def timeHMS():
     return datetime.datetime.now().strftime("%H-%M-%S")
                   
-# class YourDataset(Dataset):
-#     def __init__(self, data):
-#         self.data = data
-
-#     def __len__(self):
-#         return len(self.data)
-
-#     def __getitem__(self, idx):
-#         # Assuming data is a stack of images
-#         sample = self.data[idx]
-#         return sample
-
-
-# def read_img(link):
-#     return cv2.imread(link, 0)  
-
-# def read_img2(idx, link, mode):
-#     if idx % 200 == 0:
-#         print(f'[{os.getpid()}]{idx} 200 done: {track_time()}')
-#     return cv2.imread(link, mode)  
-
-# def process_chunk(chunk, mx, my):
-#         return [cv2.remap(img, mx, my, cv2.INTER_LINEAR) for img in chunk]
-
-# def morph_erode_dilate(im_tensor, kernel, mode):
-#     """
-#     mode = 0 = erosion; mode = 1 = dilation; im_tensor is 1s and 0s
-#     convolve image (stack) with a kernel. 
-#     dilate  = keep partial/full overlap between image and kernel.   means masked sum > 0
-#     erosion = keep only full overlap.                               means masked sum  = kernel sum.
-#     erode: subtract full overlap area from result, pixels with full overlap will be 0. rest will go below 0.
-#     erode:add 1 to bring full overlap pixels to value of 1. partial overlap will be below 1 and will be clamped to 0.
-#     dilate: just clamp
-#     """
-#     padding = (kernel.shape[-1]//2,)*2
-#     torch_result0   = torch.nn.functional.conv2d(im_tensor, kernel, padding = padding, groups = 1)
-#     if mode == 0:
-#         full_area = torch.sum(kernel)
-#         torch_result0.add_(-full_area + 1)
-#     return torch_result0.clamp_(0, 1)
-
-
-# def binary_pipe(dataloader, blurred_image_t, threshold, device='cuda'):
-#     ref_type = blurred_image_t.dtype
-#     #kernel_5 = torch.ones((1,1,5,5)).to(device, dtype = ref_type)
-#     #kernel_8 = torch.ones((1,1,8,8)).to(device, dtype = ref_type)
-#     kernel_5 = kernel_circular(5, normalize = False).to(device, dtype = ref_type)
-#     kernel_8 = kernel_circular(8, normalize = False).to(device, dtype = ref_type)
-#     time_load = 0.0
-#     time_save = 0.0
-#     for batch in dataloader:
-#         #print(f'send to device: {track_time()}')
-#         t = time.time()
-#         batch = batch.to(device).to(ref_type)
-#         time_load += (time.time() - t)
-#         batch = batch.unsqueeze_(1)    
-#         batch.add_(-blurred_image_t)
-#         #print(f'thld 1 start: {track_time()}')
-
-#         batch = batch > threshold       # may be not cool since its changes type size
-#         #print(f'thresholding time 1: {track_time()}')
-#         batch = batch.to(ref_type)
-#         #test0 = batch[0]
-#         # opening = erode->dilate
-#         #test0 = batch[0, 0, :, :]
-#         batch = morph_erode_dilate(batch, kernel_5, mode = 0)
-#         #test1 = batch[0, 0, :, :]
-#         batch = morph_erode_dilate(batch, kernel_5, mode = 1)
-#         #test2 = batch[0, 0, :, :]
-#         #cv2.imshow('mn_diff0', ((test0.detach().cpu().numpy())*255.0).astype(np.uint8))
-#         #cv2.imshow('mn_diff1', ((test1.detach().cpu().numpy())*255.0).astype(np.uint8))
-#         #cv2.imshow('mn_diff2', ((test2.detach().cpu().numpy())*255.0).astype(np.uint8))
-
-#         # dilate 8 to join and return 5
-#         batch = morph_erode_dilate(batch, kernel_8, mode = 1)
-#         batch = morph_erode_dilate(batch, kernel_5, mode = 0)
-#         #del batch
-#         #torch.cuda.empty_cache()
-#         #print(f'clear mem 1: {track_time()}')
-#         batch = batch.to(torch.uint8)
-#         t = time.time()
-#         processed_batch_cpu = batch.to('cpu')
-#         time_save += (time.time() - t)
-#         processed_data_cpu.append(processed_batch_cpu)
-
-#     print(f'load time= {time_load:.2f} s, save time= {time_save:.2f} ')
-#     return True
-
-# def kernel_circular(width, normalize):
-#     ker = torch.from_numpy(cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(width,width))).unsqueeze_(0).unsqueeze_(0)
-#     if normalize:
-#         return ker/torch.sum(ker)
-#     else:
-#         return ker
-    
-
-# def compute_mean_image(slice_start, slice_end, data, result_queue):
-#     # Process data slice from slice_start to slice_end
-#     batch = data[slice_start:slice_end]
-    
-#     # Your computation logic here (compute mean image, etc.)
-#     mean_image = batch.to(torch.float).mean(dim=0)
-#     num_elements = len(batch)
-#     print(f'asdas: {os.getpid()}, numImgas = {num_elements}')
-#     # Put results into the queue
-#     result_queue.put((num_elements, mean_image))
-#     return
-
-# def compute_mean_image_batch(slices, data, result_queue):
-#     print(f'({timeHMS()})[{os.getpid()}] starting..')
-#     for i, slice in enumerate(slices):
-#         slice_start, slice_end = slice
-#         batch = data[slice_start:slice_end]
-
-#         mean_image = batch.to(torch.float).mean(dim=0)
-#         num_elements = len(batch)
-        
-
-#         result_queue.put((num_elements, mean_image))
-#         #print(f'({timeHMS()})[{os.getpid()}] finished batch = {i}: #images: {num_elements}')
-#     return
-
 def gen_slices(data_length, slice_width):
     # input:    data_length, slice_width = 551, 100
     # output:   [(0, 100), (100, 200), (200, 300), (300, 400), (400, 500), (500, 551)] 
@@ -252,6 +204,12 @@ def intialize_workers(worker_ready_event, map_x, map_y, rot_param): #xywh, buf_s
     worker_ready_event.set()        # signal that worker has done init.
     track_time(True)    
     print2('ready')
+    return
+
+def init_mean_img(image,): #xywh, buf_shape, buf_type
+    global mean_image
+    mean_image = image
+    return
 
 def img_read_proc(fr_to, img_links, crop_arr_shape, crop_arr_type, xywh):
 
@@ -270,10 +228,28 @@ def img_read_proc(fr_to, img_links, crop_arr_shape, crop_arr_type, xywh):
         #print2(f'{img.shape}, {cropped_np[fr + i,...].shape}')
         cropped_np[fr + i,...] = np.rot90(img, rotate_times)
     
+def img_read_proc(fr_to, img_links, crop_arr_shape, crop_arr_type, xywh):
+
+    buf_cropped   = shared_memory.SharedMemory(name='buf_cropped')
+    cropped_np     = np.ndarray(crop_arr_shape, dtype = crop_arr_type, buffer=buf_cropped.buf)
+    #print2(f'{cropped_np.shape}')
+    (fr,to) = fr_to#, img_links = slice_link
+    [X, Y, W, H] = xywh
+
+    for i, img_link in enumerate(img_links):
+        img = cv2.imread(img_link, 0)
         
+        img = cv2.remap(img,  mx, my, cv2.INTER_LINEAR)
+        img = img[Y:Y+H, X:X+W]
+        
+        #print2(f'{img.shape}, {cropped_np[fr + i,...].shape}')
+        cropped_np[fr + i,...] = np.rot90(img, rotate_times)        
 
 if __name__ == '__main__':
     
+    manager         = Manager()
+    result_queue    = manager.Queue()
+
     # ============================ MANAGE MODULES WITH FUNCTIONS =============================//
 
     # --- IF MODULES ARE NOT IN ROOT FOLDER. MODULE PATH HAS TO BE ADDED TO SYSTEM PATHS EACH RUN ---
@@ -320,6 +296,7 @@ if __name__ == '__main__':
     """
     num_processors = 2
     inputImageFolder            = r'E:\relocated\Downloads\150 sccm imgs' #
+    inputImageFolder            = r'C:\Users\mhd01\Downloads\150 sccm imgs'
     # image data subsets are controlled by specifying image index, which is part of an image. e.g image1, image2, image20, image3
     intervalStart   = 1                            # start with this ID
     numImages       = 51                         # how many images you want to analyze.
@@ -368,6 +345,7 @@ if __name__ == '__main__':
     # 
     kernels_ready = Event()
     t0_kernel = time.time() #intialize_workers(worker_ready_event, map_x, map_y, xywh, buf_shape, buf_type
+    
     with Pool(processes = num_processors, initializer = intialize_workers, initargs = (kernels_ready, mx, my, rotate_times)) as pool:
         
         if cropMaskMissing: 
@@ -425,7 +403,7 @@ if __name__ == '__main__':
             
             print2(f'end mean calc... {track_time()}')
 
-            
+            bin_thresh = 10
             if calc_GPU:
                 print2(f'create dataest... {track_time()}')
                 dataset_here = SharedMemoryDataset('buf_cropped', dims, dt)
@@ -446,7 +424,7 @@ if __name__ == '__main__':
                 cv2.imshow('aa', np_buff[0])
                 i = 0
                 for batch in dataloader:
-                    b_pipe(i, np_buff, batch, mean_gpu_blur, 10, cuda_ref_type, dt)
+                    GPU_binary_pipe(i, np_buff, batch, mean_gpu_blur, bin_thresh, cuda_ref_type, dt)
                     i += len(batch)
                 # shared_data     = shared_memory.SharedMemory(name="buf_cropped")
                 # np_buff         = np.ndarray(dims, dtype=dt, buffer=shared_data.buf)
@@ -455,9 +433,49 @@ if __name__ == '__main__':
                 # for batch in dataloader:
                 #     img = batch[0]
                 #     cv2.imshow('a', img.numpy())
+            else:
 
+                async_result = pool.starmap_async(mean_slice, ((s, dims, dt, result_queue) for s in slices))
 
-            #cv2.imshow('a', cropped_np[0,...])
+                async_result.wait()                 # wait until all workers are done. can do other stuff before.
+                
+                if not async_result.successful():
+                    print2(f'shit failed: {async_result.get()}')
+
+                mean_image = mean_slice_finish(len(slices), dims[-2:], result_queue)
+                cv2.imshow('mean', np.uint8(mean_image))
+                
+                # init global mean_image to each worker
+                result = pool.map_async(init_mean_img, [mean_image]*num_processors)
+                result.wait
+
+                async_result = pool.starmap_async(CPU_binary_pipe, ((s, bin_thresh, dims, dt) for s in slices))
+
+                async_result.wait()                 # wait until all workers are done. can do other stuff before.
+                
+                if not async_result.successful():
+                    print2(f'shit failed: {async_result.get()}')
+                a = 1
+
+            print2(f'fill border {track_time()}')
+            border_thickness = 5
+            np_buff  = np.ndarray(dims, dtype=dt, buffer=shared_data.buf)
+
+            np_buff[:,     :border_thickness   , :                 ]   = 255
+            np_buff[:,     -border_thickness:  , :                 ]   = 255
+            np_buff[:,     :                   , :border_thickness ]   = 255
+            np_buff[:,     :                   , -border_thickness:]   = 255
+            cv2.imshow('uuuagua before', np_buff[0])
+            print2(f'fill border end {track_time()} start flood fill')
+
+            # remove border components on image stack. connectivity is set by footprint
+            footprint = cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3)).reshape(1,3,3) # prevents connectivity in time direction
+            flood_fill(image = np_buff, seed_point = (0,0,0), new_value = 0, footprint = footprint, in_place=True)
+            print2(f'flood fill end {track_time()}')
+            
+
+            """Perform contour recognition on CPU = """
+            cv2.imshow('uuuagua', np_buff[0])
             k = cv2.waitKey(0)
             if k == 27:  # close on ESC key
                 cv2.destroyAllWindows()

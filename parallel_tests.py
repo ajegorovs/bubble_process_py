@@ -12,6 +12,53 @@ from multiprocessing import shared_memory, Manager, Pool, Event
 
 # from torch.utils.data import Dataset
 # from torch.utils.data import DataLoader
+
+calc_GPU = True
+
+if __name__ == '__main__':
+    path_modues = r'.\modules'      # os.path.join(mainOutputFolder,'modules')
+    sys.path.append(path_modues)
+    if calc_GPU:
+        path_modules_GPU = r'..\python-code-bits-for-image-processing-and-linear-algebra\multiprocessing-GPU'
+        sys.path.append(path_modules_GPU)
+        from gpu_torch_cuda_functions import (batch_axis0_mean, torch_blur, kernel_circular, morph_erode_dilate)
+        from module_GPU import (dataset_create, SharedMemoryDataset)
+        from torch.utils.data import DataLoader
+        import torch
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        cuda_ref_type = torch.float16
+
+        def b_pipe(i, buffer, batch, image_blurred, threshold, cuda_ref_type, cpu_ref_type, debug = 0):
+            kernel_5 = kernel_circular(5, dtype = cuda_ref_type, normalize = False, device = device)
+            kernel_9 = kernel_circular(9, dtype = cuda_ref_type, normalize = False, device = device)
+            batch = batch.to(device).to(cuda_ref_type)
+            batch = batch.unsqueeze_(1)    
+            batch.add_(-image_blurred)
+
+            batch = batch > threshold           # may be not cool since its changes type size
+            batch = batch.to(cuda_ref_type)
+            if debug: test0 = batch[0, 0, :, :]
+            # remove small elements by equal size erode-dilate a.k.a morph closing/opening
+            batch = morph_erode_dilate(batch, kernel_5, mode = 0)   # erode 
+            if debug: test1 = batch[0, 0, :, :]
+
+            batch = morph_erode_dilate(batch, kernel_5, mode = 1)   # dilate
+
+            if debug:
+                test2 = batch[0, 0, :, :]
+                for a,b in zip(['cuda: 0 binar', 'cuda: 1 erode', 'cuda: 2 dilate'], [test0, test1, test2]):
+                    cv2.imshow(a, ((b.detach().cpu().numpy())*255.0).astype(np.uint8))
+
+            # try to join closuters by larger cluster and do smaller erode. not sure if it always works.
+            batch = morph_erode_dilate(batch, kernel_9, mode = 1)
+            batch = morph_erode_dilate(batch, kernel_5, mode = 0)
+            batch *= 255.0
+            # fill cpu buffer with processed batch. they are same type now.
+            buffer[i:i + len(batch),...] = batch.squeeze(1).to('cpu').numpy().astype(cpu_ref_type)
+            # cv2.imshow('binar', buffer[0]); cv2.imshow('binar_old', buffer[1])
+            return 
+
+
 def track_time(reset = False):
     if reset:
         track_time.last_time = time.time()
@@ -71,31 +118,6 @@ def timeHMS():
 #         torch_result0.add_(-full_area + 1)
 #     return torch_result0.clamp_(0, 1)
 
-# def calculate_weighted_mean_image(dataloader, kernel_mean, kernel_size, ref_type, device='cuda'):
-#     weighted_mean_image = None
-#     total_weight = 0
-
-#     for batch in dataloader:
-#         batch = batch.to(device, dtype = ref_type) # Move the batch to GPU
-#         batch = batch.unsqueeze_(1)                             # (N,h,w) -> (N,1,h,w)
-#         batch_mean = torch.mean(batch, dim = 0).unsqueeze(0)    # mean dim 0, bring back to shape (1,1,h,w)
-#         batch_weight = batch.size(0)
-        
-#         if weighted_mean_image is None:  # Update the weighted mean
-#             weighted_mean_image = batch_mean.clone()
-#         else:
-#             weighted_mean_image = (weighted_mean_image * total_weight + batch_mean * batch_weight) / (total_weight + batch_weight)
-
-#         total_weight += batch_weight
-        
-#         #del batch # Free up GPU memory
-    
-#     weighted_mean_image = weighted_mean_image.to(device) # Move the result to GPU (if not already)
-
-#     conv = nn.Conv2d(1, 1, kernel_size = kernel_size, bias = False, padding = 'same', padding_mode ='reflect').to(device)
-#     conv.weight = nn.Parameter(kernel_mean) 
-#     blurred_image_t = conv(weighted_mean_image)
-#     return blurred_image_t
 
 # def binary_pipe(dataloader, blurred_image_t, threshold, device='cuda'):
 #     ref_type = blurred_image_t.dtype
@@ -255,8 +277,8 @@ if __name__ == '__main__':
     # ============================ MANAGE MODULES WITH FUNCTIONS =============================//
 
     # --- IF MODULES ARE NOT IN ROOT FOLDER. MODULE PATH HAS TO BE ADDED TO SYSTEM PATHS EACH RUN ---
-    path_modues = r'.\modules'      # os.path.join(mainOutputFolder,'modules')
-    sys.path.append(path_modues)    
+    # path_modues = r'.\modules'      # os.path.join(mainOutputFolder,'modules')
+    # sys.path.append(path_modues)    
 
     # NOTE: IF YOU USE MODULES, DONT FORGET EMPTY "__init__.py" FILE INSIDE MODULES FOLDER
     # NOTE: path_modules_init = os.path.join(path_modues, "__init__.py")
@@ -389,20 +411,53 @@ if __name__ == '__main__':
         np_buff         = np.zeros_like(np_buff)    # this part -> to stream on demand
         print2(f'dims:{dims}')
         if 1 == 1:
-            # wait kernel launch
+            """wait kernel launch"""
             if not kernels_ready.is_set():  #event_or_queue 0 or 1
                 check_ready_blocking(kernels_ready, t0_kernel, 'Waiting until kernels are ready...', 'Kernels are ready!')
 
+            """imort image, remap and crop"""
             track_time()
             async_result = pool.starmap_async(img_read_proc, (s + (dims, dt, [X, Y, W, H]) for s in slices_links))
             async_result.wait()  
             if not async_result.successful():
                 print2(f'shit failed: {async_result.get()}')
 
+            
+            print2(f'end mean calc... {track_time()}')
 
-            buf_cropped   = shared_memory.SharedMemory(name='buf_cropped')
-            cropped_np     = np.ndarray(dims, dtype = dt, buffer=buf_cropped.buf)
-            cv2.imshow('a', cropped_np[0,...])
+            
+            if calc_GPU:
+                print2(f'create dataest... {track_time()}')
+                dataset_here = SharedMemoryDataset('buf_cropped', dims, dt)
+                dataloader   = DataLoader(dataset_here, batch_size=1, shuffle=False)
+
+                print2(f'create dataest...  done{track_time()}')
+                """compute stack mean"""
+                mean_gpu        = batch_axis0_mean(dataloader, dims[-2:], ref_type = cuda_ref_type, device= device)
+                mean_gpu        = mean_gpu.unsqueeze(0)
+                """blur mean image"""
+                kernel_blur_size    = 5 #, dtype = ref_type, device = device)
+                kernel_blur   = kernel_circular(kernel_blur_size, dtype = cuda_ref_type, normalize = True, device = device)
+                mean_gpu_blur = torch_blur(mean_gpu, kernel_blur_size, kernel_blur, device = device)
+
+                """compute binary pipe"""
+                # shared_data     = shared_memory.SharedMemory(name="buf_cropped")
+                # np_buff         = np.ndarray(dims, dtype=dt, buffer=shared_data.buf)
+                cv2.imshow('aa', np_buff[0])
+                i = 0
+                for batch in dataloader:
+                    b_pipe(i, np_buff, batch, mean_gpu_blur, 10, cuda_ref_type, dt)
+                    i += len(batch)
+                # shared_data     = shared_memory.SharedMemory(name="buf_cropped")
+                # np_buff         = np.ndarray(dims, dtype=dt, buffer=shared_data.buf)
+                cv2.imshow('binar', np_buff[0])
+                #cv2.imshow('mean_gpu_blur', mean_gpu_blur.to('cpu').numpy().astype(dt)[0,0])
+                # for batch in dataloader:
+                #     img = batch[0]
+                #     cv2.imshow('a', img.numpy())
+
+
+            #cv2.imshow('a', cropped_np[0,...])
             k = cv2.waitKey(0)
             if k == 27:  # close on ESC key
                 cv2.destroyAllWindows()

@@ -1,7 +1,9 @@
 """
 here are some funcitons used in cuda + pytorch for image processing
 """
-import cv2, torch 
+import cv2, torch, numpy as np
+from multiprocessing import shared_memory
+from torch.utils.data import Dataset
 
 def kernel_circular(width, normalize):
     ker = torch.from_numpy(cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(width,width))).unsqueeze_(0).unsqueeze_(0)
@@ -26,3 +28,30 @@ def morph_erode_dilate(im_tensor, kernel, mode):
         full_area = torch.sum(kernel)
         torch_result0.add_(-full_area + 1)
     return torch_result0.clamp_(0, 1)
+
+class dataset_create(Dataset):
+    def __init__(self, data):
+        self.data = data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        sample = self.data[idx]
+        return sample
+
+class SharedMemoryDataset(Dataset):
+    def __init__(self, shm_name, shape, dtype=np.float32):
+        # Open the shared memory buffer
+        self.shm = shared_memory.SharedMemory(name=shm_name)
+
+        # Create a NumPy array view of the shared memory buffer
+        self.data = np.ndarray(shape, dtype=dtype, buffer=self.shm.buf)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        #sample = torch.from_numpy(self.data[idx])
+        sample = self.data[idx]
+        return sample

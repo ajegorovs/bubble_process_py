@@ -6,3 +6,4 @@ pip install glob2
 pip install -U scikit-image
 pip install descartes
 pip install tqdm
+pip install scikit-image    #not used anymore
